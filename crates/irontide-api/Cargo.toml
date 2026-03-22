@@ -1,0 +1,32 @@
+[package]
+name = "irontide-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "HTTP REST API for the irontide engine"
+
+[lints]
+workspace = true
+
+[features]
+default = ["crypto-aws-lc"]
+crypto-aws-lc = ["irontide/crypto-aws-lc"]
+crypto-ring = ["irontide/crypto-ring"]
+
+[dependencies]
+irontide = { path = "../irontide", default-features = false }
+axum = { version = "0.8", features = ["ws"] }
+serde = { workspace = true }
+serde_json = "1"
+tokio = { workspace = true }
+tower-http = { version = "0.6", features = ["cors"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+futures-util = "0.3"
+http-body-util = "0.1"
+serde_bytes = { workspace = true }
+serde_json = "1"
+tokio = { workspace = true }
+tokio-tungstenite = "0.28"
+tower = { version = "0.5", features = ["util"] }

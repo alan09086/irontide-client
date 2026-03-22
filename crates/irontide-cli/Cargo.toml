@@ -1,0 +1,34 @@
+[package]
+name = "irontide-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Command-line BitTorrent client powered by irontide"
+publish = false
+
+[[bin]]
+name = "irontide"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[features]
+default = ["crypto-aws-lc", "api"]
+api = ["dep:irontide-api"]
+crypto-ring = ["irontide/crypto-ring"]
+crypto-openssl = ["irontide/crypto-openssl"]
+crypto-aws-lc = ["irontide/crypto-aws-lc"]
+io-uring = ["irontide/io-uring"]
+
+[dependencies]
+irontide = { path = "../irontide", default-features = false }
+irontide-api = { path = "../irontide-api", optional = true }
+clap = { version = "4", features = ["derive"] }
+indicatif = "0.17"
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1"
+serde_json = "1"
+core_affinity = { workspace = true }
