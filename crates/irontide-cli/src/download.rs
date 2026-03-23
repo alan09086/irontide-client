@@ -60,7 +60,6 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
     let mut alerts = session.subscribe();
 
     // Start HTTP API if configured
-    #[cfg(feature = "api")]
     let _api_handle = if api_port > 0 {
         let addr: std::net::SocketAddr = format!("{api_bind}:{api_port}")
             .parse()
@@ -80,10 +79,6 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
     } else {
         None
     };
-
-    // Suppress unused-variable warning when the `api` feature is disabled.
-    #[cfg(not(feature = "api"))]
-    let _ = (&api_port, &api_bind);
 
     // Add torrent
     let info_hash = if source.starts_with("magnet:") {
