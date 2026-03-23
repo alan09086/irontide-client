@@ -68,6 +68,9 @@ enum Command {
         /// io_uring submission queue depth (default: 256)
         #[arg(long)]
         uring_sq_depth: Option<u32>,
+        /// Use memory-mapped I/O (mmap) for disk operations
+        #[arg(long)]
+        mmap: bool,
         /// Use IOCP for disk I/O (Windows only, requires iocp feature)
         #[arg(long)]
         iocp: bool,
@@ -131,6 +134,7 @@ fn main() {
             io_uring,
             direct_io,
             uring_sq_depth,
+            mmap,
             iocp,
             api_port,
             api_bind,
@@ -162,6 +166,9 @@ fn main() {
             }
             if io_uring || direct_io {
                 settings.storage_mode = irontide::core::StorageMode::IoUring;
+            }
+            if mmap {
+                settings.storage_mode = irontide::core::StorageMode::Mmap;
             }
             if direct_io {
                 settings.io_uring_direct_io = true;
