@@ -20,6 +20,7 @@ crypto-ring = ["irontide/crypto-ring"]
 crypto-openssl = ["irontide/crypto-openssl"]
 crypto-aws-lc = ["irontide/crypto-aws-lc"]
 io-uring = ["irontide/io-uring"]
+iocp = ["irontide/iocp"]
 
 [dependencies]
 irontide = { path = "../irontide", default-features = false }
