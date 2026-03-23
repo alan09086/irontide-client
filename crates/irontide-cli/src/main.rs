@@ -165,6 +165,7 @@ fn main() {
             }
             if direct_io {
                 settings.io_uring_direct_io = true;
+                settings.filesystem_direct_io = true;
             }
             if let Some(depth) = uring_sq_depth {
                 settings.io_uring_sq_depth = depth;

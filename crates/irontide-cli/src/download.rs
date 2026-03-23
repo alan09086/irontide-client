@@ -299,9 +299,16 @@ fn make_filesystem_storage(
     };
 
     let lengths_calc = Lengths::new(total_length, piece_length, DEFAULT_CHUNK_SIZE);
-    let storage =
-        FilesystemStorage::new(output, file_paths, file_lengths, lengths_calc, None, PreallocateMode::None)
-            .map_err(|e| anyhow::anyhow!("failed to create storage: {e}"))?;
+    let storage = FilesystemStorage::new(
+        output,
+        file_paths,
+        file_lengths,
+        lengths_calc,
+        None,
+        PreallocateMode::None,
+        false,
+    )
+    .map_err(|e| anyhow::anyhow!("failed to create storage: {e}"))?;
     Ok(Arc::new(storage))
 }
 
