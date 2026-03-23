@@ -1,4 +1,8 @@
 # Optimize for the build machine's CPU (enables AVX2, SHA-NI, BMI2, etc.)
 # Note: binaries built with this are NOT portable to other CPU architectures.
-[build]
+# Scoped to host target so cross-compilation doesn't inherit native flags.
+[target.x86_64-unknown-linux-gnu]
 rustflags = ["-C", "target-cpu=native"]
+
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc"
