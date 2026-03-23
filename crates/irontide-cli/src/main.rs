@@ -80,6 +80,9 @@ enum Command {
         /// HTTP API bind address
         #[arg(long, default_value = "127.0.0.1")]
         api_bind: String,
+        /// Enable pipeline diagnostics (detailed per-peer stats every 5s)
+        #[arg(long)]
+        diagnose: bool,
     },
     /// Create a .torrent file
     Create {
@@ -138,10 +141,14 @@ fn main() {
             iocp,
             api_port,
             api_bind,
+            diagnose,
         } => {
             let mut settings = if let Some(ref config_path) = config {
                 let data = std::fs::read_to_string(config_path).unwrap_or_else(|e| {
-                    eprintln!("error: failed to read config {}: {e}", config_path.display());
+                    eprintln!(
+                        "error: failed to read config {}: {e}",
+                        config_path.display()
+                    );
                     std::process::exit(1);
                 });
                 let s: irontide::session::Settings =
@@ -201,6 +208,7 @@ fn main() {
                 settings,
                 api_port,
                 api_bind,
+                diagnose,
             }));
 
             // Force-shutdown the runtime like rqbit does — kills any dangling
