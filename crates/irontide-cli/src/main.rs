@@ -165,7 +165,13 @@ fn main() {
             }
             if direct_io {
                 settings.io_uring_direct_io = true;
-                settings.filesystem_direct_io = true;
+                // Only enable filesystem direct I/O when NOT using io_uring.
+                // The io_uring backend handles O_DIRECT on its own pre-opened fds;
+                // the inner PosixDiskIo's FilesystemStorage needs standard buffered
+                // I/O for cache reads and hash verification.
+                if settings.storage_mode != irontide::core::StorageMode::IoUring {
+                    settings.filesystem_direct_io = true;
+                }
             }
             if let Some(depth) = uring_sq_depth {
                 settings.io_uring_sq_depth = depth;
