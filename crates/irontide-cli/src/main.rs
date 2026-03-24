@@ -304,14 +304,14 @@ mod tests {
         assert_eq!(max_peers, 0, "--max-peers 0 should parse as 0");
 
         // Verify the settings wire-up logic: zero is treated as "not specified",
-        // so the settings default (200) is preserved.
+        // so the settings default (128) is preserved.
         let mut settings = irontide::session::Settings::default();
         if max_peers != 0 {
             settings.max_peers_per_torrent = max_peers;
         }
         assert_eq!(
-            settings.max_peers_per_torrent, 200,
-            "--max-peers 0 should leave settings at the default (200)"
+            settings.max_peers_per_torrent, 128,
+            "--max-peers 0 should leave settings at the default (128)"
         );
     }
 }
