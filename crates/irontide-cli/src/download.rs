@@ -18,6 +18,7 @@ pub struct DownloadOpts<'a> {
     pub settings: irontide::session::Settings,
     pub api_port: u16,
     pub api_bind: String,
+    pub diagnose: bool,
 }
 
 pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
@@ -31,6 +32,7 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
         settings,
         api_port,
         api_bind,
+        diagnose,
     } = opts;
 
     let state_path = state_file_path();
@@ -91,8 +93,8 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
         }
         session.add_magnet(magnet).await?
     } else {
-        let data =
-            std::fs::read(source).with_context(|| format!("failed to read torrent file: {source}"))?;
+        let data = std::fs::read(source)
+            .with_context(|| format!("failed to read torrent file: {source}"))?;
         let meta = irontide::core::torrent_from_bytes_any(&data)
             .map_err(|e| anyhow::anyhow!("failed to parse torrent: {e}"))?;
         let ih = meta.info_hashes().best_v1();
@@ -149,8 +151,10 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
     let mut total_bytes: u64 = 0;
     let mut total_wanted: u64 = 0;
     let mut last_save = Instant::now();
+    let mut last_diagnose = Instant::now();
     const SAVE_INTERVAL: Duration = Duration::from_secs(60);
     const POLL_INTERVAL: Duration = Duration::from_secs(1);
+    const DIAGNOSE_INTERVAL: Duration = Duration::from_secs(5);
 
     loop {
         // Check for cancellation
@@ -204,6 +208,14 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
                     "\r\x1b[2K{pct:5.1}% ({done}/{total}) \u{2193}{down} \u{2191}{up} | {peers} peers | ETA {eta} [{elapsed:.0}s]",
                 );
             }
+
+            // Pipeline diagnostics (every 5s when --diagnose enabled)
+            if diagnose && !finished && last_diagnose.elapsed() >= DIAGNOSE_INTERVAL {
+                last_diagnose = Instant::now();
+                if let Ok(peers) = session.get_peer_info(info_hash).await {
+                    print_pipeline_diagnostics(&stats, &peers, start_time.elapsed());
+                }
+            }
         }
 
         if finished {
@@ -223,6 +235,10 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
                     avg_speed,
                     peak_peers,
                 );
+            }
+
+            if diagnose && let Ok(peers) = session.get_peer_info(info_hash).await {
+                print_final_summary(&peers, peak_peers);
             }
 
             if seed {
@@ -251,6 +267,146 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
     session.shutdown().await?;
 
     Ok(())
+}
+
+fn print_pipeline_diagnostics(
+    _stats: &irontide::session::TorrentStats,
+    peers: &[irontide::session::PeerInfo],
+    elapsed: Duration,
+) {
+    let total = peers.len();
+    let unchoked = peers.iter().filter(|p| !p.peer_choking).count();
+    let downloading = peers
+        .iter()
+        .filter(|p| !p.peer_choking && p.download_rate > 0)
+        .count();
+    let choked = total.saturating_sub(unchoked);
+
+    // Aggregate pipeline stats
+    let total_pending: usize = peers.iter().map(|p| p.num_pending_requests).sum();
+    let total_dl_rate: u64 = peers.iter().map(|p| p.download_rate).sum();
+
+    // Per-peer throughput distribution (unchoked peers, in MB/s)
+    let mut rates: Vec<f64> = peers
+        .iter()
+        .filter(|p| !p.peer_choking)
+        .map(|p| p.download_rate as f64 / 1_048_576.0)
+        .collect();
+    rates.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Throughput buckets
+    let bucket_0 = rates.iter().filter(|&&r| r == 0.0).count();
+    let bucket_low = rates.iter().filter(|&&r| r > 0.0 && r < 0.1).count();
+    let bucket_mid = rates.iter().filter(|&&r| (0.1..0.5).contains(&r)).count();
+    let bucket_high = rates.iter().filter(|&&r| (0.5..1.0).contains(&r)).count();
+    let bucket_top = rates.iter().filter(|&&r| r >= 1.0).count();
+
+    // Top 10 peers by throughput
+    let mut top10: Vec<_> = peers.iter().filter(|p| p.download_rate > 0).collect();
+    top10.sort_by(|a, b| b.download_rate.cmp(&a.download_rate));
+    top10.truncate(10);
+
+    let choke_pct = if total > 0 {
+        choked as f64 / total as f64 * 100.0
+    } else {
+        0.0
+    };
+    let per_peer_avg = if unchoked > 0 {
+        total_dl_rate as f64 / unchoked as f64 / 1_048_576.0
+    } else {
+        0.0
+    };
+
+    eprintln!(
+        "\n\x1b[1;36m-- Pipeline Diagnostics ({:.0}s) --------------------------\x1b[0m",
+        elapsed.as_secs_f64()
+    );
+    eprintln!(
+        "  Peers: {} total | {} unchoked | {} downloading | {} choked ({:.0}%)",
+        total, unchoked, downloading, choked, choke_pct,
+    );
+    eprintln!(
+        "  Pipeline: {} in-flight requests | {}/s aggregate",
+        total_pending,
+        format_rate(total_dl_rate),
+    );
+    eprintln!("  Per-peer avg: {per_peer_avg:.2} MB/s ({unchoked} unchoked peers)",);
+    eprintln!("  Throughput buckets (unchoked peers):");
+    eprintln!(
+        "    0 MB/s:       {:3}  |  0.1-0.5 MB/s: {:3}",
+        bucket_0, bucket_mid,
+    );
+    eprintln!(
+        "    0-0.1 MB/s:   {:3}  |  0.5-1.0 MB/s: {:3}",
+        bucket_low, bucket_high,
+    );
+    eprintln!("    >=1.0 MB/s:   {:3}", bucket_top);
+
+    if !top10.is_empty() {
+        eprintln!("  Top peers:");
+        for p in &top10 {
+            let status = if p.peer_choking { "CHOKED" } else { "OK" };
+            eprintln!(
+                "    {:22} {:>7}/s | {:3} pending | {:5}s connected | {}",
+                p.addr.to_string(),
+                format_rate(p.download_rate),
+                p.num_pending_requests,
+                p.connected_duration_secs,
+                status,
+            );
+        }
+    }
+
+    // Pipeline health warnings
+    if unchoked > 0 && total_pending < unchoked.saturating_mul(10) {
+        let avg_pending = total_pending as f64 / unchoked as f64;
+        eprintln!(
+            "  \x1b[1;33mWARN: LOW PIPELINE: {} in-flight for {} unchoked peers (avg {:.1}/peer, expected ~128)\x1b[0m",
+            total_pending, unchoked, avg_pending,
+        );
+    }
+    if total > 0 && choked as f64 / total as f64 > 0.8 {
+        eprintln!(
+            "  \x1b[1;33mWARN: HIGH CHOKE RATIO: {:.0}% of peers are choking us\x1b[0m",
+            choked as f64 / total as f64 * 100.0,
+        );
+    }
+    if downloading == 0 && total > 0 {
+        eprintln!("  \x1b[1;31mERR: NO PEERS DOWNLOADING -- pipeline is empty\x1b[0m");
+    }
+    let idle_unchoked = unchoked.saturating_sub(downloading);
+    if idle_unchoked > unchoked / 2 && unchoked > 5 {
+        eprintln!(
+            "  \x1b[1;33mWARN: {idle_unchoked}/{unchoked} unchoked peers have zero throughput\x1b[0m",
+        );
+    }
+    eprintln!("\x1b[1;36m---------------------------------------------------------\x1b[0m");
+}
+
+fn print_final_summary(peers: &[irontide::session::PeerInfo], peak_peers: usize) {
+    eprintln!("\n\x1b[1;36m-- Final Pipeline Summary --------------------------------\x1b[0m");
+    let total_peers = peers.len();
+    let contributing = peers.iter().filter(|p| p.download_rate > 0).count();
+    eprintln!("  Total peers seen: {total_peers}");
+    eprintln!("  Peak concurrent: {peak_peers}");
+    eprintln!("  Contributing peers (had throughput): {contributing}");
+
+    let mut active: Vec<_> = peers.iter().filter(|p| p.download_rate > 0).collect();
+    active.sort_by(|a, b| b.download_rate.cmp(&a.download_rate));
+
+    if !active.is_empty() {
+        eprintln!("  Active peers at completion:");
+        for p in &active {
+            eprintln!(
+                "    {:22} {:>7}/s | {:3} pending | {}s",
+                p.addr.to_string(),
+                format_rate(p.download_rate),
+                p.num_pending_requests,
+                p.connected_duration_secs,
+            );
+        }
+    }
+    eprintln!("\x1b[1;36m---------------------------------------------------------\x1b[0m");
 }
 
 fn format_size(bytes: u64) -> String {
