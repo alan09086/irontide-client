@@ -270,7 +270,7 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
 }
 
 fn print_pipeline_diagnostics(
-    _stats: &irontide::session::TorrentStats,
+    stats: &irontide::session::TorrentStats,
     peers: &[irontide::session::PeerInfo],
     elapsed: Duration,
 ) {
@@ -318,7 +318,7 @@ fn print_pipeline_diagnostics(
     };
 
     eprintln!(
-        "\n\x1b[1;36m-- Pipeline Diagnostics ({:.0}s) --------------------------\x1b[0m",
+        "\n\x1b[1;36m-- Pipeline Diagnostics ({:.0}s elapsed) ------------------\x1b[0m",
         elapsed.as_secs_f64()
     );
     eprintln!(
@@ -330,7 +330,11 @@ fn print_pipeline_diagnostics(
         total_pending,
         format_rate(total_dl_rate),
     );
-    eprintln!("  Per-peer avg: {per_peer_avg:.2} MB/s ({unchoked} unchoked peers)",);
+    eprintln!("  Per-peer avg: {per_peer_avg:.2} MB/s ({unchoked} unchoked peers)");
+    eprintln!(
+        "  Rotation: {} choke evictions total",
+        stats.choke_evictions,
+    );
     eprintln!("  Throughput buckets (unchoked peers):");
     eprintln!(
         "    0 MB/s:       {:3}  |  0.1-0.5 MB/s: {:3}",
@@ -345,14 +349,21 @@ fn print_pipeline_diagnostics(
     if !top10.is_empty() {
         eprintln!("  Top peers:");
         for p in &top10 {
-            let status = if p.peer_choking { "CHOKED" } else { "OK" };
+            let choke_info = if p.peer_choking {
+                match p.choked_duration_secs {
+                    Some(secs) => format!("CHOKED {secs}s"),
+                    None => "CHOKED".to_owned(),
+                }
+            } else {
+                "OK".to_owned()
+            };
             eprintln!(
                 "    {:22} {:>7}/s | {:3} pending | {:5}s connected | {}",
                 p.addr.to_string(),
                 format_rate(p.download_rate),
                 p.num_pending_requests,
                 p.connected_duration_secs,
-                status,
+                choke_info,
             );
         }
     }
