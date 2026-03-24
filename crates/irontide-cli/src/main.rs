@@ -83,6 +83,9 @@ enum Command {
         /// Enable pipeline diagnostics (detailed per-peer stats every 5s)
         #[arg(long)]
         diagnose: bool,
+        /// Maximum peer connections per torrent (0 = use default)
+        #[arg(long, default_value_t = 0)]
+        max_peers: usize,
     },
     /// Create a .torrent file
     Create {
@@ -142,6 +145,7 @@ fn main() {
             api_port,
             api_bind,
             diagnose,
+            max_peers,
         } => {
             let mut settings = if let Some(ref config_path) = config {
                 let data = std::fs::read_to_string(config_path).unwrap_or_else(|e| {
@@ -167,6 +171,9 @@ fn main() {
 
             if workers != 0 {
                 settings.runtime_worker_threads = workers;
+            }
+            if max_peers != 0 {
+                settings.max_peers_per_torrent = max_peers;
             }
             if no_pin_cores {
                 settings.pin_cores = false;
@@ -246,4 +253,65 @@ fn main() {
     };
 
     std::process::exit(exit_code);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser as _;
+
+    /// Helper: parse a Download command and return the max_peers field.
+    fn parse_max_peers(args: &[&str]) -> usize {
+        let cli = Cli::try_parse_from(args).expect("failed to parse args");
+        match cli.command {
+            Command::Download { max_peers, .. } => max_peers,
+            _ => panic!("expected Download subcommand"),
+        }
+    }
+
+    #[test]
+    fn max_peers_flag_overrides_default() {
+        let max_peers = parse_max_peers(&[
+            "irontide",
+            "download",
+            "--max-peers",
+            "64",
+            "magnet:?xt=urn:btih:aabbccdd",
+        ]);
+        assert_eq!(max_peers, 64, "--max-peers 64 should parse as 64");
+
+        // Verify the settings wire-up logic: non-zero value overrides default.
+        let mut settings = irontide::session::Settings::default();
+        if max_peers != 0 {
+            settings.max_peers_per_torrent = max_peers;
+        }
+        assert_eq!(
+            settings.max_peers_per_torrent,
+            64,
+            "settings.max_peers_per_torrent should be 64 after wiring"
+        );
+    }
+
+    #[test]
+    fn max_peers_zero_uses_default() {
+        let max_peers = parse_max_peers(&[
+            "irontide",
+            "download",
+            "--max-peers",
+            "0",
+            "magnet:?xt=urn:btih:aabbccdd",
+        ]);
+        assert_eq!(max_peers, 0, "--max-peers 0 should parse as 0");
+
+        // Verify the settings wire-up logic: zero is treated as "not specified",
+        // so the settings default (200) is preserved.
+        let mut settings = irontide::session::Settings::default();
+        if max_peers != 0 {
+            settings.max_peers_per_torrent = max_peers;
+        }
+        assert_eq!(
+            settings.max_peers_per_torrent, 200,
+            "--max-peers 0 should leave settings at the default (200)"
+        );
+    }
 }
