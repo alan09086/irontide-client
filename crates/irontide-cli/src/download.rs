@@ -238,7 +238,12 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
             }
 
             if diagnose && let Ok(peers) = session.get_peer_info(info_hash).await {
-                print_final_summary(&peers, peak_peers);
+                let unique_attempted = session
+                    .torrent_stats(info_hash)
+                    .await
+                    .map(|s| s.unique_peers_attempted)
+                    .unwrap_or(0);
+                print_final_summary(&peers, peak_peers, unique_attempted);
             }
 
             if seed {
@@ -394,11 +399,16 @@ fn print_pipeline_diagnostics(
     eprintln!("\x1b[1;36m---------------------------------------------------------\x1b[0m");
 }
 
-fn print_final_summary(peers: &[irontide::session::PeerInfo], peak_peers: usize) {
+fn print_final_summary(
+    peers: &[irontide::session::PeerInfo],
+    peak_peers: usize,
+    unique_peers_attempted: u64,
+) {
     eprintln!("\n\x1b[1;36m-- Final Pipeline Summary --------------------------------\x1b[0m");
     let total_peers = peers.len();
     let contributing = peers.iter().filter(|p| p.download_rate > 0).count();
     eprintln!("  Total peers seen: {total_peers}");
+    eprintln!("  Unique peers attempted: {unique_peers_attempted}");
     eprintln!("  Peak concurrent: {peak_peers}");
     eprintln!("  Contributing peers (had throughput): {contributing}");
 
