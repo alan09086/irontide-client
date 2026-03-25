@@ -204,8 +204,17 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
                     "---".to_string()
                 };
 
+                // M137: Show pipeline stats instead of bare peer count
+                let pipeline_info = if let Some(ref p) = stats.pipeline {
+                    format!(
+                        "{{live: {}, queued: {}, dead: {}, known: {}}}",
+                        p.live, p.queued, p.dead, p.known
+                    )
+                } else {
+                    format!("{peers} peers")
+                };
                 eprint!(
-                    "\r\x1b[2K{pct:5.1}% ({done}/{total}) \u{2193}{down} \u{2191}{up} | {peers} peers | ETA {eta} [{elapsed:.0}s]",
+                    "\r\x1b[2K{pct:5.1}% ({done}/{total}) \u{2193}{down} \u{2191}{up} | {pipeline_info} | ETA {eta} [{elapsed:.0}s]",
                 );
             }
 
@@ -213,7 +222,12 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
             if diagnose && !finished && last_diagnose.elapsed() >= DIAGNOSE_INTERVAL {
                 last_diagnose = Instant::now();
                 if let Ok(peers) = session.get_peer_info(info_hash).await {
-                    print_pipeline_diagnostics(&peers, start_time.elapsed());
+                    let pipeline = session
+                        .torrent_stats(info_hash)
+                        .await
+                        .ok()
+                        .and_then(|s| s.pipeline);
+                    print_pipeline_diagnostics(&peers, start_time.elapsed(), pipeline);
                 }
             }
         }
@@ -238,12 +252,13 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
             }
 
             if diagnose && let Ok(peers) = session.get_peer_info(info_hash).await {
-                let unique_attempted = session
-                    .torrent_stats(info_hash)
-                    .await
+                let stats_snapshot = session.torrent_stats(info_hash).await.ok();
+                let unique_attempted = stats_snapshot
+                    .as_ref()
                     .map(|s| s.unique_peers_attempted)
                     .unwrap_or(0);
-                print_final_summary(&peers, peak_peers, unique_attempted);
+                let pipeline = stats_snapshot.and_then(|s| s.pipeline);
+                print_final_summary(&peers, peak_peers, unique_attempted, pipeline);
             }
 
             if seed {
@@ -274,7 +289,11 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn print_pipeline_diagnostics(peers: &[irontide::session::PeerInfo], elapsed: Duration) {
+fn print_pipeline_diagnostics(
+    peers: &[irontide::session::PeerInfo],
+    elapsed: Duration,
+    pipeline: Option<irontide::session::PeerPipelineSnapshot>,
+) {
     let total = peers.len();
     let unchoked = peers.iter().filter(|p| !p.peer_choking).count();
     let downloading = peers
@@ -322,6 +341,13 @@ fn print_pipeline_diagnostics(peers: &[irontide::session::PeerInfo], elapsed: Du
         "\n\x1b[1;36m-- Pipeline Diagnostics ({:.0}s elapsed) ------------------\x1b[0m",
         elapsed.as_secs_f64()
     );
+    // M137: Pipeline lifecycle stats
+    if let Some(ref p) = pipeline {
+        eprintln!(
+            "  Pipeline: {{live: {}, queued: {}, dead: {}, known: {}}}",
+            p.live, p.queued, p.dead, p.known
+        );
+    }
     eprintln!(
         "  Peers: {} total | {} unchoked | {} downloading | {} choked ({:.0}%)",
         total, unchoked, downloading, choked, choke_pct,
@@ -392,12 +418,20 @@ fn print_final_summary(
     peers: &[irontide::session::PeerInfo],
     peak_peers: usize,
     unique_peers_attempted: u64,
+    pipeline: Option<irontide::session::PeerPipelineSnapshot>,
 ) {
     eprintln!("\n\x1b[1;36m-- Final Pipeline Summary --------------------------------\x1b[0m");
     let total_peers = peers.len();
     let contributing = peers.iter().filter(|p| p.download_rate > 0).count();
     eprintln!("  Total peers seen: {total_peers}");
-    eprintln!("  Unique peers attempted: {unique_peers_attempted}");
+    if let Some(ref p) = pipeline {
+        eprintln!(
+            "  Pipeline: {{live: {}, queued: {}, dead: {}, known: {}}}",
+            p.live, p.queued, p.dead, p.known
+        );
+    } else {
+        eprintln!("  Unique peers attempted: {unique_peers_attempted}");
+    }
     eprintln!("  Peak concurrent: {peak_peers}");
     eprintln!("  Contributing peers (had throughput): {contributing}");
 

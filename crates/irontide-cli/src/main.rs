@@ -86,6 +86,12 @@ enum Command {
         /// Maximum peer connections per torrent (0 = use default)
         #[arg(long, default_value_t = 0)]
         max_peers: usize,
+        /// TCP connect timeout in seconds (default: 2)
+        #[arg(long)]
+        connect_timeout: Option<u64>,
+        /// Data contribution timeout in seconds (default: 15, 0 = disabled)
+        #[arg(long)]
+        data_timeout: Option<u64>,
     },
     /// Create a .torrent file
     Create {
@@ -146,6 +152,8 @@ fn main() {
             api_bind,
             diagnose,
             max_peers,
+            connect_timeout,
+            data_timeout,
         } => {
             let mut settings = if let Some(ref config_path) = config {
                 let data = std::fs::read_to_string(config_path).unwrap_or_else(|e| {
@@ -174,6 +182,12 @@ fn main() {
             }
             if max_peers != 0 {
                 settings.max_peers_per_torrent = max_peers;
+            }
+            if let Some(ct) = connect_timeout {
+                settings.peer_connect_timeout = ct;
+            }
+            if let Some(dt) = data_timeout {
+                settings.data_contribution_timeout_secs = dt;
             }
             if no_pin_cores {
                 settings.pin_cores = false;
