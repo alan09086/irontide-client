@@ -222,12 +222,15 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
             if diagnose && !finished && last_diagnose.elapsed() >= DIAGNOSE_INTERVAL {
                 last_diagnose = Instant::now();
                 if let Ok(peers) = session.get_peer_info(info_hash).await {
-                    let pipeline = session
-                        .torrent_stats(info_hash)
-                        .await
-                        .ok()
-                        .and_then(|s| s.pipeline);
-                    print_pipeline_diagnostics(&peers, start_time.elapsed(), pipeline);
+                    let stats = session.torrent_stats(info_hash).await.ok();
+                    let pipeline = stats.as_ref().and_then(|s| s.pipeline);
+                    let choke_rotations = stats.map(|s| s.choke_rotations).unwrap_or(0);
+                    print_pipeline_diagnostics(
+                        &peers,
+                        start_time.elapsed(),
+                        pipeline,
+                        choke_rotations,
+                    );
                 }
             }
         }
@@ -293,6 +296,7 @@ fn print_pipeline_diagnostics(
     peers: &[irontide::session::PeerInfo],
     elapsed: Duration,
     pipeline: Option<irontide::session::PeerPipelineSnapshot>,
+    choke_rotations: u64,
 ) {
     let total = peers.len();
     let unchoked = peers.iter().filter(|p| !p.peer_choking).count();
@@ -348,6 +352,7 @@ fn print_pipeline_diagnostics(
             p.live, p.queued, p.dead, p.known
         );
     }
+    eprintln!("  Choke rotations: {choke_rotations}");
     eprintln!(
         "  Peers: {} total | {} unchoked | {} downloading | {} choked ({:.0}%)",
         total, unchoked, downloading, choked, choke_pct,
