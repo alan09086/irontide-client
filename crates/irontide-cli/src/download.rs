@@ -260,8 +260,12 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
                     .as_ref()
                     .map(|s| s.unique_peers_attempted)
                     .unwrap_or(0);
+                let choke_rotations = stats_snapshot
+                    .as_ref()
+                    .map(|s| s.choke_rotations)
+                    .unwrap_or(0);
                 let pipeline = stats_snapshot.and_then(|s| s.pipeline);
-                print_final_summary(&peers, peak_peers, unique_attempted, pipeline);
+                print_final_summary(&peers, peak_peers, unique_attempted, pipeline, choke_rotations);
             }
 
             if seed {
@@ -424,6 +428,7 @@ fn print_final_summary(
     peak_peers: usize,
     unique_peers_attempted: u64,
     pipeline: Option<irontide::session::PeerPipelineSnapshot>,
+    choke_rotations: u64,
 ) {
     eprintln!("\n\x1b[1;36m-- Final Pipeline Summary --------------------------------\x1b[0m");
     let total_peers = peers.len();
@@ -438,6 +443,7 @@ fn print_final_summary(
         eprintln!("  Unique peers attempted: {unique_peers_attempted}");
     }
     eprintln!("  Peak concurrent: {peak_peers}");
+    eprintln!("  Choke rotations: {choke_rotations}");
     eprintln!("  Contributing peers (had throughput): {contributing}");
 
     let mut active: Vec<_> = peers.iter().filter(|p| p.download_rate > 0).collect();

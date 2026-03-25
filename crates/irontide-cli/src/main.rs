@@ -89,9 +89,15 @@ enum Command {
         /// TCP connect timeout in seconds (default: 2)
         #[arg(long)]
         connect_timeout: Option<u64>,
-        /// Data contribution timeout in seconds (default: 15, 0 = disabled)
+        /// Data contribution timeout in seconds (default: 60, 0 = disabled)
         #[arg(long)]
         data_timeout: Option<u64>,
+        /// Max choke rotation evictions per tick (default: 10, 0 = disabled)
+        #[arg(long)]
+        choke_rotation: Option<u32>,
+        /// Maximum concurrent outbound connects (default: 16)
+        #[arg(long)]
+        max_concurrent_connects: Option<u16>,
     },
     /// Create a .torrent file
     Create {
@@ -154,6 +160,8 @@ fn main() {
             max_peers,
             connect_timeout,
             data_timeout,
+            choke_rotation,
+            max_concurrent_connects,
         } => {
             let mut settings = if let Some(ref config_path) = config {
                 let data = std::fs::read_to_string(config_path).unwrap_or_else(|e| {
@@ -188,6 +196,12 @@ fn main() {
             }
             if let Some(dt) = data_timeout {
                 settings.data_contribution_timeout_secs = dt;
+            }
+            if let Some(cr) = choke_rotation {
+                settings.choke_rotation_max_evictions = cr;
+            }
+            if let Some(mc) = max_concurrent_connects {
+                settings.max_concurrent_connects = mc;
             }
             if no_pin_cores {
                 settings.pin_cores = false;
