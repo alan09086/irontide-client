@@ -207,8 +207,8 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
                 // M137: Show pipeline stats instead of bare peer count
                 let pipeline_info = if let Some(ref p) = stats.pipeline {
                     format!(
-                        "{{live: {}, queued: {}, dead: {}, known: {}}}",
-                        p.live, p.queued, p.dead, p.known
+                        "{{live: {}, connecting: {}, queued: {}, dead: {}, known: {}}}",
+                        p.live, p.connecting, p.queued, p.dead, p.known
                     )
                 } else {
                     format!("{peers} peers")
@@ -352,8 +352,8 @@ fn print_pipeline_diagnostics(
     // M137: Pipeline lifecycle stats
     if let Some(ref p) = pipeline {
         eprintln!(
-            "  Pipeline: {{live: {}, queued: {}, dead: {}, known: {}}}",
-            p.live, p.queued, p.dead, p.known
+            "  Pipeline: {{live: {}, connecting: {}, queued: {}, dead: {}, known: {}}}",
+            p.live, p.connecting, p.queued, p.dead, p.known
         );
     }
     eprintln!("  Choke rotations: {choke_rotations}");
@@ -436,8 +436,8 @@ fn print_final_summary(
     eprintln!("  Total peers seen: {total_peers}");
     if let Some(ref p) = pipeline {
         eprintln!(
-            "  Pipeline: {{live: {}, queued: {}, dead: {}, known: {}}}",
-            p.live, p.queued, p.dead, p.known
+            "  Pipeline: {{live: {}, connecting: {}, queued: {}, dead: {}, known: {}}}",
+            p.live, p.connecting, p.queued, p.dead, p.known
         );
     } else {
         eprintln!("  Unique peers attempted: {unique_peers_attempted}");
