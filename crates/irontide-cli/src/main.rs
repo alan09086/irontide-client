@@ -86,16 +86,16 @@ enum Command {
         /// Maximum peer connections per torrent (0 = use default)
         #[arg(long, default_value_t = 0)]
         max_peers: usize,
-        /// TCP connect timeout in seconds (default: 2)
+        /// TCP connect timeout in seconds (default: 10)
         #[arg(long)]
         connect_timeout: Option<u64>,
-        /// Data contribution timeout in seconds (default: 60, 0 = disabled)
+        /// Data contribution timeout in seconds (default: 0 = disabled)
         #[arg(long)]
         data_timeout: Option<u64>,
-        /// Max choke rotation evictions per tick (default: 10, 0 = disabled)
+        /// Max choke rotation evictions per tick (default: 0 = disabled)
         #[arg(long)]
         choke_rotation: Option<u32>,
-        /// Maximum concurrent outbound connects (default: 16)
+        /// Maximum concurrent outbound connects (currently unused — semaphore removed in M139)
         #[arg(long)]
         max_concurrent_connects: Option<u16>,
     },
