@@ -104,6 +104,12 @@ enum Command {
         /// Piece steal threshold multiplier (default: 10.0)
         #[arg(long)]
         steal_threshold: Option<f64>,
+        /// Minimum per-peer pipeline depth (default: 16)
+        #[arg(long)]
+        min_pipeline_depth: Option<u32>,
+        /// Maximum per-peer pipeline depth (default: 512)
+        #[arg(long)]
+        max_pipeline_depth: Option<u32>,
     },
     /// Create a .torrent file
     Create {
@@ -170,6 +176,8 @@ fn main() {
             max_concurrent_connects,
             connect_soft_timeout,
             steal_threshold,
+            min_pipeline_depth,
+            max_pipeline_depth,
         } => {
             let mut settings = if let Some(ref config_path) = config {
                 let data = std::fs::read_to_string(config_path).unwrap_or_else(|e| {
@@ -216,6 +224,12 @@ fn main() {
             }
             if let Some(st) = steal_threshold {
                 settings.steal_threshold_ratio = st;
+            }
+            if let Some(min_pd) = min_pipeline_depth {
+                settings.min_pipeline_depth = min_pd;
+            }
+            if let Some(max_pd) = max_pipeline_depth {
+                settings.max_pipeline_depth = max_pd;
             }
             if no_pin_cores {
                 settings.pin_cores = false;
