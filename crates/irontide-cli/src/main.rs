@@ -95,9 +95,12 @@ enum Command {
         /// Max choke rotation evictions per tick (default: 0 = disabled)
         #[arg(long)]
         choke_rotation: Option<u32>,
-        /// Maximum concurrent outbound connects (currently unused — semaphore removed in M139)
+        /// Maximum concurrent outbound connects (M147: ConnectPool size)
         #[arg(long)]
         max_concurrent_connects: Option<u16>,
+        /// Seconds without TCP SYN-ACK before soft reap disconnects (default: 3)
+        #[arg(long)]
+        connect_soft_timeout: Option<u64>,
     },
     /// Create a .torrent file
     Create {
@@ -162,6 +165,7 @@ fn main() {
             data_timeout,
             choke_rotation,
             max_concurrent_connects,
+            connect_soft_timeout,
         } => {
             let mut settings = if let Some(ref config_path) = config {
                 let data = std::fs::read_to_string(config_path).unwrap_or_else(|e| {
@@ -202,6 +206,9 @@ fn main() {
             }
             if let Some(mc) = max_concurrent_connects {
                 settings.max_concurrent_connects = mc;
+            }
+            if let Some(cst) = connect_soft_timeout {
+                settings.connect_soft_timeout = cst;
             }
             if no_pin_cores {
                 settings.pin_cores = false;
@@ -314,8 +321,7 @@ mod tests {
             settings.max_peers_per_torrent = max_peers;
         }
         assert_eq!(
-            settings.max_peers_per_torrent,
-            64,
+            settings.max_peers_per_torrent, 64,
             "settings.max_peers_per_torrent should be 64 after wiring"
         );
     }
