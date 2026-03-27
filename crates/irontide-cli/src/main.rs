@@ -101,6 +101,9 @@ enum Command {
         /// Seconds without TCP SYN-ACK before soft reap disconnects (default: 3)
         #[arg(long)]
         connect_soft_timeout: Option<u64>,
+        /// Piece steal threshold multiplier (default: 10.0)
+        #[arg(long)]
+        steal_threshold: Option<f64>,
     },
     /// Create a .torrent file
     Create {
@@ -166,6 +169,7 @@ fn main() {
             choke_rotation,
             max_concurrent_connects,
             connect_soft_timeout,
+            steal_threshold,
         } => {
             let mut settings = if let Some(ref config_path) = config {
                 let data = std::fs::read_to_string(config_path).unwrap_or_else(|e| {
@@ -209,6 +213,9 @@ fn main() {
             }
             if let Some(cst) = connect_soft_timeout {
                 settings.connect_soft_timeout = cst;
+            }
+            if let Some(st) = steal_threshold {
+                settings.steal_threshold_ratio = st;
             }
             if no_pin_cores {
                 settings.pin_cores = false;
