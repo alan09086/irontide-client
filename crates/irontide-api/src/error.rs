@@ -204,8 +204,7 @@ mod tests {
 
     #[test]
     fn io_error_maps_to_500() {
-        let session_err =
-            irontide::session::Error::Io(std::io::Error::other("disk failed"));
+        let session_err = irontide::session::Error::Io(std::io::Error::other("disk failed"));
         let api_err = ApiError::from(session_err);
         assert_eq!(api_err.status, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(api_err.code, "INTERNAL_ERROR");

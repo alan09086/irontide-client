@@ -43,8 +43,8 @@ impl Default for ApiConfig {
 }
 
 use axum::Router;
-use tokio::net::TcpListener;
 use irontide::session::SessionHandle;
+use tokio::net::TcpListener;
 
 /// HTTP API server for the torrent engine.
 ///

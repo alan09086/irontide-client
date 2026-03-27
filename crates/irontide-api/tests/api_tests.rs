@@ -667,27 +667,23 @@ async fn start_test_server() -> (std::net::SocketAddr, irontide::session::Sessio
 #[tokio::test]
 async fn test_ws_connect() {
     let (addr, _session) = start_test_server().await;
-    let (ws, _response) =
-        connect_async(format!("ws://{addr}/api/v1/events?interval=0"))
-            .await
-            .expect("websocket upgrade should succeed");
+    let (ws, _response) = connect_async(format!("ws://{addr}/api/v1/events?interval=0"))
+        .await
+        .expect("websocket upgrade should succeed");
     drop(ws);
 }
 
 #[tokio::test]
 async fn test_ws_get_stats_command() {
     let (addr, _session) = start_test_server().await;
-    let (mut ws, _response) =
-        connect_async(format!("ws://{addr}/api/v1/events?interval=0"))
-            .await
-            .expect("websocket connect");
+    let (mut ws, _response) = connect_async(format!("ws://{addr}/api/v1/events?interval=0"))
+        .await
+        .expect("websocket connect");
 
     // Send get_stats command.
-    ws.send(TungsteniteMessage::Text(
-        r#"{"type":"get_stats"}"#.into(),
-    ))
-    .await
-    .expect("send get_stats");
+    ws.send(TungsteniteMessage::Text(r#"{"type":"get_stats"}"#.into()))
+        .await
+        .expect("send get_stats");
 
     // Read the stats response.
     let msg = tokio::time::timeout(Duration::from_secs(2), ws.next())
@@ -699,17 +695,18 @@ async fn test_ws_get_stats_command() {
     let text = msg.into_text().expect("expected text message");
     let v: serde_json::Value = serde_json::from_str(&text).expect("parse JSON");
     assert_eq!(v["type"], "stats");
-    let counters = v["counters"].as_object().expect("counters should be object");
+    let counters = v["counters"]
+        .as_object()
+        .expect("counters should be object");
     assert_eq!(counters.len(), 70, "should have exactly 70 counters");
 }
 
 #[tokio::test]
 async fn test_ws_heartbeat() {
     let (addr, _session) = start_test_server().await;
-    let (mut ws, _response) =
-        connect_async(format!("ws://{addr}/api/v1/events?interval=100"))
-            .await
-            .expect("websocket connect");
+    let (mut ws, _response) = connect_async(format!("ws://{addr}/api/v1/events?interval=100"))
+        .await
+        .expect("websocket connect");
 
     // Heartbeat should arrive within 200ms (interval=100ms + margin).
     let msg = tokio::time::timeout(Duration::from_millis(500), ws.next())
@@ -726,10 +723,9 @@ async fn test_ws_heartbeat() {
 #[tokio::test]
 async fn test_ws_alert_delivery() {
     let (addr, session) = start_test_server().await;
-    let (mut ws, _response) =
-        connect_async(format!("ws://{addr}/api/v1/events?interval=0"))
-            .await
-            .expect("websocket connect");
+    let (mut ws, _response) = connect_async(format!("ws://{addr}/api/v1/events?interval=0"))
+        .await
+        .expect("websocket connect");
 
     // Add a magnet URI which triggers TorrentAdded alert (STATUS category).
     session

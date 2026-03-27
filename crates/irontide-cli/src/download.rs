@@ -265,7 +265,13 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
                     .map(|s| s.choke_rotations)
                     .unwrap_or(0);
                 let pipeline = stats_snapshot.and_then(|s| s.pipeline);
-                print_final_summary(&peers, peak_peers, unique_attempted, pipeline, choke_rotations);
+                print_final_summary(
+                    &peers,
+                    peak_peers,
+                    unique_attempted,
+                    pipeline,
+                    choke_rotations,
+                );
             }
 
             if seed {

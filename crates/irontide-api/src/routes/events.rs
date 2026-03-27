@@ -10,9 +10,9 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, State};
 use axum::response::IntoResponse;
+use irontide::session::{AlertCategory, MetricKind, SessionHandle, session_stats_metrics};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::time::{Duration, interval};
-use irontide::session::{AlertCategory, MetricKind, SessionHandle, session_stats_metrics};
 
 use super::AppState;
 
