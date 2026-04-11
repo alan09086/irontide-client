@@ -18,6 +18,12 @@ struct AddMagnetRequest {
     uri: String,
 }
 
+/// JSON request body for the seed-mode toggle endpoint.
+#[derive(serde::Deserialize)]
+struct SetSeedModeRequest {
+    enabled: bool,
+}
+
 /// List all active torrents.
 ///
 /// Returns a JSON array of [`TorrentSummary`](irontide::session::TorrentSummary)
@@ -109,5 +115,24 @@ pub async fn resume_torrent(
 ) -> ApiResult<impl IntoResponse> {
     let id = crate::extractors::parse_info_hash(&hash)?;
     session.resume_torrent(id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Toggle a torrent's user seed-mode flag.
+///
+/// Accepts a JSON body `{ "enabled": true|false }`. When enabled, the torrent
+/// stops requesting new pieces and only serves existing data; when disabled,
+/// normal piece scheduling resumes.
+///
+/// Returns **204 No Content** on success.
+pub async fn set_seed_mode(
+    State(session): State<AppState>,
+    Path(hash): Path<String>,
+    body: axum::body::Bytes,
+) -> ApiResult<impl IntoResponse> {
+    let id = crate::extractors::parse_info_hash(&hash)?;
+    let req: SetSeedModeRequest = serde_json::from_slice(&body)
+        .map_err(|e| ApiError::bad_request(format!("invalid JSON: {e}")))?;
+    session.set_seed_mode(id, req.enabled).await?;
     Ok(StatusCode::NO_CONTENT)
 }

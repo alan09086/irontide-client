@@ -39,6 +39,10 @@ pub fn build_router(session: SessionHandle) -> Router {
             "/api/v1/torrents/{hash}/resume",
             post(torrents::resume_torrent),
         )
+        .route(
+            "/api/v1/torrents/{hash}/seed_mode",
+            post(torrents::set_seed_mode),
+        )
         // -- Session routes --
         .route("/api/v1/session/stats", get(session::get_stats))
         .route("/api/v1/session/counters", get(session::get_counters))
