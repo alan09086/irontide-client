@@ -1,6 +1,15 @@
+#[allow(dead_code)] // consumed by T5+ mode runners
+mod client;
+#[allow(dead_code)] // consumed by T5+ mode runners
+mod commands;
 mod create;
 mod download;
+#[allow(dead_code)] // consumed by T5+ mode runners
+mod error;
+mod format;
 mod info;
+#[allow(dead_code)] // consumed by T5+ mode runners
+mod progress;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;

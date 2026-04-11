@@ -1,0 +1,9 @@
+---
+source: crates/irontide-cli/src/progress.rs
+expression: "lines.join(\"\\n\")"
+---
+collection  66.0%
+  ↓ 1.0 KB/s   ↑ 0 B/s   5 peers   ETA 3s   [Downloading]
+  ├── dir/file_000.bin  [████████████████████] 100.0%  1.0 KiB
+  ├── dir/file_001.bin  [████████████████████] 100.0%  2.0 KiB
+  └── dir/file_002.bin  [██████████░░░░░░░░░░]  50.0%  3.0 KiB

@@ -1,0 +1,48 @@
+---
+source: crates/irontide-cli/src/progress.rs
+expression: value
+---
+{
+  "download_rate": 2048,
+  "downloaded": 3000,
+  "eta": "3s",
+  "files": [
+    {
+      "downloaded": 1024,
+      "length": 1024,
+      "path": "dir/file_000.bin",
+      "progress": 1.0
+    },
+    {
+      "downloaded": 512,
+      "length": 2048,
+      "path": "dir/file_001.bin",
+      "progress": 0.25
+    },
+    {
+      "downloaded": 0,
+      "length": 3072,
+      "path": "dir/file_002.bin",
+      "progress": 0.0
+    }
+  ],
+  "is_finished": false,
+  "is_paused": false,
+  "is_seeding": false,
+  "name": "collection",
+  "num_pieces": 1,
+  "peers_available": 5,
+  "peers_connected": 8,
+  "piece_length": 16384,
+  "pieces_have": 5,
+  "pieces_total": 10,
+  "private": false,
+  "progress": 0.3,
+  "progress_ppm": 300000,
+  "state": "Downloading",
+  "total": 10000,
+  "total_length": 6144,
+  "upload_rate": 0,
+  "uploaded": 0,
+  "user_seed_mode": false
+}

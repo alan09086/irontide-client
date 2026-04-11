@@ -8,6 +8,8 @@ use irontide::core::{DEFAULT_CHUNK_SIZE, Lengths, TorrentMeta};
 use irontide::session::SessionState;
 use irontide::storage::{FilesystemStorage, PreallocateMode, TorrentStorage};
 
+use crate::format::{format_rate, format_size};
+
 pub struct DownloadOpts<'a> {
     pub source: &'a str,
     pub output: &'a Path,
@@ -470,22 +472,6 @@ fn print_final_summary(
     eprintln!("\x1b[1;36m---------------------------------------------------------\x1b[0m");
 }
 
-fn format_size(bytes: u64) -> String {
-    const KIB: u64 = 1024;
-    const MIB: u64 = 1024 * KIB;
-    const GIB: u64 = 1024 * MIB;
-
-    if bytes >= GIB {
-        format!("{:.2} GiB", bytes as f64 / GIB as f64)
-    } else if bytes >= MIB {
-        format!("{:.1} MiB", bytes as f64 / MIB as f64)
-    } else if bytes >= KIB {
-        format!("{:.1} KiB", bytes as f64 / KIB as f64)
-    } else {
-        format!("{bytes} B")
-    }
-}
-
 fn make_filesystem_storage(
     meta: &TorrentMeta,
     output: &Path,
@@ -522,19 +508,6 @@ fn make_filesystem_storage(
     )
     .map_err(|e| anyhow::anyhow!("failed to create storage: {e}"))?;
     Ok(Arc::new(storage))
-}
-
-fn format_rate(bytes_per_sec: u64) -> String {
-    const KIB: u64 = 1024;
-    const MIB: u64 = 1024 * KIB;
-
-    if bytes_per_sec >= MIB {
-        format!("{:.1} MB/s", bytes_per_sec as f64 / MIB as f64)
-    } else if bytes_per_sec >= KIB {
-        format!("{:.1} KB/s", bytes_per_sec as f64 / KIB as f64)
-    } else {
-        format!("{bytes_per_sec} B/s")
-    }
 }
 
 fn state_file_path() -> PathBuf {

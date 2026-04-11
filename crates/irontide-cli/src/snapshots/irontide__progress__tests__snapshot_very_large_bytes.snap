@@ -1,0 +1,6 @@
+---
+source: crates/irontide-cli/src/progress.rs
+expression: "lines.join(\"\\n\")"
+---
+huge.iso  50.0%
+  ↓ 50.0 MB/s   ↑ 10.0 MB/s   100 peers   ETA 1m 35s   [Downloading]
