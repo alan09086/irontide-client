@@ -336,11 +336,10 @@ async fn test_seed_mode_malformed_json() {
         .body(Body::from(r#"{"wrong_field":true}"#))
         .expect("build request");
 
-    let (status, _) = request(&router, req).await;
-    assert!(
-        status.is_client_error(),
-        "expected 4xx for malformed JSON body, got {status}"
-    );
+    let (status, body) = request(&router, req).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let v = json(&body);
+    assert_eq!(v["code"], "INVALID_REQUEST");
 }
 
 // ---------------------------------------------------------------------------
