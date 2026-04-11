@@ -90,13 +90,17 @@ pub(crate) struct TorrentStatsDto {
     /// Progress in parts-per-million (0..=1_000_000).
     #[serde(default)]
     pub(crate) progress_ppm: u32,
-    /// Total verified payload bytes (mirrors `total_done`).
+    /// Verified payload bytes. Mapped from the engine's `total_done`
+    /// (not its `downloaded`, which is session-lifetime payload only — see
+    /// `TorrentStats` in `irontide-session/src/types.rs`). The CLI prefers the
+    /// verified count because it's what users want to see as "downloaded".
     #[serde(default, rename = "total_done")]
     pub(crate) downloaded: u64,
-    /// Session upload bytes.
+    /// Uploaded bytes. Mapped from the engine's `total_upload` (session-wide
+    /// cumulative) rather than `uploaded` which resets on restart.
     #[serde(default, rename = "total_upload")]
     pub(crate) uploaded: u64,
-    /// Total torrent size in bytes (mirrors `total`).
+    /// Total torrent size in bytes (engine field `total`).
     #[serde(default, rename = "total")]
     pub(crate) total: u64,
     /// Current download rate in bytes/sec.
@@ -381,9 +385,13 @@ impl ApiClient {
         Self::read_text(resp).await
     }
 
-    /// Consume a response, discarding the body on success (for
-    /// 204 No Content endpoints).
-    async fn expect_no_content(resp: reqwest::Response, ctx: &str) -> Result<(), CliError> {
+    /// Consume a response, discarding the body on success. Works for both
+    /// 204 No Content endpoints and 2xx JSON endpoints where the caller
+    /// only cares about reachability (e.g. the health-check `ping`).
+    async fn expect_success_discard_body(
+        resp: reqwest::Response,
+        ctx: &str,
+    ) -> Result<(), CliError> {
         let status = resp.status();
         if status == StatusCode::NOT_FOUND {
             let _ = Self::read_text(resp).await;
@@ -413,7 +421,7 @@ impl ApiClient {
             .send()
             .await
             .map_err(|e| self.map_reqwest_error(e))?;
-        Self::expect_no_content(resp, "session stats").await
+        Self::expect_success_discard_body(resp, "session stats").await
     }
 
     /// `GET /api/v1/torrents` — list all active torrents.
@@ -483,7 +491,7 @@ impl ApiClient {
             .send()
             .await
             .map_err(|e| self.map_reqwest_error(e))?;
-        Self::expect_no_content(resp, hash).await
+        Self::expect_success_discard_body(resp, hash).await
     }
 
     /// `POST /api/v1/torrents/{hash}/pause`.
@@ -495,7 +503,7 @@ impl ApiClient {
             .send()
             .await
             .map_err(|e| self.map_reqwest_error(e))?;
-        Self::expect_no_content(resp, hash).await
+        Self::expect_success_discard_body(resp, hash).await
     }
 
     /// `POST /api/v1/torrents/{hash}/resume`.
@@ -507,7 +515,7 @@ impl ApiClient {
             .send()
             .await
             .map_err(|e| self.map_reqwest_error(e))?;
-        Self::expect_no_content(resp, hash).await
+        Self::expect_success_discard_body(resp, hash).await
     }
 
     /// `POST /api/v1/torrents/{hash}/seed_mode` (T2 endpoint).
@@ -521,7 +529,7 @@ impl ApiClient {
             .send()
             .await
             .map_err(|e| self.map_reqwest_error(e))?;
-        Self::expect_no_content(resp, hash).await
+        Self::expect_success_discard_body(resp, hash).await
     }
 
     /// `GET /api/v1/torrents/{hash}/info` — file list + piece metadata.
