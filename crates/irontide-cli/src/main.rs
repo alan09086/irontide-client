@@ -1,7 +1,6 @@
 mod cli_def;
 mod client;
 mod commands;
-#[allow(dead_code)] // Phase 1 scaffolding — types wired in Phase 4+6
 mod config;
 mod create;
 mod daemon;
@@ -277,28 +276,7 @@ fn main() {
                 1
             }
         },
-        Command::Config { action } => {
-            // Placeholder — full implementation in Phase 4.
-            match action {
-                ConfigAction::Init { force } => {
-                    eprintln!("config init (force={force}): not yet implemented");
-                }
-                ConfigAction::Path => {
-                    let path = config::resolve_config_path(cli.config.as_deref());
-                    println!("{}", path.display());
-                }
-                ConfigAction::Show => {
-                    eprintln!("config show: not yet implemented");
-                }
-                ConfigAction::Validate { path } => {
-                    eprintln!(
-                        "config validate (path={:?}): not yet implemented",
-                        path.as_deref().map(std::path::Path::display)
-                    );
-                }
-            }
-            0
-        }
+        Command::Config { action } => commands::config::run(action, cli.config.as_deref()),
         Command::Completions { shell } => {
             // Placeholder — full implementation in Phase 5.
             eprintln!("completions ({shell}): not yet implemented");

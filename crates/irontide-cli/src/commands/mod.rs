@@ -13,6 +13,8 @@
 //! - Hash arguments accept a prefix (minimum 2 chars); prefixes are
 //!   expanded via `resolve_hash` before the daemon call.
 
+pub(crate) mod config;
+
 use crate::client::{ApiClient, TorrentSummaryDto};
 use crate::error::CliError;
 use crate::format::{format_rate, format_size};
