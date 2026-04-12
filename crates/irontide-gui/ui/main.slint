@@ -545,6 +545,17 @@ export component MainWindow inherits Window {
                             }
                         }
 
+                        // Column separator lines (vertical)
+                        Rectangle { x: root.col-name-width - 1px; y: 2px; width: 1px; height: parent.height - 4px; background: Palette.col-separator; }
+                        Rectangle { x: root.col-name-width + root.col-progress-width - 1px; y: 2px; width: 1px; height: parent.height - 4px; background: Palette.col-separator; }
+                        Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width - 1px; y: 2px; width: 1px; height: parent.height - 4px; background: Palette.col-separator; }
+                        Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width - 1px; y: 2px; width: 1px; height: parent.height - 4px; background: Palette.col-separator; }
+                        Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width - 1px; y: 2px; width: 1px; height: parent.height - 4px; background: Palette.col-separator; }
+                        Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width - 1px; y: 2px; width: 1px; height: parent.height - 4px; background: Palette.col-separator; }
+                        Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width - 1px; y: 2px; width: 1px; height: parent.height - 4px; background: Palette.col-separator; }
+                        Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width - 1px; y: 2px; width: 1px; height: parent.height - 4px; background: Palette.col-separator; }
+                        Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width + root.col-size-width - 1px; y: 2px; width: 1px; height: parent.height - 4px; background: Palette.col-separator; }
+
                         // Header bottom border
                         Rectangle {
                             y: parent.height - 1px;
@@ -556,9 +567,12 @@ export component MainWindow inherits Window {
                     // ── Torrent List (scrollable) ──
                     Flickable {
                         vertical-stretch: 1;
+                        viewport-height: root.torrent-model.length * 28px;
 
                         for item[index] in root.torrent-model: Rectangle {
+                            y: index * 28px;
                             height: 28px;
+                            width: parent.width;
                             background: item.selected
                                 ? Palette.accent
                                 : (row-touch.has-hover
@@ -681,6 +695,14 @@ export component MainWindow inherits Window {
                                 horizontal-alignment: right;
                                 x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width + root.col-size-width;
                                 width: root.col-ratio-width - 6px;
+                            }
+
+                            // Row bottom border
+                            Rectangle {
+                                y: parent.height - 1px;
+                                width: parent.width;
+                                height: 1px;
+                                background: Palette.col-separator;
                             }
                         }
                     }
