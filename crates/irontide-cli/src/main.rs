@@ -33,9 +33,10 @@ fn main() {
         .with_target(false)
         .init();
 
-    // Capture api_url before moving cli.command — the global flag is shared
-    // by every batch subcommand's dispatch arm.
+    // Capture global flags before moving cli.command — these are shared
+    // by multiple dispatch arms.
     let api_url_flag = cli.api_url.clone();
+    let global_config = cli.config.clone();
 
     let exit_code = match cli.command {
         Command::Download {
@@ -66,16 +67,35 @@ fn main() {
             min_pipeline_depth,
             max_pipeline_depth,
         } => {
-            // Phase 6 will wire the full Figment pipeline (TOML + env + CLI
-            // overrides).  For now, start from engine defaults.
-            let mut settings = irontide::session::Settings::default();
-
+            // Build ConfigFile overrides from CLI flags that map to config
+            // fields, then load through the full Figment pipeline:
+            //   defaults → TOML file → env vars → CLI overrides
+            let mut cli_overrides = config::ConfigFile::default();
             if workers != 0 {
-                settings.runtime_worker_threads = workers;
+                cli_overrides.session.workers = Some(workers);
             }
             if max_peers != 0 {
-                settings.max_peers_per_torrent = max_peers;
+                cli_overrides.limits.max_peers_per_torrent = Some(max_peers);
             }
+            if no_pin_cores {
+                cli_overrides.session.pin_cores = Some(false);
+            }
+            if no_dht {
+                cli_overrides.session.enable_dht = Some(false);
+            }
+            cli_overrides.session.listen_port = Some(port);
+            cli_overrides.session.download_dir = Some(output.clone());
+
+            let mut settings = match config::load(global_config.as_deref(), &cli_overrides) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    std::process::exit(1);
+                }
+            };
+
+            // Advanced/platform-specific flags that are NOT in ConfigFile —
+            // applied as post-load patches on the merged Settings.
             if let Some(ct) = connect_timeout {
                 settings.peer_connect_timeout = ct;
             }
@@ -99,9 +119,6 @@ fn main() {
             }
             if let Some(max_pd) = max_pipeline_depth {
                 settings.max_pipeline_depth = max_pd;
-            }
-            if no_pin_cores {
-                settings.pin_cores = false;
             }
             if io_uring || direct_io {
                 settings.storage_mode = irontide::core::StorageMode::IoUring;
@@ -172,6 +189,7 @@ fn main() {
             no_dht,
             workers,
             no_pin_cores,
+            global_config: global_config.clone(),
         }) {
             Ok(()) => 0,
             Err(e) => {
@@ -276,7 +294,7 @@ fn main() {
                 1
             }
         },
-        Command::Config { action } => commands::config::run(action, cli.config.as_deref()),
+        Command::Config { action } => commands::config::run(action, global_config.as_deref()),
         Command::Completions { shell } => commands::completions::run(shell),
     };
 
@@ -365,14 +383,22 @@ mod tests {
         ]);
         assert_eq!(max_peers, 64, "--max-peers 64 should parse as 64");
 
-        // Verify the settings wire-up logic: non-zero value overrides default.
-        let mut settings = irontide::session::Settings::default();
+        // Verify the ConfigFile wire-up: non-zero value produces an override
+        // that config::load() will merge at highest precedence.
+        let mut cli_overrides = config::ConfigFile::default();
         if max_peers != 0 {
-            settings.max_peers_per_torrent = max_peers;
+            cli_overrides.limits.max_peers_per_torrent = Some(max_peers);
         }
+        let settings = config::load(
+            Some(std::path::Path::new(
+                "/tmp/irontide-test-nonexistent-42/config.toml",
+            )),
+            &cli_overrides,
+        )
+        .expect("config::load should succeed");
         assert_eq!(
             settings.max_peers_per_torrent, 64,
-            "settings.max_peers_per_torrent should be 64 after wiring"
+            "settings.max_peers_per_torrent should be 64 after config::load"
         );
     }
 
@@ -387,12 +413,19 @@ mod tests {
         ]);
         assert_eq!(max_peers, 0, "--max-peers 0 should parse as 0");
 
-        // Verify the settings wire-up logic: zero is treated as "not specified",
-        // so the settings default (128) is preserved.
-        let mut settings = irontide::session::Settings::default();
+        // Verify the ConfigFile wire-up: zero is treated as "not specified"
+        // (no override), so the settings default (128) is preserved.
+        let mut cli_overrides = config::ConfigFile::default();
         if max_peers != 0 {
-            settings.max_peers_per_torrent = max_peers;
+            cli_overrides.limits.max_peers_per_torrent = Some(max_peers);
         }
+        let settings = config::load(
+            Some(std::path::Path::new(
+                "/tmp/irontide-test-nonexistent-42/config.toml",
+            )),
+            &cli_overrides,
+        )
+        .expect("config::load should succeed");
         assert_eq!(
             settings.max_peers_per_torrent, 128,
             "--max-peers 0 should leave settings at the default (128)"

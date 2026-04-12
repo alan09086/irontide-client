@@ -29,6 +29,8 @@ pub(crate) struct DaemonOpts {
     pub workers: usize,
     /// Disable core-affinity pinning for tokio workers.
     pub no_pin_cores: bool,
+    /// Path to the global TOML configuration file (`--config`).
+    pub global_config: Option<PathBuf>,
 }
 
 /// Build a tokio runtime, start a long-running `SessionHandle`, bind the HTTP
@@ -52,21 +54,25 @@ pub(crate) fn run(opts: DaemonOpts) -> anyhow::Result<()> {
         no_dht,
         workers,
         no_pin_cores,
+        global_config,
     } = opts;
 
-    // Build Settings with the knobs daemon mode exposes. Everything else stays
-    // at the library default — the user can switch to `download`/`batch` modes
-    // if they need fine-grained tuning.
-    let mut settings = Settings {
-        download_dir: download_dir.clone(),
-        ..Settings::default()
-    };
+    // Build CLI overrides from daemon flags, then merge through the full
+    // Figment pipeline (defaults → TOML file → env vars → CLI overrides).
+    let mut cli_overrides = crate::config::ConfigFile::default();
+    cli_overrides.session.download_dir = Some(download_dir.clone());
     if workers != 0 {
-        settings.runtime_worker_threads = workers;
+        cli_overrides.session.workers = Some(workers);
     }
     if no_pin_cores {
-        settings.pin_cores = false;
+        cli_overrides.session.pin_cores = Some(false);
     }
+    if no_dht {
+        cli_overrides.session.enable_dht = Some(false);
+    }
+    cli_overrides.session.listen_port = Some(port);
+
+    let settings = crate::config::load(global_config.as_deref(), &cli_overrides)?;
 
     let rt = crate::download::build_runtime(&settings);
 
@@ -163,6 +169,7 @@ mod tests {
             no_dht: false,
             workers: 0,
             no_pin_cores: false,
+            global_config: None,
         };
         let err = run(opts).expect_err("api_port=0 must be rejected");
         assert!(
