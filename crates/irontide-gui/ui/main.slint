@@ -1,0 +1,294 @@
+// IronTide GUI — dark-theme Slint scaffold (M162)
+// Custom widgets only — no std-widgets (hit-region issues on native backends).
+
+global Palette {
+    out property <color> background: #1a1a2e;
+    out property <color> surface: #16213e;
+    out property <color> text: #e0e0e0;
+    out property <color> accent: #0f3460;
+    out property <color> border: #333333;
+    out property <color> menu-bg: #222244;
+    out property <color> menu-hover: #2a2a5e;
+    out property <color> disabled-text: #666666;
+    in-out property <bool> dark-mode: true;
+}
+
+component MenuButton {
+    in property <string> text;
+    callback clicked();
+
+    min-height: 30px;
+    min-width: 60px;
+
+    Rectangle {
+        background: touch.has-hover ? Palette.menu-hover : Palette.menu-bg;
+        border-radius: 2px;
+
+        Text {
+            text: root.text;
+            color: Palette.text;
+            font-size: 13px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+
+        touch := TouchArea {
+            clicked => { root.clicked(); }
+        }
+    }
+}
+
+component MenuBar {
+    callback menu-file-action(int);
+
+    height: 32px;
+
+    Rectangle {
+        background: Palette.menu-bg;
+        border-width: 0px;
+
+        HorizontalLayout {
+            padding-left: 4px;
+            spacing: 2px;
+            alignment: start;
+
+            file-btn := MenuButton {
+                text: "File";
+                clicked => { file-popup.show(); }
+            }
+        }
+    }
+
+    file-popup := PopupWindow {
+        x: 4px;
+        y: 32px;
+        width: 180px;
+
+        Rectangle {
+            background: Palette.menu-bg;
+            border-color: Palette.border;
+            border-width: 1px;
+            border-radius: 4px;
+
+            VerticalLayout {
+                padding: 4px;
+                spacing: 2px;
+
+                // Item 0: Add Magnet...
+                Rectangle {
+                    height: 28px;
+                    background: magnet-touch.has-hover ? Palette.menu-hover : Palette.menu-bg;
+                    border-radius: 2px;
+
+                    Text {
+                        text: "Add Magnet...";
+                        color: Palette.text;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: 8px;
+                    }
+
+                    magnet-touch := TouchArea {
+                        clicked => { root.menu-file-action(0); }
+                    }
+                }
+
+                // Item 1: Add Torrent File...
+                Rectangle {
+                    height: 28px;
+                    background: torrent-touch.has-hover ? Palette.menu-hover : Palette.menu-bg;
+                    border-radius: 2px;
+
+                    Text {
+                        text: "Add Torrent File...";
+                        color: Palette.text;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: 8px;
+                    }
+
+                    torrent-touch := TouchArea {
+                        clicked => { root.menu-file-action(1); }
+                    }
+                }
+
+                // Separator
+                Rectangle {
+                    height: 1px;
+                    background: Palette.border;
+                }
+
+                // Item 2: Quit
+                Rectangle {
+                    height: 28px;
+                    background: quit-touch.has-hover ? Palette.menu-hover : Palette.menu-bg;
+                    border-radius: 2px;
+
+                    Text {
+                        text: "Quit";
+                        color: Palette.text;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: 8px;
+                    }
+
+                    quit-touch := TouchArea {
+                        clicked => { root.menu-file-action(2); }
+                    }
+                }
+            }
+        }
+    }
+}
+
+component Spinner {
+    width: 32px;
+    height: 32px;
+
+    rect := Rectangle {
+        width: 32px;
+        height: 32px;
+        border-radius: 4px;
+        border-width: 3px;
+        border-color: Palette.accent;
+        background: transparent;
+        clip: true;
+
+        // Animated indicator bar
+        indicator := Rectangle {
+            x: -16px;
+            y: 6px;
+            width: 20px;
+            height: 20px;
+            border-radius: 10px;
+            background: Palette.text;
+            opacity: 0.6;
+
+            animate x {
+                duration: 1200ms;
+                iteration-count: -1;
+                easing: ease-in-out;
+            }
+        }
+    }
+
+    // Drive animation via states
+    states [
+        spinning when true: {
+            indicator.x: 28px;
+        }
+    ]
+}
+
+export component MainWindow inherits Window {
+    title: "IronTide";
+    preferred-width: 900px;
+    preferred-height: 600px;
+    background: Palette.background;
+
+    in-out property <bool> session-ready: false;
+    in-out property <string> status-text: "";
+    in-out property <string> error-text: "";
+    in-out property <string> toast-text: "";
+    in-out property <bool> toast-visible: false;
+
+    callback menu-file-action(int);
+    callback quit-requested();
+
+    VerticalLayout {
+        // Menu bar at top
+        menu := MenuBar {
+            menu-file-action(index) => {
+                root.menu-file-action(index);
+            }
+        }
+
+        // Main content area
+        Rectangle {
+            background: Palette.background;
+            vertical-stretch: 1;
+
+            // Loading state: spinner + message
+            if !root.session-ready && root.error-text == "": VerticalLayout {
+                alignment: center;
+
+                HorizontalLayout {
+                    alignment: center;
+                    Spinner { }
+                }
+
+                Text {
+                    text: "Starting session...";
+                    color: Palette.disabled-text;
+                    font-size: 16px;
+                    horizontal-alignment: center;
+                }
+            }
+
+            // Ready state: empty placeholder
+            if root.session-ready && root.error-text == "": VerticalLayout {
+                alignment: center;
+                spacing: 8px;
+
+                Text {
+                    text: "No torrents yet.";
+                    color: Palette.text;
+                    font-size: 20px;
+                    horizontal-alignment: center;
+                }
+
+                Text {
+                    text: "Use File > Add Magnet to get started.";
+                    color: Palette.disabled-text;
+                    font-size: 14px;
+                    horizontal-alignment: center;
+                }
+            }
+
+            // Error state
+            if root.error-text != "": VerticalLayout {
+                alignment: center;
+                spacing: 8px;
+
+                Text {
+                    text: "Error";
+                    color: #ff4444;
+                    font-size: 20px;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                }
+
+                Text {
+                    text: root.error-text;
+                    color: #ff6666;
+                    font-size: 14px;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                }
+            }
+        }
+    }
+
+    // Toast overlay at bottom
+    if root.toast-visible: Rectangle {
+        x: (root.width - self.width) / 2;
+        y: root.height - 60px;
+        width: 400px;
+        height: 36px;
+        border-radius: 6px;
+        background: Palette.surface;
+        border-color: Palette.border;
+        border-width: 1px;
+
+        Text {
+            text: root.toast-text;
+            color: Palette.text;
+            font-size: 13px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+}

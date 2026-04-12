@@ -1,0 +1,37 @@
+[package]
+name = "irontide-gui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Slint desktop GUI for irontide"
+publish = false
+
+[[bin]]
+name = "irontide-gui"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[features]
+default = ["crypto-aws-lc"]
+crypto-ring = ["irontide/crypto-ring"]
+crypto-openssl = ["irontide/crypto-openssl"]
+crypto-aws-lc = ["irontide/crypto-aws-lc"]
+
+[dependencies]
+irontide = { path = "../irontide", default-features = false }
+irontide-config = { workspace = true }
+slint = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror = { workspace = true }
+parking_lot = { workspace = true }
+anyhow = "1"
+
+[build-dependencies]
+slint-build = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
