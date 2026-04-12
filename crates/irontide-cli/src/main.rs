@@ -1,5 +1,7 @@
+mod cli_def;
 mod client;
 mod commands;
+mod config;
 mod create;
 mod daemon;
 mod download;
@@ -10,238 +12,15 @@ mod progress;
 mod repl;
 mod tui;
 
-use clap::{Parser, Subcommand};
+use cli_def::*;
+
+use clap::Parser as _;
 use std::io::Write as _;
-use std::path::PathBuf;
 use std::time::Duration;
 
 use client::ApiClient;
 use commands::{ListArgs, Output};
 use error::CliError;
-
-#[derive(Parser)]
-#[command(name = "irontide", version, about = "BitTorrent client")]
-struct Cli {
-    /// Log level (error, warn, info, debug, trace)
-    #[arg(short, long, default_value = "error")]
-    log_level: String,
-
-    /// URL of the irontide daemon HTTP API
-    /// (default: $IRONTIDE_API_URL or http://127.0.0.1:9080)
-    #[arg(long, global = true)]
-    api_url: Option<String>,
-
-    #[command(subcommand)]
-    command: Command,
-}
-
-#[derive(Subcommand)]
-enum Command {
-    /// Download a torrent from a magnet link or .torrent file
-    Download {
-        /// Magnet URI or path to .torrent file
-        source: String,
-        /// Output directory
-        #[arg(short, long, default_value = ".")]
-        output: PathBuf,
-        /// Disable DHT
-        #[arg(long)]
-        no_dht: bool,
-        /// Path to JSON settings file
-        #[arg(long)]
-        config: Option<PathBuf>,
-        /// Seed after completion instead of exiting
-        #[arg(long)]
-        seed: bool,
-        /// Listen port
-        #[arg(short, long, default_value = "42020")]
-        port: u16,
-        /// Quiet mode — suppress progress output
-        #[arg(short, long)]
-        quiet: bool,
-        /// Number of tokio worker threads (0 = auto)
-        #[arg(long, default_value_t = 0)]
-        workers: usize,
-        /// Disable core affinity pinning
-        #[arg(long)]
-        no_pin_cores: bool,
-        /// Emit line-delimited JSON progress ticks (reserved for T8;
-        /// parsed today but has no behavioural effect yet)
-        #[arg(long)]
-        json: bool,
-        /// Use io_uring for disk writes (Linux only, requires io-uring feature)
-        #[arg(long)]
-        io_uring: bool,
-        /// Enable O_DIRECT for io_uring writes (implies --io-uring)
-        #[arg(long)]
-        direct_io: bool,
-        /// io_uring submission queue depth (default: 256)
-        #[arg(long)]
-        uring_sq_depth: Option<u32>,
-        /// Use memory-mapped I/O (mmap) for disk operations
-        #[arg(long)]
-        mmap: bool,
-        /// Use IOCP for disk I/O (Windows only, requires iocp feature)
-        #[arg(long)]
-        iocp: bool,
-        /// HTTP API port (0 = disabled)
-        #[arg(long, default_value_t = 0)]
-        api_port: u16,
-        /// HTTP API bind address
-        #[arg(long, default_value = "127.0.0.1")]
-        api_bind: String,
-        /// Enable pipeline diagnostics (detailed per-peer stats every 5s)
-        #[arg(long)]
-        diagnose: bool,
-        /// Maximum peer connections per torrent (0 = use default)
-        #[arg(long, default_value_t = 0)]
-        max_peers: usize,
-        /// TCP connect timeout in seconds (default: 10)
-        #[arg(long)]
-        connect_timeout: Option<u64>,
-        /// Data contribution timeout in seconds (default: 0 = disabled)
-        #[arg(long)]
-        data_timeout: Option<u64>,
-        /// Max choke rotation evictions per tick (default: 0 = disabled)
-        #[arg(long)]
-        choke_rotation: Option<u32>,
-        /// Maximum concurrent outbound connects (M147: ConnectPool size)
-        #[arg(long)]
-        max_concurrent_connects: Option<u16>,
-        /// Seconds without TCP SYN-ACK before soft reap disconnects (default: 3)
-        #[arg(long)]
-        connect_soft_timeout: Option<u64>,
-        /// Piece steal threshold multiplier (default: 10.0)
-        #[arg(long)]
-        steal_threshold: Option<f64>,
-        /// Minimum per-peer pipeline depth (default: 16)
-        #[arg(long)]
-        min_pipeline_depth: Option<u32>,
-        /// Maximum per-peer pipeline depth (default: 512)
-        #[arg(long)]
-        max_pipeline_depth: Option<u32>,
-    },
-    /// Run a long-running daemon that exposes the HTTP API
-    Daemon {
-        /// HTTP API port (required — daemon mode has no other feedback channel)
-        #[arg(long, default_value_t = 9080)]
-        api_port: u16,
-        /// HTTP API bind address
-        #[arg(long, default_value = "127.0.0.1")]
-        api_bind: String,
-        /// Default download directory for torrents added via the API
-        #[arg(long, default_value = ".")]
-        download_dir: PathBuf,
-        /// BitTorrent listen port
-        #[arg(short, long, default_value_t = 42020)]
-        port: u16,
-        /// Disable DHT
-        #[arg(long)]
-        no_dht: bool,
-        /// Number of tokio worker threads (0 = auto)
-        #[arg(long, default_value_t = 0)]
-        workers: usize,
-        /// Disable core affinity pinning
-        #[arg(long)]
-        no_pin_cores: bool,
-    },
-    /// Create a .torrent file
-    Create {
-        /// Path to file or directory
-        path: PathBuf,
-        /// Output .torrent file path
-        #[arg(short, long, default_value = "output.torrent")]
-        output: PathBuf,
-        /// Tracker URL(s) — can specify multiple: -t url1 -t url2
-        #[arg(short, long)]
-        tracker: Vec<String>,
-        /// Create as private torrent
-        #[arg(long)]
-        private: bool,
-        /// Piece size in KiB (auto-selected if omitted)
-        #[arg(long)]
-        piece_size: Option<u64>,
-    },
-    /// Display torrent details — either a .torrent file path or a torrent
-    /// hash in the running daemon. If the argument looks like a lowercase
-    /// hex prefix (2-40 chars) AND the path does not exist on disk, it is
-    /// dispatched to the daemon; otherwise it is treated as a .torrent file.
-    Info {
-        /// Path to .torrent file OR info-hash prefix of a daemon torrent
-        source: String,
-        /// Show the file list (daemon mode only)
-        #[arg(long)]
-        files: bool,
-        /// Show the peer table (daemon mode only)
-        #[arg(long)]
-        peers: bool,
-        /// Emit JSON instead of human-readable output (daemon mode only)
-        #[arg(long)]
-        json: bool,
-    },
-    /// Add a torrent to the running daemon (magnet URI or .torrent file path)
-    Add {
-        /// Magnet URI or path to .torrent file
-        source: String,
-        /// Emit JSON instead of human-readable output
-        #[arg(long)]
-        json: bool,
-    },
-    /// List torrents in the running daemon
-    List {
-        /// Emit JSON instead of a human-readable table
-        #[arg(long)]
-        json: bool,
-        /// Filter by state: downloading, seeding, paused
-        #[arg(long)]
-        filter: Option<String>,
-    },
-    /// Remove a torrent from the running daemon
-    Rm {
-        /// Torrent info hash (or unique prefix)
-        hash: String,
-        /// Emit JSON instead of a confirmation line
-        #[arg(long)]
-        json: bool,
-    },
-    /// Pause an active torrent (both upload and download)
-    Pause {
-        /// Torrent info hash (or unique prefix)
-        hash: String,
-        /// Emit JSON instead of a confirmation line
-        #[arg(long)]
-        json: bool,
-    },
-    /// Resume a paused torrent
-    Resume {
-        /// Torrent info hash (or unique prefix)
-        hash: String,
-        /// Emit JSON instead of a confirmation line
-        #[arg(long)]
-        json: bool,
-    },
-    /// Flip an active torrent to seed-only mode (keep uploading, stop downloading)
-    Seed {
-        /// Torrent info hash (or unique prefix)
-        hash: String,
-        /// Emit JSON instead of a confirmation line
-        #[arg(long)]
-        json: bool,
-    },
-    /// Clear seed-only mode and resume downloading
-    Unseed {
-        /// Torrent info hash (or unique prefix)
-        hash: String,
-        /// Emit JSON instead of a confirmation line
-        #[arg(long)]
-        json: bool,
-    },
-    /// Open an interactive REPL shell against a running daemon
-    Shell,
-    /// Launch the full-screen TUI dashboard against a running daemon
-    Tui,
-    // `Settings` subcommand deferred to a future milestone (M159 scope trim).
-}
 
 fn main() {
     let cli = Cli::parse();
@@ -254,16 +33,16 @@ fn main() {
         .with_target(false)
         .init();
 
-    // Capture api_url before moving cli.command — the global flag is shared
-    // by every batch subcommand's dispatch arm.
+    // Capture global flags before moving cli.command — these are shared
+    // by multiple dispatch arms.
     let api_url_flag = cli.api_url.clone();
+    let global_config = cli.config.clone();
 
     let exit_code = match cli.command {
         Command::Download {
             source,
             output,
             no_dht,
-            config,
             seed,
             port,
             quiet,
@@ -288,34 +67,35 @@ fn main() {
             min_pipeline_depth,
             max_pipeline_depth,
         } => {
-            let mut settings = if let Some(ref config_path) = config {
-                let data = std::fs::read_to_string(config_path).unwrap_or_else(|e| {
-                    eprintln!(
-                        "error: failed to read config {}: {e}",
-                        config_path.display()
-                    );
-                    std::process::exit(1);
-                });
-                let s: irontide::session::Settings =
-                    serde_json::from_str(&data).unwrap_or_else(|e| {
-                        eprintln!("error: failed to parse settings JSON: {e}");
-                        std::process::exit(1);
-                    });
-                if let Err(e) = s.validate() {
-                    eprintln!("error: invalid settings: {e}");
-                    std::process::exit(1);
-                }
-                s
-            } else {
-                irontide::session::Settings::default()
-            };
-
+            // Build ConfigFile overrides from CLI flags that map to config
+            // fields, then load through the full Figment pipeline:
+            //   defaults → TOML file → env vars → CLI overrides
+            let mut cli_overrides = config::ConfigFile::default();
             if workers != 0 {
-                settings.runtime_worker_threads = workers;
+                cli_overrides.session.workers = Some(workers);
             }
             if max_peers != 0 {
-                settings.max_peers_per_torrent = max_peers;
+                cli_overrides.limits.max_peers_per_torrent = Some(max_peers);
             }
+            if no_pin_cores {
+                cli_overrides.session.pin_cores = Some(false);
+            }
+            if no_dht {
+                cli_overrides.session.enable_dht = Some(false);
+            }
+            cli_overrides.session.listen_port = Some(port);
+            cli_overrides.session.download_dir = Some(output.clone());
+
+            let mut settings = match config::load(global_config.as_deref(), &cli_overrides) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    std::process::exit(1);
+                }
+            };
+
+            // Advanced/platform-specific flags that are NOT in ConfigFile —
+            // applied as post-load patches on the merged Settings.
             if let Some(ct) = connect_timeout {
                 settings.peer_connect_timeout = ct;
             }
@@ -339,9 +119,6 @@ fn main() {
             }
             if let Some(max_pd) = max_pipeline_depth {
                 settings.max_pipeline_depth = max_pd;
-            }
-            if no_pin_cores {
-                settings.pin_cores = false;
             }
             if io_uring || direct_io {
                 settings.storage_mode = irontide::core::StorageMode::IoUring;
@@ -412,6 +189,7 @@ fn main() {
             no_dht,
             workers,
             no_pin_cores,
+            global_config: global_config.clone(),
         }) {
             Ok(()) => 0,
             Err(e) => {
@@ -516,6 +294,8 @@ fn main() {
                 1
             }
         },
+        Command::Config { action } => commands::config::run(action, global_config.as_deref()),
+        Command::Completions { shell } => commands::completions::run(shell),
     };
 
     std::process::exit(exit_code);
@@ -603,14 +383,22 @@ mod tests {
         ]);
         assert_eq!(max_peers, 64, "--max-peers 64 should parse as 64");
 
-        // Verify the settings wire-up logic: non-zero value overrides default.
-        let mut settings = irontide::session::Settings::default();
+        // Verify the ConfigFile wire-up: non-zero value produces an override
+        // that config::load() will merge at highest precedence.
+        let mut cli_overrides = config::ConfigFile::default();
         if max_peers != 0 {
-            settings.max_peers_per_torrent = max_peers;
+            cli_overrides.limits.max_peers_per_torrent = Some(max_peers);
         }
+        let settings = config::load(
+            Some(std::path::Path::new(
+                "/tmp/irontide-test-nonexistent-42/config.toml",
+            )),
+            &cli_overrides,
+        )
+        .expect("config::load should succeed");
         assert_eq!(
             settings.max_peers_per_torrent, 64,
-            "settings.max_peers_per_torrent should be 64 after wiring"
+            "settings.max_peers_per_torrent should be 64 after config::load"
         );
     }
 
@@ -625,12 +413,19 @@ mod tests {
         ]);
         assert_eq!(max_peers, 0, "--max-peers 0 should parse as 0");
 
-        // Verify the settings wire-up logic: zero is treated as "not specified",
-        // so the settings default (128) is preserved.
-        let mut settings = irontide::session::Settings::default();
+        // Verify the ConfigFile wire-up: zero is treated as "not specified"
+        // (no override), so the settings default (128) is preserved.
+        let mut cli_overrides = config::ConfigFile::default();
         if max_peers != 0 {
-            settings.max_peers_per_torrent = max_peers;
+            cli_overrides.limits.max_peers_per_torrent = Some(max_peers);
         }
+        let settings = config::load(
+            Some(std::path::Path::new(
+                "/tmp/irontide-test-nonexistent-42/config.toml",
+            )),
+            &cli_overrides,
+        )
+        .expect("config::load should succeed");
         assert_eq!(
             settings.max_peers_per_torrent, 128,
             "--max-peers 0 should leave settings at the default (128)"
