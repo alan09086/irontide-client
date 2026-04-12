@@ -41,6 +41,16 @@ rustyline = "14"
 shlex = "1"
 ratatui = "0.28"
 crossterm = { version = "0.28", features = ["event-stream"] }
+figment = { version = "0.10", features = ["toml", "env"] }
+clap_complete = "4"
+directories = "5"
+toml = "0.8"
+toml_edit = "0.22"
+shellexpand = "3"
+
+[build-dependencies]
+clap = { version = "4", features = ["derive"] }
+clap_complete = "4"
 
 [dev-dependencies]
 insta = { version = "1", features = ["json"] }
