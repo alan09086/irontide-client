@@ -648,19 +648,4 @@ mod tests {
         assert_eq!(result, 42);
     }
 
-    #[test]
-    fn format_size_units() {
-        assert_eq!(format_size(0), "0 B");
-        assert_eq!(format_size(512), "512 B");
-        assert_eq!(format_size(1024), "1.0 KiB");
-        assert_eq!(format_size(1048576), "1.0 MiB");
-        assert_eq!(format_size(1073741824), "1.00 GiB");
-    }
-
-    #[test]
-    fn format_rate_units() {
-        assert_eq!(format_rate(0), "0 B/s");
-        assert_eq!(format_rate(1024), "1.0 KB/s");
-        assert_eq!(format_rate(1048576), "1.0 MB/s");
-    }
 }

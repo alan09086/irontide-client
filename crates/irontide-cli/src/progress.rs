@@ -492,7 +492,7 @@ mod tests {
         stats.total = 1_500_000_000;
         stats.uploaded = 300_000_000;
         stats.download_rate = 0;
-        stats.upload_rate = 1 * 1024 * 1024;
+        stats.upload_rate = 1024 * 1024;
         stats.peers_connected = 5;
         stats.is_seeding = true;
         stats.is_finished = true;

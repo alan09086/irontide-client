@@ -319,11 +319,7 @@ pub(crate) async fn cmd_info(
         if let Some(peers) = peers
             && let serde_json::Value::Object(obj) = &mut value
         {
-            let peers_json: Vec<serde_json::Value> = peers
-                .iter()
-                .map(|_| serde_json::Value::Null) // peers are dead-code DTOs for now
-                .collect();
-            obj.insert("peers".to_owned(), serde_json::Value::Array(peers_json));
+            obj.insert("peers".to_owned(), serde_json::to_value(&peers)?);
         }
         out.write_json(&value)?;
         return Ok(());

@@ -193,7 +193,7 @@ pub(crate) struct FileInfoDto {
 /// The engine's `addr: SocketAddr` serializes via `Display` + `serde`,
 /// producing `"1.2.3.4:6881"`. We decode it as a plain string so the
 /// CLI never needs to parse sockets.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
 pub(crate) struct PeerInfoDto {
     /// Remote peer address (`"1.2.3.4:6881"`).
     #[allow(dead_code)] // used by commands.rs::cmd_info peer table
