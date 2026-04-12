@@ -450,6 +450,12 @@ fn dispatch_batch(rt: &tokio::runtime::Runtime, client: &ApiClient, cli: Cli) {
             Command::Tui => Err(CliError::InvalidInput(
                 "'tui' is not available inside the REPL — use batch mode".to_owned(),
             )),
+            Command::Config { .. } => Err(CliError::InvalidInput(
+                "'config' is not available inside the REPL — use batch mode".to_owned(),
+            )),
+            Command::Completions { .. } => Err(CliError::InvalidInput(
+                "'completions' is not available inside the REPL — use batch mode".to_owned(),
+            )),
         }
     });
 

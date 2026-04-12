@@ -267,7 +267,10 @@ mod tests {
         assert_eq!(settings.listen_port, defaults.listen_port);
         assert_eq!(settings.download_dir, defaults.download_dir);
         assert_eq!(settings.enable_dht, defaults.enable_dht);
-        assert_eq!(settings.runtime_worker_threads, defaults.runtime_worker_threads);
+        assert_eq!(
+            settings.runtime_worker_threads,
+            defaults.runtime_worker_threads
+        );
     }
 
     #[test]
@@ -296,10 +299,22 @@ max_peers_per_torrent = 64
         let defaults = Settings::default();
         let config = ConfigFile::from_settings(&defaults);
         assert_eq!(config.session.listen_port, Some(defaults.listen_port));
-        assert_eq!(config.session.workers, Some(defaults.runtime_worker_threads));
-        assert_eq!(config.limits.max_download_rate_bps, Some(defaults.download_rate_limit));
-        assert_eq!(config.limits.max_active_downloads, Some(defaults.active_downloads));
-        assert_eq!(config.limits.max_active_uploads, Some(defaults.active_seeds));
+        assert_eq!(
+            config.session.workers,
+            Some(defaults.runtime_worker_threads)
+        );
+        assert_eq!(
+            config.limits.max_download_rate_bps,
+            Some(defaults.download_rate_limit)
+        );
+        assert_eq!(
+            config.limits.max_active_downloads,
+            Some(defaults.active_downloads)
+        );
+        assert_eq!(
+            config.limits.max_active_uploads,
+            Some(defaults.active_seeds)
+        );
     }
 
     #[test]
@@ -325,8 +340,10 @@ max_peers_per_torrent = 64
 
     #[test]
     fn load_nonexistent_returns_defaults() {
-        let settings = load(Some(Path::new("/tmp/irontide-test-nonexistent-42/config.toml")))
-            .expect("should succeed for nonexistent file");
+        let settings = load(Some(Path::new(
+            "/tmp/irontide-test-nonexistent-42/config.toml",
+        )))
+        .expect("should succeed for nonexistent file");
         let defaults = Settings::default();
         assert_eq!(settings.listen_port, defaults.listen_port);
     }
@@ -379,8 +396,17 @@ max_peers_per_torrent = 64
         };
         let serialized = toml::to_string_pretty(&config).expect("serialize");
         // api and limits should be omitted since they are all None.
-        assert!(!serialized.contains("[api]"), "empty api section should be omitted");
-        assert!(!serialized.contains("[limits]"), "empty limits section should be omitted");
-        assert!(serialized.contains("[session]"), "non-empty session section should be present");
+        assert!(
+            !serialized.contains("[api]"),
+            "empty api section should be omitted"
+        );
+        assert!(
+            !serialized.contains("[limits]"),
+            "empty limits section should be omitted"
+        );
+        assert!(
+            serialized.contains("[session]"),
+            "non-empty session section should be present"
+        );
     }
 }
