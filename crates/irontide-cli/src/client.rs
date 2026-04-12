@@ -146,6 +146,66 @@ impl TorrentStatsDto {
     pub(crate) fn info_hash_hex(&self) -> String {
         self.info_hashes.v1_hex().unwrap_or_default()
     }
+
+    /// Construct a DTO directly from the live session `TorrentStats`.
+    ///
+    /// Used by `download::run` to bridge in-process session stats into
+    /// the shared `progress::render_*` helpers without a roundtrip
+    /// through `serde_json`. Field mapping mirrors the serde rename
+    /// attributes on the DTO fields:
+    ///
+    /// - `downloaded` ← `stats.total_done` (verified payload)
+    /// - `uploaded`   ← `stats.total_upload` (session-cumulative)
+    /// - `total`      ← `stats.total`
+    ///
+    /// `TorrentState` is rendered via a match expression so the
+    /// human-readable label stays stable across `Debug` format changes.
+    pub(crate) fn from_live(stats: &irontide::session::TorrentStats) -> Self {
+        let state = render_torrent_state(&stats.state);
+        let info_hashes = InfoHashesDto {
+            v1: stats.info_hashes.v1.map(|id| id.0.to_vec()),
+            v2: stats.info_hashes.v2.map(|id| id.0.to_vec()),
+        };
+        Self {
+            name: stats.name.clone(),
+            state,
+            progress: f64::from(stats.progress),
+            progress_ppm: stats.progress_ppm,
+            downloaded: stats.total_done,
+            uploaded: stats.total_upload,
+            total: stats.total,
+            download_rate: stats.download_rate,
+            upload_rate: stats.upload_rate,
+            pieces_have: stats.pieces_have,
+            pieces_total: stats.pieces_total,
+            peers_connected: stats.peers_connected,
+            peers_available: stats.peers_available,
+            is_paused: stats.is_paused,
+            is_finished: stats.is_finished,
+            is_seeding: stats.is_seeding,
+            user_seed_mode: stats.user_seed_mode,
+            info_hashes,
+        }
+    }
+}
+
+/// Render a live `TorrentState` into the short label string used by
+/// both the JSON DTO and the human renderer. Kept separate from
+/// `format!("{:?}", ...)` so the on-the-wire string stays stable if the
+/// enum's `Debug` implementation changes upstream.
+fn render_torrent_state(state: &irontide::session::TorrentState) -> String {
+    use irontide::session::TorrentState as S;
+    match state {
+        S::FetchingMetadata => "FetchingMetadata",
+        S::Checking => "Checking",
+        S::Downloading => "Downloading",
+        S::Complete => "Complete",
+        S::Seeding => "Seeding",
+        S::Paused => "Paused",
+        S::Stopped => "Stopped",
+        S::Sharing => "Sharing",
+    }
+    .to_owned()
 }
 
 /// Mirror of `irontide::session::TorrentInfo` (session/src/types.rs:1246).
@@ -186,6 +246,32 @@ pub(crate) struct FileInfoDto {
     pub(crate) path: String,
     /// File length in bytes.
     pub(crate) length: u64,
+}
+
+impl FileInfoDto {
+    /// Construct a DTO directly from the live session `FileInfo`. Path
+    /// is lossily UTF-8 encoded to match the engine's wire behaviour.
+    pub(crate) fn from_live(file: &irontide::session::FileInfo) -> Self {
+        Self {
+            path: file.path.to_string_lossy().into_owned(),
+            length: file.length,
+        }
+    }
+}
+
+impl TorrentInfoDto {
+    /// Construct a DTO directly from the live session `TorrentInfo`.
+    /// Each file is mapped via `FileInfoDto::from_live`.
+    pub(crate) fn from_live(info: &irontide::session::TorrentInfo) -> Self {
+        Self {
+            name: info.name.clone(),
+            total_length: info.total_length,
+            piece_length: info.piece_length,
+            num_pieces: info.num_pieces,
+            files: info.files.iter().map(FileInfoDto::from_live).collect(),
+            private: info.private,
+        }
+    }
 }
 
 /// Mirror of `irontide::session::PeerInfo` (session/src/types.rs:1189).

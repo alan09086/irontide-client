@@ -269,7 +269,7 @@ fn main() {
             quiet,
             workers,
             no_pin_cores,
-            json: _json, // json flag is parsed for forward compatibility; T8 implements the behaviour
+            json, // T8: line-delimited JSON progress on stdout
             io_uring,
             direct_io,
             uring_sq_depth,
@@ -377,6 +377,7 @@ fn main() {
                 seed,
                 port,
                 quiet,
+                json,
                 settings,
                 api_port,
                 api_bind,
