@@ -771,4 +771,42 @@ max_peers_per_torrent = 50
         let config2 = ConfigFile::from_settings(&settings);
         assert_eq!(config2.session.save_resume_interval, Some(600));
     }
+
+    // ---- build_runtime tests ----
+
+    #[test]
+    fn build_runtime_creates_runtime() {
+        let settings = Settings {
+            runtime_worker_threads: 2,
+            pin_cores: true,
+            ..Settings::default()
+        };
+        let rt = build_runtime(&settings);
+        let result = rt.block_on(async { 42 });
+        assert_eq!(result, 42);
+    }
+
+    #[test]
+    fn build_runtime_no_pin() {
+        let settings = Settings {
+            runtime_worker_threads: 2,
+            pin_cores: false,
+            ..Settings::default()
+        };
+        let rt = build_runtime(&settings);
+        let result = rt.block_on(async { 42 });
+        assert_eq!(result, 42);
+    }
+
+    #[test]
+    fn build_runtime_auto_workers() {
+        let settings = Settings {
+            runtime_worker_threads: 0,
+            pin_cores: false,
+            ..Settings::default()
+        };
+        let rt = build_runtime(&settings);
+        let result = rt.block_on(async { 42 });
+        assert_eq!(result, 42);
+    }
 }

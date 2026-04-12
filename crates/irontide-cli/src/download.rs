@@ -799,42 +799,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn build_runtime_creates_runtime() {
-        let settings = irontide::session::Settings {
-            runtime_worker_threads: 2,
-            pin_cores: true,
-            ..irontide::session::Settings::default()
-        };
-        let rt = irontide_config::build_runtime(&settings);
-        let result = rt.block_on(async { 42 });
-        assert_eq!(result, 42);
-    }
-
-    #[test]
-    fn build_runtime_no_pin() {
-        let settings = irontide::session::Settings {
-            runtime_worker_threads: 2,
-            pin_cores: false,
-            ..irontide::session::Settings::default()
-        };
-        let rt = irontide_config::build_runtime(&settings);
-        let result = rt.block_on(async { 42 });
-        assert_eq!(result, 42);
-    }
-
-    #[test]
-    fn build_runtime_auto_workers() {
-        let settings = irontide::session::Settings {
-            runtime_worker_threads: 0,
-            pin_cores: false,
-            ..irontide::session::Settings::default()
-        };
-        let rt = irontide_config::build_runtime(&settings);
-        let result = rt.block_on(async { 42 });
-        assert_eq!(result, 42);
-    }
-
     /// Round-trip a `TorrentStats` through `TorrentStatsDto::from_live`
     /// and confirm the critical fields map correctly. The DTO uses
     /// serde renames (`downloaded` ← `total_done`, `uploaded` ←

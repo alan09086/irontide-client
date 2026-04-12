@@ -146,7 +146,7 @@ fn main() {
                 settings.storage_mode = irontide::core::StorageMode::Iocp;
             }
 
-            let rt = irontide_config::build_runtime(&settings);
+            let rt = config::build_runtime(&settings);
             let result = rt.block_on(download::run(download::DownloadOpts {
                 source: &source,
                 output: &output,
