@@ -31,6 +31,8 @@ pub(crate) struct DaemonOpts {
     pub no_pin_cores: bool,
     /// Path to the global TOML configuration file (`--config`).
     pub global_config: Option<PathBuf>,
+    /// Optional resume directory override from CLI.
+    pub resume_dir: Option<PathBuf>,
 }
 
 /// Build a tokio runtime, start a long-running `SessionHandle`, bind the HTTP
@@ -55,6 +57,7 @@ pub(crate) fn run(opts: DaemonOpts) -> anyhow::Result<()> {
         workers,
         no_pin_cores,
         global_config,
+        resume_dir,
     } = opts;
 
     // Build CLI overrides from daemon flags, then merge through the full
@@ -71,6 +74,9 @@ pub(crate) fn run(opts: DaemonOpts) -> anyhow::Result<()> {
         cli_overrides.session.enable_dht = Some(false);
     }
     cli_overrides.session.listen_port = Some(port);
+    if let Some(ref dir) = resume_dir {
+        cli_overrides.session.resume_dir = Some(dir.clone());
+    }
 
     let settings = crate::config::load(global_config.as_deref(), &cli_overrides)?;
 
@@ -101,6 +107,12 @@ async fn run_daemon(
     port: u16,
     no_dht: bool,
 ) -> anyhow::Result<()> {
+    // Capture the resume data dir for logging before settings is consumed.
+    let resume_dir_display = settings
+        .resume_data_dir
+        .clone()
+        .unwrap_or_else(irontide::session::default_resume_dir);
+
     // Build the session. Mirrors `download::run`'s builder chain, minus the
     // DHT-state restoration and initial-peers plumbing (both are download-only
     // niceties — daemon clients add torrents post-startup via the API).
@@ -128,6 +140,7 @@ async fn run_daemon(
     // are the only feedback the operator gets that the service is live.
     let local = server.local_addr();
     eprintln!("irontide daemon listening on http://{local}");
+    eprintln!("Resume data: {}", resume_dir_display.display());
     eprintln!("(Ctrl-C to stop)");
 
     let api_task = tokio::spawn(async move {
@@ -170,6 +183,7 @@ mod tests {
             workers: 0,
             no_pin_cores: false,
             global_config: None,
+            resume_dir: None,
         };
         let err = run(opts).expect_err("api_port=0 must be rejected");
         assert!(

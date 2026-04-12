@@ -47,6 +47,12 @@ pub struct SessionConfig {
     /// Pin tokio worker threads to CPU cores.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pin_cores: Option<bool>,
+    /// Directory for per-torrent resume files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume_dir: Option<PathBuf>,
+    /// Interval in seconds between periodic resume file saves (0 = disabled).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub save_resume_interval: Option<u64>,
 }
 
 /// `[api]` — HTTP API settings.
@@ -156,6 +162,12 @@ impl ConfigFile {
         if let Some(pin) = self.session.pin_cores {
             s.pin_cores = pin;
         }
+        if let Some(ref dir) = self.session.resume_dir {
+            s.resume_data_dir = Some(dir.clone());
+        }
+        if let Some(interval) = self.session.save_resume_interval {
+            s.save_resume_interval_secs = interval;
+        }
 
         // [limits]
         if let Some(rate) = self.limits.max_download_rate_bps {
@@ -192,6 +204,8 @@ impl ConfigFile {
                 enable_pex: Some(settings.enable_pex),
                 workers: Some(settings.runtime_worker_threads),
                 pin_cores: Some(settings.pin_cores),
+                resume_dir: settings.resume_data_dir.clone(),
+                save_resume_interval: Some(settings.save_resume_interval_secs),
             },
             api: ApiConfig {
                 // API settings are not part of Settings — they live in the
@@ -594,6 +608,8 @@ max_peers_per_torrent = 50
                 enable_pex: None,
                 workers: Some(4),
                 pin_cores: Some(false),
+                resume_dir: None,
+                save_resume_interval: None,
             },
             api: ApiConfig {
                 bind: Some("0.0.0.0".into()),
@@ -643,5 +659,72 @@ max_peers_per_torrent = 50
             serialized.contains("[session]"),
             "non-empty session section should be present"
         );
+    }
+
+    // ---- M161: resume_dir + save_resume_interval config tests ----
+
+    #[test]
+    fn config_resume_dir_produces_correct_settings() {
+        let config = ConfigFile {
+            session: SessionConfig {
+                resume_dir: Some(PathBuf::from("/tmp/my-resume")),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let settings = config.to_settings_overrides();
+        assert_eq!(
+            settings.resume_data_dir,
+            Some(PathBuf::from("/tmp/my-resume")),
+        );
+    }
+
+    #[test]
+    fn default_resume_dir_ends_with_irontide() {
+        let dir = irontide::session::default_resume_dir();
+        assert!(
+            dir.ends_with("irontide"),
+            "default_resume_dir should end with 'irontide', got: {dir:?}"
+        );
+        // Should be under .local/state (when HOME is set, which it is
+        // in CI and dev machines).
+        let lossy = dir.to_string_lossy();
+        assert!(
+            lossy.contains(".local/state") || lossy.contains("irontide"),
+            "expected path under .local/state/irontide, got: {dir:?}"
+        );
+    }
+
+    #[test]
+    fn round_trip_resume_dir_through_config() {
+        let mut settings = Settings::default();
+        settings.resume_data_dir = Some(PathBuf::from("/data/resume"));
+        let config = ConfigFile::from_settings(&settings);
+        assert_eq!(
+            config.session.resume_dir,
+            Some(PathBuf::from("/data/resume")),
+        );
+        let round_tripped = config.to_settings_overrides();
+        assert_eq!(
+            round_tripped.resume_data_dir,
+            Some(PathBuf::from("/data/resume")),
+        );
+    }
+
+    #[test]
+    fn save_resume_interval_config_round_trip() {
+        let config = ConfigFile {
+            session: SessionConfig {
+                save_resume_interval: Some(600),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let settings = config.to_settings_overrides();
+        assert_eq!(settings.save_resume_interval_secs, 600);
+
+        // Round-trip back through from_settings.
+        let config2 = ConfigFile::from_settings(&settings);
+        assert_eq!(config2.session.save_resume_interval, Some(600));
     }
 }

@@ -136,6 +136,9 @@ pub(crate) enum Command {
         /// Disable core affinity pinning
         #[arg(long)]
         no_pin_cores: bool,
+        /// Directory for per-torrent resume files (default: ~/.local/state/irontide)
+        #[arg(long)]
+        resume_dir: Option<std::path::PathBuf>,
     },
     /// Create a .torrent file
     Create {

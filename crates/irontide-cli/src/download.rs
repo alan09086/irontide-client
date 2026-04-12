@@ -781,6 +781,7 @@ async fn save_session_state(
     state_path: &Path,
     announce: bool,
 ) {
+    // Existing session state save (DHT + bans).
     match session.save_session_state().await {
         Ok(state) => {
             if announce && !state.dht_nodes.is_empty() {
@@ -805,6 +806,17 @@ async fn save_session_state(
         }
         Err(e) => {
             eprintln!("warning: failed to save session state: {e}");
+        }
+    }
+
+    // Per-torrent resume files (M161).
+    match session.save_resume_state().await {
+        Ok(count) if count > 0 && announce => {
+            eprintln!("Saved {count} torrent resume file(s)");
+        }
+        Ok(_) => {}
+        Err(e) => {
+            eprintln!("warning: failed to save resume state: {e}");
         }
     }
 }

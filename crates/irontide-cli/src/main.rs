@@ -181,6 +181,7 @@ fn main() {
             no_dht,
             workers,
             no_pin_cores,
+            resume_dir,
         } => match daemon::run(daemon::DaemonOpts {
             api_port,
             api_bind,
@@ -190,6 +191,7 @@ fn main() {
             workers,
             no_pin_cores,
             global_config: global_config.clone(),
+            resume_dir,
         }) {
             Ok(()) => 0,
             Err(e) => {
