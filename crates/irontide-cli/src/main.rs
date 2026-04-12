@@ -7,6 +7,7 @@ mod error;
 mod format;
 mod info;
 mod progress;
+mod repl;
 
 use clap::{Parser, Subcommand};
 use std::io::Write as _;
@@ -234,6 +235,8 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Open an interactive REPL shell against a running daemon
+    Shell,
     // `Settings` subcommand deferred to a future milestone (M159 scope trim).
 }
 
@@ -491,6 +494,15 @@ fn main() {
                 commands::cmd_seed(client, &hash, false, out).await
             })
         }
+        Command::Shell => match repl::run(repl::ShellOpts {
+            api_url: api_url_flag,
+        }) {
+            Ok(()) => 0,
+            Err(e) => {
+                eprintln!("error: {e}");
+                1
+            }
+        },
     };
 
     std::process::exit(exit_code);
