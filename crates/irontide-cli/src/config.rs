@@ -1,13 +1,22 @@
-//! TOML configuration file support.
+//! Layered configuration pipeline.
 //!
 //! Provides a user-friendly TOML configuration file format that exposes a
 //! curated subset of [`irontide::session::Settings`]. The full 102-field
 //! `Settings` struct is an internal engine type; `ConfigFile` presents only
 //! the knobs a typical user needs, with friendlier names.
+//!
+//! Configuration sources are merged in order of increasing precedence:
+//!
+//! 1. **Defaults** — `ConfigFile::default()` (all `None`)
+//! 2. **TOML file** — `$XDG_CONFIG_HOME/irontide/config.toml` (or `--config`)
+//! 3. **Environment variables** — flat `IRONTIDE_*` namespace
+//! 4. **CLI flags** — highest priority overrides
 
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use figment::Figment;
+use figment::providers::{Env, Format, Serialized, Toml};
 use serde::{Deserialize, Serialize};
 
 use irontide::session::Settings;
@@ -228,36 +237,82 @@ pub fn resolve_config_path(explicit: Option<&Path>) -> PathBuf {
     }
 }
 
-/// Load session settings from the TOML config file.
+/// Map a flat `IRONTIDE_*` environment variable key to a dotted config path.
 ///
-/// This is a placeholder for Phase 1 — it resolves the config path,
-/// parses the TOML into a [`ConfigFile`], and applies overrides on top
-/// of [`Settings::default()`]. The full Figment pipeline (env vars,
-/// CLI merging) is wired in Phase 3.
+/// The `key` parameter is the portion *after* the `IRONTIDE_` prefix,
+/// already lowercased by Figment's [`Env`] provider. Keys that belong to
+/// the `[api]` or `[limits]` sections are mapped explicitly; everything
+/// else falls through to `session.<key>`.
+///
+/// Unknown keys are mapped to `session.<key>` — Figment silently ignores
+/// keys that don't match any field in the target struct, so typos in env
+/// vars are harmless (they just don't take effect).
+fn env_to_config_path(key: &str) -> String {
+    match key {
+        // [api]
+        "api_port" => "api.port".to_owned(),
+        "api_bind" => "api.bind".to_owned(),
+        // [limits]
+        "max_download_rate_bps" => "limits.max_download_rate_bps".to_owned(),
+        "max_upload_rate_bps" => "limits.max_upload_rate_bps".to_owned(),
+        "max_peers_per_torrent" => "limits.max_peers_per_torrent".to_owned(),
+        "max_active_downloads" => "limits.max_active_downloads".to_owned(),
+        "max_active_uploads" => "limits.max_active_uploads".to_owned(),
+        // Everything else → [session]
+        other => format!("session.{other}"),
+    }
+}
+
+/// Load session settings by merging four configuration layers.
+///
+/// Precedence (highest wins):
+/// 1. **Defaults** — `ConfigFile::default()` (all `None`)
+/// 2. **TOML file** — resolved via [`resolve_config_path`]
+/// 3. **Environment variables** — `IRONTIDE_*` flat namespace
+/// 4. **CLI flag overrides** — only `Some` fields take effect
+///
+/// The merged [`ConfigFile`] is converted to [`Settings`] via
+/// [`ConfigFile::to_settings_overrides`], then validated.
 ///
 /// # Errors
 ///
-/// Returns an error if the config file exists but cannot be read or
-/// parsed as valid TOML.
-pub fn load(config_path: Option<&Path>) -> Result<Settings> {
+/// Returns an error if the config file exists but cannot be parsed, if
+/// an environment variable contains an unparseable value, or if the
+/// resulting settings fail validation.
+pub fn load(config_path: Option<&Path>, cli_overrides: &ConfigFile) -> Result<Settings> {
     let path = resolve_config_path(config_path);
 
-    if !path.exists() {
-        return Ok(Settings::default());
+    // Layer 1: struct defaults (all None — empty dict after skip_serializing_if).
+    let mut figment = Figment::new().merge(Serialized::defaults(ConfigFile::default()));
+
+    // Layer 2: TOML file (if it exists on disk).
+    if path.exists() {
+        figment = figment.merge(Toml::file(&path));
     }
 
-    let contents = std::fs::read_to_string(&path)
-        .with_context(|| format!("failed to read config file: {}", path.display()))?;
+    // Layer 3: environment variables with flat IRONTIDE_* namespace.
+    figment = figment
+        .merge(Env::prefixed("IRONTIDE_").map(|key| env_to_config_path(key.as_str()).into()));
 
-    let config: ConfigFile = toml::from_str(&contents)
-        .with_context(|| format!("failed to parse config file: {}", path.display()))?;
+    // Layer 4: CLI flag overrides (highest precedence).
+    figment = figment.merge(Serialized::defaults(cli_overrides));
 
-    Ok(config.to_settings_overrides())
+    // Extract the merged ConfigFile and convert to engine Settings.
+    let config: ConfigFile = figment.extract().context("failed to merge configuration")?;
+    let settings = config.to_settings_overrides();
+    settings.validate().context("invalid configuration")?;
+
+    Ok(settings)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Serialize all tests that call [`load()`] because the Figment `Env`
+    /// provider reads process-global environment variables. Without this,
+    /// tests that set `IRONTIDE_*` vars leak into parallel tests.
+    static LOAD_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[test]
     fn empty_config_produces_defaults() {
@@ -340,12 +395,192 @@ max_peers_per_torrent = 64
 
     #[test]
     fn load_nonexistent_returns_defaults() {
-        let settings = load(Some(Path::new(
-            "/tmp/irontide-test-nonexistent-42/config.toml",
-        )))
+        let _guard = LOAD_MUTEX.lock().expect("test mutex poisoned");
+        let settings = load(
+            Some(Path::new("/tmp/irontide-test-nonexistent-42/config.toml")),
+            &ConfigFile::default(),
+        )
         .expect("should succeed for nonexistent file");
         let defaults = Settings::default();
         assert_eq!(settings.listen_port, defaults.listen_port);
+    }
+
+    #[test]
+    fn load_with_cli_overrides() {
+        let _guard = LOAD_MUTEX.lock().expect("test mutex poisoned");
+        let overrides = ConfigFile {
+            session: SessionConfig {
+                listen_port: Some(55555),
+                workers: Some(2),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let settings = load(
+            Some(Path::new("/tmp/irontide-test-nonexistent-42/config.toml")),
+            &overrides,
+        )
+        .expect("should succeed");
+        assert_eq!(settings.listen_port, 55555);
+        assert_eq!(settings.runtime_worker_threads, 2);
+        // Unspecified fields keep defaults.
+        let defaults = Settings::default();
+        assert_eq!(settings.enable_dht, defaults.enable_dht);
+    }
+
+    #[test]
+    fn load_toml_file_applies_values() {
+        let _guard = LOAD_MUTEX.lock().expect("test mutex poisoned");
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let config_path = dir.path().join("config.toml");
+        std::fs::write(
+            &config_path,
+            r#"
+[session]
+listen_port = 31337
+
+[limits]
+max_peers_per_torrent = 42
+"#,
+        )
+        .expect("write config file");
+
+        let settings = load(Some(&config_path), &ConfigFile::default()).expect("should succeed");
+        assert_eq!(settings.listen_port, 31337);
+        assert_eq!(settings.max_peers_per_torrent, 42);
+    }
+
+    #[test]
+    fn env_var_mapping() {
+        // Verify the flat-to-nested mapping function.
+        assert_eq!(env_to_config_path("listen_port"), "session.listen_port");
+        assert_eq!(env_to_config_path("download_dir"), "session.download_dir");
+        assert_eq!(env_to_config_path("enable_dht"), "session.enable_dht");
+        assert_eq!(env_to_config_path("workers"), "session.workers");
+        assert_eq!(env_to_config_path("pin_cores"), "session.pin_cores");
+        assert_eq!(env_to_config_path("api_port"), "api.port");
+        assert_eq!(env_to_config_path("api_bind"), "api.bind");
+        assert_eq!(
+            env_to_config_path("max_download_rate_bps"),
+            "limits.max_download_rate_bps"
+        );
+        assert_eq!(
+            env_to_config_path("max_upload_rate_bps"),
+            "limits.max_upload_rate_bps"
+        );
+        assert_eq!(
+            env_to_config_path("max_peers_per_torrent"),
+            "limits.max_peers_per_torrent"
+        );
+        assert_eq!(
+            env_to_config_path("max_active_downloads"),
+            "limits.max_active_downloads"
+        );
+        assert_eq!(
+            env_to_config_path("max_active_uploads"),
+            "limits.max_active_uploads"
+        );
+    }
+
+    #[test]
+    fn env_var_unknown_key_maps_to_session() {
+        // Unknown keys fall through to session.* — Figment ignores
+        // unrecognised fields, so this is safe.
+        assert_eq!(
+            env_to_config_path("some_unknown_var"),
+            "session.some_unknown_var"
+        );
+    }
+
+    #[test]
+    fn cli_overrides_beat_toml_file() {
+        let _guard = LOAD_MUTEX.lock().expect("test mutex poisoned");
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let config_path = dir.path().join("config.toml");
+        std::fs::write(
+            &config_path,
+            r#"
+[session]
+listen_port = 10000
+workers = 8
+"#,
+        )
+        .expect("write config file");
+
+        let overrides = ConfigFile {
+            session: SessionConfig {
+                listen_port: Some(20000),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let settings = load(Some(&config_path), &overrides).expect("should succeed");
+        // CLI override wins for listen_port.
+        assert_eq!(settings.listen_port, 20000);
+        // TOML value used for workers (no CLI override).
+        assert_eq!(settings.runtime_worker_threads, 8);
+    }
+
+    #[test]
+    fn env_vars_override_toml_file() {
+        let _guard = LOAD_MUTEX.lock().expect("test mutex poisoned");
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let config_path = dir.path().join("config.toml");
+        std::fs::write(
+            &config_path,
+            r#"
+[session]
+listen_port = 10000
+"#,
+        )
+        .expect("write config file");
+
+        // SAFETY: serialized by LOAD_MUTEX — no other test calling load()
+        // can run concurrently. Cleaned up before the guard drops.
+        unsafe { std::env::set_var("IRONTIDE_LISTEN_PORT", "30000") };
+
+        let settings = load(Some(&config_path), &ConfigFile::default());
+
+        // Clean up before asserting so we don't leak on failure.
+        unsafe { std::env::remove_var("IRONTIDE_LISTEN_PORT") };
+
+        let settings = settings.expect("should succeed");
+        assert_eq!(settings.listen_port, 30000);
+    }
+
+    #[test]
+    fn precedence_cli_beats_env_beats_file() {
+        let _guard = LOAD_MUTEX.lock().expect("test mutex poisoned");
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let config_path = dir.path().join("config.toml");
+        std::fs::write(
+            &config_path,
+            r#"
+[limits]
+max_peers_per_torrent = 50
+"#,
+        )
+        .expect("write config file");
+
+        // SAFETY: serialized by LOAD_MUTEX — see env_vars_override_toml_file.
+        unsafe { std::env::set_var("IRONTIDE_MAX_PEERS_PER_TORRENT", "100") };
+
+        let overrides = ConfigFile {
+            limits: LimitsConfig {
+                max_peers_per_torrent: Some(200),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let settings = load(Some(&config_path), &overrides);
+
+        unsafe { std::env::remove_var("IRONTIDE_MAX_PEERS_PER_TORRENT") };
+
+        let settings = settings.expect("should succeed");
+        // CLI (200) > env (100) > file (50).
+        assert_eq!(settings.max_peers_per_torrent, 200);
     }
 
     #[test]
