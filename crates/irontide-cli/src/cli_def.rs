@@ -1,8 +1,11 @@
-//! CLI definition shared between the main binary and build.rs.
-//!
-//! **Constraint**: this file is included via `include!("src/cli_def.rs")` in
-//! `build.rs` for shell completion generation.  It must NOT use `use crate::`
-//! imports — only external crate imports (`clap`, `clap_complete`, `std`).
+// CLI definition shared between the main binary and build.rs.
+//
+// **Constraint**: this file is included via `include!("src/cli_def.rs")` in
+// `build.rs` for shell completion generation.  It must NOT use `use crate::`
+// imports — only external crate imports (`clap`, `clap_complete`, `std`).
+//
+// Uses regular comments (not `//!`) because `include!()` in build.rs places
+// this code in a non-crate-root position where inner doc comments are invalid.
 
 use clap::{Parser, Subcommand};
 

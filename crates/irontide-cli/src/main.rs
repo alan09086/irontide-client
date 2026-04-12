@@ -277,11 +277,7 @@ fn main() {
             }
         },
         Command::Config { action } => commands::config::run(action, cli.config.as_deref()),
-        Command::Completions { shell } => {
-            // Placeholder — full implementation in Phase 5.
-            eprintln!("completions ({shell}): not yet implemented");
-            0
-        }
+        Command::Completions { shell } => commands::completions::run(shell),
     };
 
     std::process::exit(exit_code);
