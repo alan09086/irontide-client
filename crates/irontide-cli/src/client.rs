@@ -414,6 +414,7 @@ impl ApiClient {
     /// Returns `Ok(())` if the daemon responds with a 2xx, otherwise the
     /// classified error. Used by the main binary to detect an offline
     /// daemon and emit exit code 3.
+    #[allow(dead_code)] // consumed by T6/T7 REPL+TUI modes
     pub(crate) async fn ping(&self) -> Result<(), CliError> {
         let resp = self
             .http

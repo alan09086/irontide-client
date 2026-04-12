@@ -620,9 +620,11 @@ mod tests {
 
     #[test]
     fn build_runtime_creates_runtime() {
-        let mut settings = irontide::session::Settings::default();
-        settings.runtime_worker_threads = 2;
-        settings.pin_cores = true;
+        let settings = irontide::session::Settings {
+            runtime_worker_threads: 2,
+            pin_cores: true,
+            ..irontide::session::Settings::default()
+        };
         let rt = build_runtime(&settings);
         let result = rt.block_on(async { 42 });
         assert_eq!(result, 42);
@@ -630,9 +632,11 @@ mod tests {
 
     #[test]
     fn build_runtime_no_pin() {
-        let mut settings = irontide::session::Settings::default();
-        settings.runtime_worker_threads = 2;
-        settings.pin_cores = false;
+        let settings = irontide::session::Settings {
+            runtime_worker_threads: 2,
+            pin_cores: false,
+            ..irontide::session::Settings::default()
+        };
         let rt = build_runtime(&settings);
         let result = rt.block_on(async { 42 });
         assert_eq!(result, 42);
@@ -640,12 +644,13 @@ mod tests {
 
     #[test]
     fn build_runtime_auto_workers() {
-        let mut settings = irontide::session::Settings::default();
-        settings.runtime_worker_threads = 0;
-        settings.pin_cores = false;
+        let settings = irontide::session::Settings {
+            runtime_worker_threads: 0,
+            pin_cores: false,
+            ..irontide::session::Settings::default()
+        };
         let rt = build_runtime(&settings);
         let result = rt.block_on(async { 42 });
         assert_eq!(result, 42);
     }
-
 }

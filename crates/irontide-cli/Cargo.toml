@@ -41,3 +41,4 @@ thiserror = { workspace = true }
 [dev-dependencies]
 insta = { version = "1", features = ["json"] }
 assert_cmd = "2"
+tempfile = "3"

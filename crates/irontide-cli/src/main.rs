@@ -1,20 +1,21 @@
-#[allow(dead_code)] // consumed by T5+ mode runners
 mod client;
-#[allow(dead_code)] // consumed by T5+ mode runners
 mod commands;
 mod create;
 mod daemon;
 mod download;
-#[allow(dead_code)] // consumed by T5+ mode runners
 mod error;
 mod format;
 mod info;
-#[allow(dead_code)] // consumed by T5+ mode runners
 mod progress;
 
 use clap::{Parser, Subcommand};
+use std::io::Write as _;
 use std::path::PathBuf;
 use std::time::Duration;
+
+use client::ApiClient;
+use commands::{ListArgs, Output};
+use error::CliError;
 
 #[derive(Parser)]
 #[command(name = "irontide", version, about = "BitTorrent client")]
@@ -22,6 +23,11 @@ struct Cli {
     /// Log level (error, warn, info, debug, trace)
     #[arg(short, long, default_value = "error")]
     log_level: String,
+
+    /// URL of the irontide daemon HTTP API
+    /// (default: $IRONTIDE_API_URL or http://127.0.0.1:9080)
+    #[arg(long, global = true)]
+    api_url: Option<String>,
 
     #[command(subcommand)]
     command: Command,
@@ -57,18 +63,10 @@ enum Command {
         /// Disable core affinity pinning
         #[arg(long)]
         no_pin_cores: bool,
-        /// Overwrite existing files
+        /// Emit line-delimited JSON progress ticks (reserved for T8;
+        /// parsed today but has no behavioural effect yet)
         #[arg(long)]
-        overwrite: bool,
-        /// Only list torrent contents, don't download
-        #[arg(short, long)]
-        list: bool,
-        /// Initial peers to connect to (host:port)
-        #[arg(long)]
-        initial_peers: Vec<String>,
-        /// Disable tracker announces
-        #[arg(long)]
-        disable_trackers: bool,
+        json: bool,
         /// Use io_uring for disk writes (Linux only, requires io-uring feature)
         #[arg(long)]
         io_uring: bool,
@@ -162,11 +160,81 @@ enum Command {
         #[arg(long)]
         piece_size: Option<u64>,
     },
-    /// Display torrent file information
+    /// Display torrent details — either a .torrent file path or a torrent
+    /// hash in the running daemon. If the argument looks like a lowercase
+    /// hex prefix (2-40 chars) AND the path does not exist on disk, it is
+    /// dispatched to the daemon; otherwise it is treated as a .torrent file.
     Info {
-        /// Path to .torrent file
-        path: PathBuf,
+        /// Path to .torrent file OR info-hash prefix of a daemon torrent
+        source: String,
+        /// Show the file list (daemon mode only)
+        #[arg(long)]
+        files: bool,
+        /// Show the peer table (daemon mode only)
+        #[arg(long)]
+        peers: bool,
+        /// Emit JSON instead of human-readable output (daemon mode only)
+        #[arg(long)]
+        json: bool,
     },
+    /// Add a torrent to the running daemon (magnet URI or .torrent file path)
+    Add {
+        /// Magnet URI or path to .torrent file
+        source: String,
+        /// Emit JSON instead of human-readable output
+        #[arg(long)]
+        json: bool,
+    },
+    /// List torrents in the running daemon
+    List {
+        /// Emit JSON instead of a human-readable table
+        #[arg(long)]
+        json: bool,
+        /// Filter by state: downloading, seeding, paused
+        #[arg(long)]
+        filter: Option<String>,
+    },
+    /// Remove a torrent from the running daemon
+    Rm {
+        /// Torrent info hash (or unique prefix)
+        hash: String,
+        /// Emit JSON instead of a confirmation line
+        #[arg(long)]
+        json: bool,
+    },
+    /// Pause an active torrent (both upload and download)
+    Pause {
+        /// Torrent info hash (or unique prefix)
+        hash: String,
+        /// Emit JSON instead of a confirmation line
+        #[arg(long)]
+        json: bool,
+    },
+    /// Resume a paused torrent
+    Resume {
+        /// Torrent info hash (or unique prefix)
+        hash: String,
+        /// Emit JSON instead of a confirmation line
+        #[arg(long)]
+        json: bool,
+    },
+    /// Flip an active torrent to seed-only mode (keep uploading, stop downloading)
+    Seed {
+        /// Torrent info hash (or unique prefix)
+        hash: String,
+        /// Emit JSON instead of a confirmation line
+        #[arg(long)]
+        json: bool,
+    },
+    /// Clear seed-only mode and resume downloading
+    Unseed {
+        /// Torrent info hash (or unique prefix)
+        hash: String,
+        /// Emit JSON instead of a confirmation line
+        #[arg(long)]
+        json: bool,
+    },
+    // `Settings` subcommand deferred to a future milestone (M159 scope trim).
 }
 
 fn main() {
@@ -180,6 +248,10 @@ fn main() {
         .with_target(false)
         .init();
 
+    // Capture api_url before moving cli.command — the global flag is shared
+    // by every batch subcommand's dispatch arm.
+    let api_url_flag = cli.api_url.clone();
+
     let exit_code = match cli.command {
         Command::Download {
             source,
@@ -191,10 +263,7 @@ fn main() {
             quiet,
             workers,
             no_pin_cores,
-            overwrite: _,
-            list: _,
-            initial_peers: _,
-            disable_trackers: _,
+            json: _json, // json flag is parsed for forward compatibility; T8 implements the behaviour
             io_uring,
             direct_io,
             uring_sq_depth,
@@ -356,22 +425,138 @@ fn main() {
                 1
             }
         },
-        Command::Info { path } => match info::run(&path) {
-            Ok(()) => 0,
-            Err(e) => {
-                eprintln!("error: {e}");
+        Command::Info {
+            source,
+            files,
+            peers,
+            json,
+        } => {
+            // Disambiguate file path vs. daemon hash prefix.
+            let path = std::path::Path::new(&source);
+            if path.is_file() {
+                if files || peers || json {
+                    eprintln!(
+                        "warning: --files/--peers/--json are ignored when inspecting a .torrent file"
+                    );
+                }
+                match info::run(path) {
+                    Ok(()) => 0,
+                    Err(e) => {
+                        eprintln!("error: {e}");
+                        1
+                    }
+                }
+            } else if is_hex_prefix(&source) {
+                run_batch(api_url_flag.as_deref(), json, async |client, out| {
+                    commands::cmd_info(client, &source, files, peers, out).await
+                })
+            } else {
+                eprintln!("error: '{source}' is neither an existing file nor a valid hex prefix");
                 1
             }
-        },
+        }
+        Command::Add { source, json } => {
+            run_batch(api_url_flag.as_deref(), json, async |client, out| {
+                commands::cmd_add(client, &source, out).await
+            })
+        }
+        Command::List { json, filter } => {
+            let args = ListArgs { filter };
+            run_batch(api_url_flag.as_deref(), json, async |client, out| {
+                commands::cmd_list(client, &args, out).await
+            })
+        }
+        Command::Rm { hash, json } => {
+            run_batch(api_url_flag.as_deref(), json, async |client, out| {
+                commands::cmd_remove(client, &hash, out).await
+            })
+        }
+        Command::Pause { hash, json } => {
+            run_batch(api_url_flag.as_deref(), json, async |client, out| {
+                commands::cmd_pause(client, &hash, out).await
+            })
+        }
+        Command::Resume { hash, json } => {
+            run_batch(api_url_flag.as_deref(), json, async |client, out| {
+                commands::cmd_resume(client, &hash, out).await
+            })
+        }
+        Command::Seed { hash, json } => {
+            run_batch(api_url_flag.as_deref(), json, async |client, out| {
+                commands::cmd_seed(client, &hash, true, out).await
+            })
+        }
+        Command::Unseed { hash, json } => {
+            run_batch(api_url_flag.as_deref(), json, async |client, out| {
+                commands::cmd_seed(client, &hash, false, out).await
+            })
+        }
     };
 
     std::process::exit(exit_code);
 }
 
+/// Whether `s` looks like a hex info-hash prefix the daemon might
+/// accept: 2-40 lowercase ASCII hex chars.
+fn is_hex_prefix(s: &str) -> bool {
+    let len = s.len();
+    (2..=40).contains(&len) && s.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Dispatch a single batch-mode subcommand against the running daemon.
+///
+/// Builds a lightweight current-thread runtime, constructs the API
+/// client, picks JSON or human output, and runs the supplied
+/// async closure. All `CliError` variants map to exit codes via
+/// `CliError::exit_code`; the human-readable error message is written
+/// to stderr with a one-line `error: ...` prefix.
+///
+/// The closure signature threads `&mut Output<'_>` through the call so
+/// the dispatcher owns the writer and can flush it before returning.
+/// `async |...| { ... }` closures capture by reference, which means
+/// borrows (e.g. `&hash`) stay valid for the lifetime of the async
+/// invocation — no `'static` capture hoop required.
+fn run_batch<F>(api_url_flag: Option<&str>, json: bool, op: F) -> i32
+where
+    F: for<'a> AsyncFnOnce(&'a ApiClient, &'a mut Output<'a>) -> Result<(), CliError>,
+{
+    let rt = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(rt) => rt,
+        Err(e) => {
+            eprintln!("error: failed to build tokio runtime: {e}");
+            return 1;
+        }
+    };
+
+    let url = ApiClient::resolve_url(api_url_flag);
+    let client = ApiClient::new(url);
+
+    let stdout = std::io::stdout();
+    let mut stdout_lock = stdout.lock();
+    let exit_code = rt.block_on(async {
+        let mut out = if json {
+            Output::Json(&mut stdout_lock)
+        } else {
+            Output::Human(&mut stdout_lock)
+        };
+        match op(&client, &mut out).await {
+            Ok(()) => 0,
+            Err(err) => {
+                eprintln!("error: {err}");
+                err.exit_code()
+            }
+        }
+    });
+    let _ = stdout_lock.flush();
+    exit_code
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::Parser as _;
 
     /// Helper: parse a Download command and return the max_peers field.
     fn parse_max_peers(args: &[&str]) -> usize {
