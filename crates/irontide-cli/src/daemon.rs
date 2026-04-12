@@ -5,7 +5,7 @@
 //! (batch/REPL/TUI) connect to through the HTTP API; it holds no torrents of
 //! its own at startup — those are added by API clients after the daemon is up.
 //!
-//! Runtime construction reuses [`crate::download::build_runtime`] so the
+//! Runtime construction reuses [`irontide_config::build_runtime`] so the
 //! core-pinned multi-thread runtime configuration stays DRY.
 
 use std::path::PathBuf;
@@ -62,7 +62,7 @@ pub(crate) fn run(opts: DaemonOpts) -> anyhow::Result<()> {
 
     // Build CLI overrides from daemon flags, then merge through the full
     // Figment pipeline (defaults → TOML file → env vars → CLI overrides).
-    let mut cli_overrides = crate::config::ConfigFile::default();
+    let mut cli_overrides = irontide_config::ConfigFile::default();
     cli_overrides.session.download_dir = Some(download_dir.clone());
     if workers != 0 {
         cli_overrides.session.workers = Some(workers);
@@ -78,9 +78,9 @@ pub(crate) fn run(opts: DaemonOpts) -> anyhow::Result<()> {
         cli_overrides.session.resume_dir = Some(dir.clone());
     }
 
-    let settings = crate::config::load(global_config.as_deref(), &cli_overrides)?;
+    let settings = irontide_config::load(global_config.as_deref(), &cli_overrides)?;
 
-    let rt = crate::download::build_runtime(&settings);
+    let rt = irontide_config::build_runtime(&settings);
 
     let result = rt.block_on(run_daemon(
         settings,

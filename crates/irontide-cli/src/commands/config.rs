@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use crate::cli_def::ConfigAction;
-use crate::config::{self, ConfigFile};
+use irontide_config::{self as config, ConfigFile};
 
 /// Run the `config <action>` subcommand.
 ///

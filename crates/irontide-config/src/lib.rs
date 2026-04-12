@@ -1,7 +1,7 @@
 //! Layered configuration pipeline.
 //!
 //! Provides a user-friendly TOML configuration file format that exposes a
-//! curated subset of [`irontide::session::Settings`]. The full 102-field
+//! curated subset of [`irontide_session::Settings`]. The full 102-field
 //! `Settings` struct is an internal engine type; `ConfigFile` presents only
 //! the knobs a typical user needs, with friendlier names.
 //!
@@ -13,13 +13,15 @@
 //! 4. **CLI flags** — highest priority overrides
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::{Context, Result};
 use figment::Figment;
 use figment::providers::{Env, Format, Serialized, Toml};
 use serde::{Deserialize, Serialize};
 
-use irontide::session::Settings;
+use irontide_session::Settings;
 
 // ── TOML section structs ────────────────────────────────────────────
 
@@ -317,6 +319,48 @@ pub fn load(config_path: Option<&Path>, cli_overrides: &ConfigFile) -> Result<Se
     settings.validate().context("invalid configuration")?;
 
     Ok(settings)
+}
+
+// ── Runtime construction ────────────────────────────────────────────
+
+/// Build a multi-thread tokio runtime with optional CPU core affinity.
+///
+/// Worker thread count is taken from `settings.runtime_worker_threads`
+/// (0 = auto-detect, capped at 8). When `settings.pin_cores` is true,
+/// each worker thread is pinned to a CPU core via `core_affinity`.
+pub fn build_runtime(settings: &Settings) -> tokio::runtime::Runtime {
+    let worker_count = if settings.runtime_worker_threads == 0 {
+        std::thread::available_parallelism()
+            .map(|n| n.get().min(8))
+            .unwrap_or(4)
+    } else {
+        settings.runtime_worker_threads
+    };
+
+    let pin = settings.pin_cores;
+    let core_ids = if pin {
+        core_affinity::get_core_ids().unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+
+    let mut builder = tokio::runtime::Builder::new_multi_thread();
+    builder.worker_threads(worker_count);
+    builder.enable_all();
+
+    if pin && !core_ids.is_empty() {
+        let core_ids = Arc::new(core_ids);
+        let counter = Arc::new(AtomicUsize::new(0));
+        builder.on_thread_start(move || {
+            let idx = counter.fetch_add(1, Ordering::Relaxed);
+            let core = core_ids[idx % core_ids.len()];
+            if !core_affinity::set_for_current(core) {
+                eprintln!("warning: failed to set core affinity for worker {idx}");
+            }
+        });
+    }
+
+    builder.build().expect("failed to build tokio runtime")
 }
 
 #[cfg(test)]
@@ -681,7 +725,7 @@ max_peers_per_torrent = 50
 
     #[test]
     fn default_resume_dir_ends_with_irontide() {
-        let dir = irontide::session::default_resume_dir();
+        let dir = irontide_session::default_resume_dir();
         assert!(
             dir.ends_with("irontide"),
             "default_resume_dir should end with 'irontide', got: {dir:?}"

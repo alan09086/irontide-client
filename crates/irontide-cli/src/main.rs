@@ -1,7 +1,6 @@
 mod cli_def;
 mod client;
 mod commands;
-mod config;
 mod create;
 mod daemon;
 mod download;
@@ -15,6 +14,7 @@ mod tui;
 use cli_def::*;
 
 use clap::Parser as _;
+use irontide_config as config;
 use std::io::Write as _;
 use std::time::Duration;
 
@@ -146,7 +146,7 @@ fn main() {
                 settings.storage_mode = irontide::core::StorageMode::Iocp;
             }
 
-            let rt = download::build_runtime(&settings);
+            let rt = irontide_config::build_runtime(&settings);
             let result = rt.block_on(download::run(download::DownloadOpts {
                 source: &source,
                 output: &output,

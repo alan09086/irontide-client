@@ -2,7 +2,7 @@ use anyhow::Context;
 use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use irontide::core::{DEFAULT_CHUNK_SIZE, Lengths, TorrentMeta};
@@ -741,41 +741,6 @@ fn load_dht_state(state_path: &Path) -> Option<(Vec<String>, Option<irontide::co
     Some((nodes, node_id))
 }
 
-pub(crate) fn build_runtime(settings: &irontide::session::Settings) -> tokio::runtime::Runtime {
-    let worker_count = if settings.runtime_worker_threads == 0 {
-        std::thread::available_parallelism()
-            .map(|n| n.get().min(8))
-            .unwrap_or(4)
-    } else {
-        settings.runtime_worker_threads
-    };
-
-    let pin = settings.pin_cores;
-    let core_ids = if pin {
-        core_affinity::get_core_ids().unwrap_or_default()
-    } else {
-        Vec::new()
-    };
-
-    let mut builder = tokio::runtime::Builder::new_multi_thread();
-    builder.worker_threads(worker_count);
-    builder.enable_all();
-
-    if pin && !core_ids.is_empty() {
-        let core_ids = std::sync::Arc::new(core_ids);
-        let counter = std::sync::Arc::new(AtomicUsize::new(0));
-        builder.on_thread_start(move || {
-            let idx = counter.fetch_add(1, Ordering::Relaxed);
-            let core = core_ids[idx % core_ids.len()];
-            if !core_affinity::set_for_current(core) {
-                eprintln!("warning: failed to set core affinity for worker {idx}");
-            }
-        });
-    }
-
-    builder.build().expect("failed to build tokio runtime")
-}
-
 async fn save_session_state(
     session: &irontide::session::SessionHandle,
     state_path: &Path,
@@ -841,7 +806,7 @@ mod tests {
             pin_cores: true,
             ..irontide::session::Settings::default()
         };
-        let rt = build_runtime(&settings);
+        let rt = irontide_config::build_runtime(&settings);
         let result = rt.block_on(async { 42 });
         assert_eq!(result, 42);
     }
@@ -853,7 +818,7 @@ mod tests {
             pin_cores: false,
             ..irontide::session::Settings::default()
         };
-        let rt = build_runtime(&settings);
+        let rt = irontide_config::build_runtime(&settings);
         let result = rt.block_on(async { 42 });
         assert_eq!(result, 42);
     }
@@ -865,7 +830,7 @@ mod tests {
             pin_cores: false,
             ..irontide::session::Settings::default()
         };
-        let rt = build_runtime(&settings);
+        let rt = irontide_config::build_runtime(&settings);
         let result = rt.block_on(async { 42 });
         assert_eq!(result, 42);
     }
