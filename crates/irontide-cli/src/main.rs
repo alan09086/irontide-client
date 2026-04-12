@@ -3,6 +3,7 @@ mod client;
 #[allow(dead_code)] // consumed by T5+ mode runners
 mod commands;
 mod create;
+mod daemon;
 mod download;
 #[allow(dead_code)] // consumed by T5+ mode runners
 mod error;
@@ -119,6 +120,30 @@ enum Command {
         /// Maximum per-peer pipeline depth (default: 512)
         #[arg(long)]
         max_pipeline_depth: Option<u32>,
+    },
+    /// Run a long-running daemon that exposes the HTTP API
+    Daemon {
+        /// HTTP API port (required — daemon mode has no other feedback channel)
+        #[arg(long, default_value_t = 9080)]
+        api_port: u16,
+        /// HTTP API bind address
+        #[arg(long, default_value = "127.0.0.1")]
+        api_bind: String,
+        /// Default download directory for torrents added via the API
+        #[arg(long, default_value = ".")]
+        download_dir: PathBuf,
+        /// BitTorrent listen port
+        #[arg(short, long, default_value_t = 42020)]
+        port: u16,
+        /// Disable DHT
+        #[arg(long)]
+        no_dht: bool,
+        /// Number of tokio worker threads (0 = auto)
+        #[arg(long, default_value_t = 0)]
+        workers: usize,
+        /// Disable core affinity pinning
+        #[arg(long)]
+        no_pin_cores: bool,
     },
     /// Create a .torrent file
     Create {
@@ -295,6 +320,29 @@ fn main() {
                 }
             }
         }
+        Command::Daemon {
+            api_port,
+            api_bind,
+            download_dir,
+            port,
+            no_dht,
+            workers,
+            no_pin_cores,
+        } => match daemon::run(daemon::DaemonOpts {
+            api_port,
+            api_bind,
+            download_dir,
+            port,
+            no_dht,
+            workers,
+            no_pin_cores,
+        }) {
+            Ok(()) => 0,
+            Err(e) => {
+                eprintln!("error: {e}");
+                1
+            }
+        },
         Command::Create {
             path,
             output,
