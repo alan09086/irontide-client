@@ -105,21 +105,21 @@ pub fn handle_menu_action(
                 win.hide().ok();
             });
         }
-        crate::app::MenuAction::AddMagnet | crate::app::MenuAction::AddTorrentFile => {
-            let label = match action {
-                crate::app::MenuAction::AddMagnet => "Add Magnet",
-                crate::app::MenuAction::AddTorrentFile => "Add Torrent File",
-                _ => unreachable!(),
-            };
-            let toast = format!("{label}: coming in M164");
-            let _ = weak.upgrade_in_event_loop(move |win| {
-                win.set_toast_text(toast.into());
-                win.set_toast_visible(true);
-            });
-            // No auto-hide timer for now — toast stays until next action.
-            // M163+ will add proper toast lifecycle.
+        crate::app::MenuAction::AddMagnet => {
+            show_stub_toast(weak, "Add Magnet");
+        }
+        crate::app::MenuAction::AddTorrentFile => {
+            show_stub_toast(weak, "Add Torrent File");
         }
     }
+}
+
+fn show_stub_toast(weak: &slint::Weak<crate::MainWindow>, label: &str) {
+    let toast = format!("{label}: coming in M164");
+    let _ = weak.upgrade_in_event_loop(move |win| {
+        win.set_toast_text(toast.into());
+        win.set_toast_visible(true);
+    });
 }
 
 #[cfg(test)]

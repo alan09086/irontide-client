@@ -28,7 +28,6 @@ tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = { workspace = true }
 parking_lot = { workspace = true }
-anyhow = "1"
 
 [build-dependencies]
 slint-build = { workspace = true }

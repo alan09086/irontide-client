@@ -24,7 +24,8 @@ fn main() -> Result<(), error::GuiError> {
         .init();
 
     // 3. Load settings.
-    let settings = irontide_config::load(None, &irontide_config::ConfigFile::default())?;
+    let settings = irontide_config::load(None, &irontide_config::ConfigFile::default())
+        .map_err(|e| error::GuiError::Config(e.to_string()))?;
 
     // 4. Create shutdown channel + app state.
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
