@@ -1,0 +1,6 @@
+---
+source: crates/irontide-cli/src/progress.rs
+expression: "lines.join(\"\\n\")"
+---
+stalled.iso  15.0%
+  ↓ 0 B/s   ↑ 0 B/s   0 peers   ETA —   [Downloading]

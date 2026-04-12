@@ -273,6 +273,75 @@ async fn test_pause_resume_torrent() {
     assert_eq!(status, StatusCode::NO_CONTENT);
 }
 
+#[tokio::test]
+async fn test_seed_mode_endpoint() {
+    let router = test_router().await;
+    let hash = "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d";
+
+    // Add a magnet first so the session has this info hash.
+    let magnet = format!("magnet:?xt=urn:btih:{hash}&dn=test");
+    let body_json = serde_json::json!({ "uri": magnet });
+    let req = Request::post("/api/v1/torrents")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::to_vec(&body_json).expect("serialize"),
+        ))
+        .expect("build request");
+    let (status, _) = request(&router, req).await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    // Enable seed mode.
+    let url = format!("/api/v1/torrents/{hash}/seed_mode");
+    let req = Request::post(&url)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"enabled":true}"#))
+        .expect("build request");
+    let (status, _) = request(&router, req).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    // Disable seed mode.
+    let req = Request::post(&url)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"enabled":false}"#))
+        .expect("build request");
+    let (status, _) = request(&router, req).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn test_seed_mode_not_found() {
+    let router = test_router().await;
+    let url = format!("/api/v1/torrents/{NONEXISTENT_HASH}/seed_mode");
+    let req = Request::post(&url)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"enabled":true}"#))
+        .expect("build request");
+
+    let (status, body) = request(&router, req).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    let v = json(&body);
+    assert_eq!(v["code"], "NOT_FOUND");
+}
+
+#[tokio::test]
+async fn test_seed_mode_malformed_json() {
+    let router = test_router().await;
+    let hash = "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d";
+    let url = format!("/api/v1/torrents/{hash}/seed_mode");
+
+    // Body is JSON but missing the required `enabled` field.
+    let req = Request::post(&url)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"wrong_field":true}"#))
+        .expect("build request");
+
+    let (status, body) = request(&router, req).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let v = json(&body);
+    assert_eq!(v["code"], "INVALID_REQUEST");
+}
+
 // ---------------------------------------------------------------------------
 // 2. Session
 // ---------------------------------------------------------------------------

@@ -30,5 +30,19 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 anyhow = "1"
+serde = { workspace = true }
 serde_json = "1"
 core_affinity = { workspace = true }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+tokio-tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"] }
+futures = "0.3"
+thiserror = { workspace = true }
+rustyline = "14"
+shlex = "1"
+ratatui = "0.28"
+crossterm = { version = "0.28", features = ["event-stream"] }
+
+[dev-dependencies]
+insta = { version = "1", features = ["json"] }
+assert_cmd = "2"
+tempfile = "3"

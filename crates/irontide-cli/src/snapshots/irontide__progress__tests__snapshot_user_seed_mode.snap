@@ -1,0 +1,6 @@
+---
+source: crates/irontide-cli/src/progress.rs
+expression: "lines.join(\"\\n\")"
+---
+seedy.iso  75.0%
+  ↓ 0 B/s   ↑ 512.0 KB/s   4 peers   ETA —   [Seed-only]

@@ -1,0 +1,6 @@
+---
+source: crates/irontide-cli/src/progress.rs
+expression: "lines.join(\"\\n\")"
+---
+ubuntu-24.04.iso  50.0%
+  ↓ 45.0 MB/s   ↑ 2.0 MB/s   72 peers   ETA 15s   [Downloading]

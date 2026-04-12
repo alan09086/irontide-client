@@ -1,4 +1,5 @@
 use anyhow::Context;
+use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -8,6 +9,10 @@ use irontide::core::{DEFAULT_CHUNK_SIZE, Lengths, TorrentMeta};
 use irontide::session::SessionState;
 use irontide::storage::{FilesystemStorage, PreallocateMode, TorrentStorage};
 
+use crate::client::{TorrentInfoDto, TorrentStatsDto};
+use crate::format::{format_rate, format_size};
+use crate::progress::{RenderOpts, render_human, render_json};
+
 pub struct DownloadOpts<'a> {
     pub source: &'a str,
     pub output: &'a Path,
@@ -15,10 +20,150 @@ pub struct DownloadOpts<'a> {
     pub seed: bool,
     pub port: u16,
     pub quiet: bool,
+    pub json: bool,
     pub settings: irontide::session::Settings,
     pub api_port: u16,
     pub api_bind: String,
     pub diagnose: bool,
+}
+
+/// Presentation mode selected once at the start of the progress loop.
+///
+/// The four variants correspond to the decision tree in the M159 spec
+/// and are encoded here so every tick can `match` rather than re-check
+/// three flags.
+#[derive(Debug, Clone, Copy)]
+enum PresentationMode {
+    /// `--quiet`: no progress output whatsoever.
+    Quiet,
+    /// `--json`: line-delimited JSON objects on stdout, one per tick.
+    Json,
+    /// Default + interactive stdout: single-line overwrite on 1-file
+    /// torrents, cursor-up multi-line block on multi-file torrents.
+    TtyLine,
+    /// Default + non-interactive stdout (pipes, log redirection): plain
+    /// text blocks every 10s, no carriage-return tricks.
+    Plain,
+}
+
+/// Emit one compact JSON object for the current tick on stdout.
+///
+/// Matches `progress::render_json` so JSON mode is a straight
+/// line-delimited dump of the same shape the WebSocket stream emits.
+/// Uses `serde_json::to_string` (compact, no indentation) so tools like
+/// `jq -c` can consume the stream one object per line.
+fn emit_json_tick(stats: &TorrentStatsDto, info: Option<&TorrentInfoDto>) -> anyhow::Result<()> {
+    let value = render_json(stats, info, None);
+    let line = serde_json::to_string(&value)
+        .map_err(|e| anyhow::anyhow!("failed to encode progress JSON: {e}"))?;
+    let mut stdout = std::io::stdout().lock();
+    stdout
+        .write_all(line.as_bytes())
+        .map_err(|e| anyhow::anyhow!("failed to write progress JSON: {e}"))?;
+    stdout
+        .write_all(b"\n")
+        .map_err(|e| anyhow::anyhow!("failed to write progress JSON: {e}"))?;
+    stdout
+        .flush()
+        .map_err(|e| anyhow::anyhow!("failed to flush progress JSON: {e}"))?;
+    Ok(())
+}
+
+/// Emit the legacy single-line progress bar with carriage-return
+/// overwrite. Preserved for single-file torrents where a four-line
+/// block would be wasted screen real estate. Writes to stderr so
+/// pipeline redirection on stdout stays clean.
+fn emit_tty_single_line(
+    stats: &irontide::session::TorrentStats,
+    elapsed: f64,
+) -> anyhow::Result<()> {
+    let pct = stats.progress * 100.0;
+    let done = format_size(stats.total_done);
+    let total = format_size(stats.total_wanted);
+    let down = format_rate(stats.download_rate);
+    let up = format_rate(stats.upload_rate);
+    let peers = stats.peers_connected;
+    let eta = if stats.download_rate > 0 && stats.total_wanted > stats.total_done {
+        let remaining = stats.total_wanted - stats.total_done;
+        format!("{:.0}s", remaining as f64 / stats.download_rate as f64)
+    } else {
+        "---".to_string()
+    };
+    let pipeline_info = if let Some(ref p) = stats.pipeline {
+        format!(
+            "{{live: {}, connecting: {}, queued: {}, dead: {}, known: {}}}",
+            p.live, p.connecting, p.queued, p.dead, p.known
+        )
+    } else {
+        format!("{peers} peers")
+    };
+    eprint!(
+        "\r\x1b[2K{pct:5.1}% ({done}/{total}) \u{2193}{down} \u{2191}{up} | {pipeline_info} | ETA {eta} [{elapsed:.0}s]",
+    );
+    std::io::Write::flush(&mut std::io::stderr())
+        .map_err(|e| anyhow::anyhow!("failed to flush stderr: {e}"))?;
+    Ok(())
+}
+
+/// Emit the multi-line progress block with cursor-up redraw. The block
+/// is always padded to `max_lines` rows so the ANSI cursor-up count
+/// stays correct even if the progress renderer's `... and N more`
+/// trailer appears or disappears between ticks.
+///
+/// Returns the number of lines this tick printed (always `max_lines`
+/// after padding) so the next tick knows how many rows to rewind.
+fn emit_tty_block(
+    stats: &TorrentStatsDto,
+    info: Option<&TorrentInfoDto>,
+    last_block_lines: usize,
+    max_lines: usize,
+) -> anyhow::Result<usize> {
+    let mut lines = render_human(stats, info, None, RenderOpts::default());
+    // Pad to `max_lines` so cursor-up math stays stable across ticks.
+    while lines.len() < max_lines {
+        lines.push(String::new());
+    }
+    // Defensive: if the renderer ever outgrows our reservation (e.g.
+    // someone changes MANY_FILES_THRESHOLD upstream), truncate — we
+    // cannot retroactively increase `max_lines` without scrolling the
+    // previous block into history.
+    lines.truncate(max_lines);
+
+    let mut stderr = std::io::stderr().lock();
+    if last_block_lines > 0 {
+        // Move cursor up `last_block_lines` rows so the new block
+        // overwrites the old one. Matches `tput cuu N` / `\e[<N>A`.
+        write!(stderr, "\x1b[{last_block_lines}A")
+            .map_err(|e| anyhow::anyhow!("failed to write cursor-up: {e}"))?;
+    }
+    for line in &lines {
+        // `\x1b[2K` clears the whole line first so leftover chars from
+        // a longer previous tick don't bleed through when the new tick
+        // is shorter.
+        writeln!(stderr, "\x1b[2K{line}")
+            .map_err(|e| anyhow::anyhow!("failed to write progress block: {e}"))?;
+    }
+    stderr
+        .flush()
+        .map_err(|e| anyhow::anyhow!("failed to flush progress block: {e}"))?;
+    Ok(lines.len())
+}
+
+/// Emit the plain-text progress block for non-interactive stdout
+/// (pipes, log redirection). Uses the same `render_human` path as
+/// `emit_tty_block` but without any ANSI escape sequences — safe to
+/// append to `downloads.log` without `cat -v` artefacts.
+fn emit_plain_block(stats: &TorrentStatsDto, info: Option<&TorrentInfoDto>) -> anyhow::Result<()> {
+    let lines = render_human(stats, info, None, RenderOpts::default());
+    let mut stderr = std::io::stderr().lock();
+    for line in &lines {
+        writeln!(stderr, "{line}")
+            .map_err(|e| anyhow::anyhow!("failed to write progress block: {e}"))?;
+    }
+    stderr
+        .flush()
+        .map_err(|e| anyhow::anyhow!("failed to flush progress block: {e}"))?;
+    Ok(())
 }
 
 pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
@@ -29,6 +174,7 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
         seed,
         port,
         quiet,
+        json,
         settings,
         api_port,
         api_bind,
@@ -155,11 +301,49 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
     const SAVE_INTERVAL: Duration = Duration::from_secs(60);
     const POLL_INTERVAL: Duration = Duration::from_secs(1);
     const DIAGNOSE_INTERVAL: Duration = Duration::from_secs(5);
+    const NON_TTY_INTERVAL: Duration = Duration::from_secs(10);
+
+    // Presentation mode selection. The four modes from the M159 spec are:
+    //   Quiet    — `--quiet`: no stdout/stderr progress chatter.
+    //   Json     — `--json`:  one JSON object per tick, line-delimited.
+    //   TtyLine  — isatty stdout + !quiet + !json: in-place overwrite
+    //              (single line for 1-file torrents, cursor-up block for
+    //              multi-file torrents).
+    //   Plain    — not isatty + !quiet + !json: plain blocks every 10s.
+    //
+    // The tty check is cached at the start of the run — stdout cannot
+    // change mid-process and re-checking per iteration would just be
+    // noise.
+    let is_tty = std::io::stdout().is_terminal();
+    let mode = if quiet {
+        PresentationMode::Quiet
+    } else if json {
+        PresentationMode::Json
+    } else if is_tty {
+        PresentationMode::TtyLine
+    } else {
+        PresentationMode::Plain
+    };
+
+    // Cached TorrentInfoDto: becomes Some once the engine has metadata.
+    // Until then we only render the stats line (the DTO name / progress
+    // bar works with `info = None`). The multi-file block path needs
+    // `info` to compute file counts, so we cap `max_lines` the first
+    // time we observe `files.len() > 1` and pad every subsequent redraw
+    // to that exact height.
+    let mut info_dto: Option<TorrentInfoDto> = None;
+    let mut last_block_lines: usize = 0;
+    let mut max_lines: usize = 0;
+    // `last_plain_print` gates the non-tty plain-text cadence — print
+    // one block every NON_TTY_INTERVAL rather than once per poll.
+    let mut last_plain_print = Instant::now()
+        .checked_sub(NON_TTY_INTERVAL)
+        .unwrap_or_else(Instant::now);
 
     loop {
         // Check for cancellation
         if cancelled.load(Ordering::SeqCst) {
-            if !quiet {
+            if !quiet && matches!(mode, PresentationMode::TtyLine) {
                 eprintln!();
             }
             break;
@@ -187,35 +371,57 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
                 finished = true;
             }
 
-            if !quiet && !finished {
-                let pct = stats.progress * 100.0;
-                let done = format_size(stats.total_done);
-                let total = format_size(stats.total_wanted);
-                let down = format_rate(stats.download_rate);
-                let up = format_rate(stats.upload_rate);
-                let peers = stats.peers_connected;
-                let elapsed = start_time.elapsed().as_secs_f64();
-                let eta = if stats.download_rate > 0 && stats.total_wanted > stats.total_done {
-                    let remaining = stats.total_wanted - stats.total_done;
-                    format!("{:.0}s", remaining as f64 / stats.download_rate as f64)
-                } else if finished {
-                    "done".to_string()
-                } else {
-                    "---".to_string()
-                };
+            // Opportunistically fetch TorrentInfo once metadata lands.
+            // This is the signal for the human renderer to switch into
+            // the multi-file block path — it has no effect until the
+            // engine has the info dict.
+            if info_dto.is_none()
+                && stats.has_metadata
+                && let Ok(live_info) = session.torrent_info(info_hash).await
+            {
+                let dto = TorrentInfoDto::from_live(&live_info);
+                // Pad height for cursor-up redraw: 2 header lines +
+                // one line per file + 1 trailing slack for the
+                // optional `... and N more` trailer. Capped to the
+                // progress renderer's default `top_n` of 10 when
+                // the torrent has > 20 files (mirrors the
+                // `MANY_FILES_THRESHOLD` constant in progress.rs).
+                let file_rows = dto.files.len().min(10);
+                max_lines = 2 + file_rows + 1;
+                info_dto = Some(dto);
+            }
 
-                // M137: Show pipeline stats instead of bare peer count
-                let pipeline_info = if let Some(ref p) = stats.pipeline {
-                    format!(
-                        "{{live: {}, connecting: {}, queued: {}, dead: {}, known: {}}}",
-                        p.live, p.connecting, p.queued, p.dead, p.known
-                    )
-                } else {
-                    format!("{peers} peers")
-                };
-                eprint!(
-                    "\r\x1b[2K{pct:5.1}% ({done}/{total}) \u{2193}{down} \u{2191}{up} | {pipeline_info} | ETA {eta} [{elapsed:.0}s]",
-                );
+            if !matches!(mode, PresentationMode::Quiet) && !finished {
+                let stats_dto = TorrentStatsDto::from_live(&stats);
+                let elapsed = start_time.elapsed().as_secs_f64();
+                match mode {
+                    PresentationMode::Quiet => {}
+                    PresentationMode::Json => {
+                        emit_json_tick(&stats_dto, info_dto.as_ref())?;
+                    }
+                    PresentationMode::TtyLine => {
+                        let files_known = info_dto
+                            .as_ref()
+                            .map(|i| i.files.len() > 1)
+                            .unwrap_or(false);
+                        if files_known {
+                            last_block_lines = emit_tty_block(
+                                &stats_dto,
+                                info_dto.as_ref(),
+                                last_block_lines,
+                                max_lines,
+                            )?;
+                        } else {
+                            emit_tty_single_line(&stats, elapsed)?;
+                        }
+                    }
+                    PresentationMode::Plain => {
+                        if last_plain_print.elapsed() >= NON_TTY_INTERVAL {
+                            emit_plain_block(&stats_dto, info_dto.as_ref())?;
+                            last_plain_print = Instant::now();
+                        }
+                    }
+                }
             }
 
             // Pipeline diagnostics (every 5s when --diagnose enabled)
@@ -470,22 +676,6 @@ fn print_final_summary(
     eprintln!("\x1b[1;36m---------------------------------------------------------\x1b[0m");
 }
 
-fn format_size(bytes: u64) -> String {
-    const KIB: u64 = 1024;
-    const MIB: u64 = 1024 * KIB;
-    const GIB: u64 = 1024 * MIB;
-
-    if bytes >= GIB {
-        format!("{:.2} GiB", bytes as f64 / GIB as f64)
-    } else if bytes >= MIB {
-        format!("{:.1} MiB", bytes as f64 / MIB as f64)
-    } else if bytes >= KIB {
-        format!("{:.1} KiB", bytes as f64 / KIB as f64)
-    } else {
-        format!("{bytes} B")
-    }
-}
-
 fn make_filesystem_storage(
     meta: &TorrentMeta,
     output: &Path,
@@ -522,19 +712,6 @@ fn make_filesystem_storage(
     )
     .map_err(|e| anyhow::anyhow!("failed to create storage: {e}"))?;
     Ok(Arc::new(storage))
-}
-
-fn format_rate(bytes_per_sec: u64) -> String {
-    const KIB: u64 = 1024;
-    const MIB: u64 = 1024 * KIB;
-
-    if bytes_per_sec >= MIB {
-        format!("{:.1} MB/s", bytes_per_sec as f64 / MIB as f64)
-    } else if bytes_per_sec >= KIB {
-        format!("{:.1} KB/s", bytes_per_sec as f64 / KIB as f64)
-    } else {
-        format!("{bytes_per_sec} B/s")
-    }
 }
 
 fn state_file_path() -> PathBuf {
@@ -647,9 +824,11 @@ mod tests {
 
     #[test]
     fn build_runtime_creates_runtime() {
-        let mut settings = irontide::session::Settings::default();
-        settings.runtime_worker_threads = 2;
-        settings.pin_cores = true;
+        let settings = irontide::session::Settings {
+            runtime_worker_threads: 2,
+            pin_cores: true,
+            ..irontide::session::Settings::default()
+        };
         let rt = build_runtime(&settings);
         let result = rt.block_on(async { 42 });
         assert_eq!(result, 42);
@@ -657,9 +836,11 @@ mod tests {
 
     #[test]
     fn build_runtime_no_pin() {
-        let mut settings = irontide::session::Settings::default();
-        settings.runtime_worker_threads = 2;
-        settings.pin_cores = false;
+        let settings = irontide::session::Settings {
+            runtime_worker_threads: 2,
+            pin_cores: false,
+            ..irontide::session::Settings::default()
+        };
         let rt = build_runtime(&settings);
         let result = rt.block_on(async { 42 });
         assert_eq!(result, 42);
@@ -667,27 +848,118 @@ mod tests {
 
     #[test]
     fn build_runtime_auto_workers() {
-        let mut settings = irontide::session::Settings::default();
-        settings.runtime_worker_threads = 0;
-        settings.pin_cores = false;
+        let settings = irontide::session::Settings {
+            runtime_worker_threads: 0,
+            pin_cores: false,
+            ..irontide::session::Settings::default()
+        };
         let rt = build_runtime(&settings);
         let result = rt.block_on(async { 42 });
         assert_eq!(result, 42);
     }
 
+    /// Round-trip a `TorrentStats` through `TorrentStatsDto::from_live`
+    /// and confirm the critical fields map correctly. The DTO uses
+    /// serde renames (`downloaded` ← `total_done`, `uploaded` ←
+    /// `total_upload`), and the match-based state label must stay
+    /// stable across `Debug` format changes — both are load-bearing
+    /// for the M159 progress renderer.
     #[test]
-    fn format_size_units() {
-        assert_eq!(format_size(0), "0 B");
-        assert_eq!(format_size(512), "512 B");
-        assert_eq!(format_size(1024), "1.0 KiB");
-        assert_eq!(format_size(1048576), "1.0 MiB");
-        assert_eq!(format_size(1073741824), "1.00 GiB");
+    fn test_from_live_stats_round_trip() {
+        use irontide::core::{Id20, InfoHashes};
+        use irontide::session::{TorrentState, TorrentStats};
+
+        let id = Id20::from([0x11; 20]);
+        let stats = TorrentStats {
+            state: TorrentState::Downloading,
+            name: "test.iso".to_owned(),
+            total_done: 12_345,
+            total_upload: 6_789,
+            total: 1_000_000,
+            download_rate: 1024,
+            upload_rate: 512,
+            pieces_have: 3,
+            pieces_total: 10,
+            peers_connected: 4,
+            peers_available: 8,
+            is_paused: false,
+            is_finished: false,
+            is_seeding: false,
+            user_seed_mode: false,
+            progress: 0.25,
+            progress_ppm: 250_000,
+            info_hashes: InfoHashes::v1_only(id),
+            ..TorrentStats::default()
+        };
+
+        let dto = TorrentStatsDto::from_live(&stats);
+
+        assert_eq!(dto.name, "test.iso");
+        assert_eq!(dto.state, "Downloading");
+        // rename: total_done → downloaded
+        assert_eq!(dto.downloaded, 12_345);
+        // rename: total_upload → uploaded
+        assert_eq!(dto.uploaded, 6_789);
+        assert_eq!(dto.total, 1_000_000);
+        assert_eq!(dto.download_rate, 1024);
+        assert_eq!(dto.upload_rate, 512);
+        assert_eq!(dto.pieces_have, 3);
+        assert_eq!(dto.pieces_total, 10);
+        assert_eq!(dto.peers_connected, 4);
+        // f32 → f64 widening is lossless for small exact values.
+        assert!((dto.progress - 0.25).abs() < f64::EPSILON);
+        assert_eq!(dto.progress_ppm, 250_000);
+        // info_hash_hex should round-trip the 0x11 byte pattern.
+        assert_eq!(
+            dto.info_hash_hex(),
+            "1111111111111111111111111111111111111111"
+        );
     }
 
+    /// Build a `TorrentInfo` with three files, convert via
+    /// `TorrentInfoDto::from_live`, and confirm file metadata survives
+    /// the conversion. Exercises the `FileInfoDto::from_live` path too.
     #[test]
-    fn format_rate_units() {
-        assert_eq!(format_rate(0), "0 B/s");
-        assert_eq!(format_rate(1024), "1.0 KB/s");
-        assert_eq!(format_rate(1048576), "1.0 MB/s");
+    fn test_from_live_info_maps_files() {
+        use irontide::core::Id20;
+        use irontide::session::{FileInfo, TorrentInfo};
+
+        let info = TorrentInfo {
+            info_hash: Id20::from([0u8; 20]),
+            name: "bundle".to_owned(),
+            total_length: 6_000,
+            piece_length: 16_384,
+            num_pieces: 1,
+            files: vec![
+                FileInfo {
+                    path: PathBuf::from("a/first.bin"),
+                    length: 1_000,
+                },
+                FileInfo {
+                    path: PathBuf::from("a/second.bin"),
+                    length: 2_000,
+                },
+                FileInfo {
+                    path: PathBuf::from("a/third.bin"),
+                    length: 3_000,
+                },
+            ],
+            private: false,
+        };
+
+        let dto = TorrentInfoDto::from_live(&info);
+
+        assert_eq!(dto.name, "bundle");
+        assert_eq!(dto.total_length, 6_000);
+        assert_eq!(dto.piece_length, 16_384);
+        assert_eq!(dto.num_pieces, 1);
+        assert_eq!(dto.files.len(), 3);
+        assert_eq!(dto.files[0].path, "a/first.bin");
+        assert_eq!(dto.files[0].length, 1_000);
+        assert_eq!(dto.files[1].path, "a/second.bin");
+        assert_eq!(dto.files[1].length, 2_000);
+        assert_eq!(dto.files[2].path, "a/third.bin");
+        assert_eq!(dto.files[2].length, 3_000);
+        assert!(!dto.private);
     }
 }
