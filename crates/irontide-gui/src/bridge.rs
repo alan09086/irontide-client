@@ -65,15 +65,22 @@ async fn run_session(
         }
     }
 
-    // Signal UI ready.
+    // Signal UI ready + initialise the torrent model.
     state.lock().phase = AppPhase::Ready;
     let _ = weak.upgrade_in_event_loop(|win| {
+        crate::poll::init_model(&win);
         win.set_session_ready(true);
         win.set_status_text("Ready".into());
     });
 
-    // Wait for shutdown signal.
-    let _ = shutdown_rx.await;
+    // Start poll loop and wait for shutdown.
+    let poll_handle = tokio::spawn(
+        crate::poll::poll_loop(session.clone(), weak.clone(), state.clone()),
+    );
+    tokio::select! {
+        _ = shutdown_rx => {}
+        _ = poll_handle => {}
+    }
 
     // Save resume state before shutdown.
     match session.save_resume_state().await {

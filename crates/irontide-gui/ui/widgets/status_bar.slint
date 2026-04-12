@@ -1,0 +1,61 @@
+// Status bar at the bottom of the main window.
+
+import { Palette } from "../palette.slint";
+
+export component StatusBar {
+    in property <string> down-rate: "\u{2014}";
+    in property <string> up-rate: "\u{2014}";
+    in property <int> total-torrents: 0;
+    in property <int> dht-nodes: 0;
+    in property <int> listen-port: 0;
+
+    height: 24px;
+
+    Rectangle {
+        background: Palette.surface;
+        border-width: 0;
+
+        HorizontalLayout {
+            padding-left: 8px;
+            padding-right: 8px;
+            spacing: 16px;
+
+            // Left: rates
+            Text {
+                text: "\u{2193} " + root.down-rate;
+                color: Palette.text;
+                font-size: 12px;
+                vertical-alignment: center;
+            }
+            Text {
+                text: "\u{2191} " + root.up-rate;
+                color: Palette.text;
+                font-size: 12px;
+                vertical-alignment: center;
+            }
+
+            // Spacer
+            Rectangle { horizontal-stretch: 1; }
+
+            // Right: counts
+            Text {
+                text: root.total-torrents + " torrents";
+                color: Palette.disabled-text;
+                font-size: 12px;
+                vertical-alignment: center;
+            }
+            Text {
+                text: "DHT: " + root.dht-nodes;
+                color: Palette.disabled-text;
+                font-size: 12px;
+                vertical-alignment: center;
+            }
+            Text {
+                text: "Port: " + root.listen-port;
+                color: Palette.disabled-text;
+                font-size: 12px;
+                vertical-alignment: center;
+            }
+        }
+    }
+}

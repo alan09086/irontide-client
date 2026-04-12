@@ -88,6 +88,20 @@ pub struct LimitsConfig {
     pub max_active_uploads: Option<i32>,
 }
 
+/// `[gui]` — desktop GUI state (column layout, visibility, widths).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct GuiConfig {
+    /// Ordered list of column identifiers (e.g. `["name", "size", "progress"]`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub column_order: Option<Vec<String>>,
+    /// Columns that are visible (by identifier).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub column_visibility: Option<Vec<String>>,
+    /// Per-column pixel widths, in the same order as `column_order`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub column_widths: Option<Vec<f32>>,
+}
+
 // ── Top-level config ────────────────────────────────────────────────
 
 /// User-facing TOML configuration file.
@@ -123,6 +137,9 @@ pub struct ConfigFile {
     /// Rate limits and peer caps.
     #[serde(default, skip_serializing_if = "section_is_default")]
     pub limits: LimitsConfig,
+    /// GUI column layout and visibility state.
+    #[serde(default, skip_serializing_if = "section_is_default")]
+    pub gui: GuiConfig,
 }
 
 /// Returns `true` when every field in a section is `None`, allowing
@@ -222,6 +239,7 @@ impl ConfigFile {
                 max_active_downloads: Some(settings.active_downloads),
                 max_active_uploads: Some(settings.active_seeds),
             },
+            gui: GuiConfig::default(),
         }
     }
 }
@@ -319,6 +337,48 @@ pub fn load(config_path: Option<&Path>, cli_overrides: &ConfigFile) -> Result<Se
     settings.validate().context("invalid configuration")?;
 
     Ok(settings)
+}
+
+/// Persist GUI-specific configuration back to the TOML file.
+///
+/// Reads the existing file (if any), replaces the `[gui]` section, and
+/// writes the result back. All other sections (`[session]`, `[api]`,
+/// `[limits]`) are preserved verbatim.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read/written, or if the existing
+/// file content is not valid TOML.
+pub fn save_gui_config(config_path: Option<&Path>, gui: &GuiConfig) -> Result<()> {
+    let path = resolve_config_path(config_path);
+
+    let mut config = if path.exists() {
+        let text = std::fs::read_to_string(&path)
+            .with_context(|| format!("failed to read config file: {path:?}"))?;
+        toml::from_str::<ConfigFile>(&text)
+            .with_context(|| format!("failed to parse config file: {path:?}"))?
+    } else {
+        ConfigFile::default()
+    };
+
+    config.gui = gui.clone();
+
+    let serialized =
+        toml::to_string_pretty(&config).context("failed to serialize config to TOML")?;
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create config directory: {parent:?}"))?;
+    }
+
+    // Write atomically: write to a sibling temp file, then rename.
+    let tmp_path = path.with_extension("toml.tmp");
+    std::fs::write(&tmp_path, &serialized)
+        .with_context(|| format!("failed to write temp config file: {tmp_path:?}"))?;
+    std::fs::rename(&tmp_path, &path)
+        .with_context(|| format!("failed to rename temp config to {path:?}"))?;
+
+    Ok(())
 }
 
 // ── Runtime construction ────────────────────────────────────────────
@@ -666,6 +726,7 @@ max_peers_per_torrent = 50
                 max_active_downloads: Some(5),
                 max_active_uploads: Some(10),
             },
+            gui: GuiConfig::default(),
         };
 
         let serialized = toml::to_string_pretty(&original).expect("serialize");
@@ -808,5 +869,76 @@ max_peers_per_torrent = 50
         let rt = build_runtime(&settings);
         let result = rt.block_on(async { 42 });
         assert_eq!(result, 42);
+    }
+
+    // ---- M163: GuiConfig tests ----
+
+    #[test]
+    fn test_gui_config_round_trip() {
+        let original = GuiConfig {
+            column_order: Some(vec!["name".into(), "size".into(), "progress".into()]),
+            column_visibility: Some(vec!["name".into(), "progress".into()]),
+            column_widths: Some(vec![200.0_f32, 80.0_f32, 120.0_f32]),
+        };
+
+        let serialized = toml::to_string_pretty(&original).expect("serialize GuiConfig");
+        let deserialized: GuiConfig = toml::from_str(&serialized).expect("deserialize GuiConfig");
+
+        assert_eq!(deserialized.column_order, original.column_order);
+        assert_eq!(deserialized.column_visibility, original.column_visibility);
+        assert_eq!(deserialized.column_widths, original.column_widths);
+    }
+
+    #[test]
+    fn test_gui_config_default_absent() {
+        let toml_str = r#"
+[session]
+listen_port = 12345
+"#;
+        let config: ConfigFile = toml::from_str(toml_str).expect("valid TOML");
+        assert_eq!(
+            config.gui,
+            GuiConfig::default(),
+            "missing [gui] section should produce default GuiConfig"
+        );
+    }
+
+    #[test]
+    fn test_save_gui_preserves_sections() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let config_path = dir.path().join("config.toml");
+
+        // Write a file with [session] already present.
+        std::fs::write(
+            &config_path,
+            r#"
+[session]
+listen_port = 42020
+"#,
+        )
+        .expect("write initial config");
+
+        let gui = GuiConfig {
+            column_order: Some(vec!["name".into(), "eta".into()]),
+            column_visibility: Some(vec!["name".into()]),
+            column_widths: Some(vec![150.0_f32, 60.0_f32]),
+        };
+
+        save_gui_config(Some(&config_path), &gui).expect("save_gui_config should succeed");
+
+        let text = std::fs::read_to_string(&config_path).expect("read back config");
+        let reloaded: ConfigFile = toml::from_str(&text).expect("parse saved config");
+
+        // [session] must still be intact.
+        assert_eq!(
+            reloaded.session.listen_port,
+            Some(42020),
+            "[session] should be preserved after save_gui_config"
+        );
+
+        // [gui] must contain the new values.
+        assert_eq!(reloaded.gui.column_order, gui.column_order);
+        assert_eq!(reloaded.gui.column_visibility, gui.column_visibility);
+        assert_eq!(reloaded.gui.column_widths, gui.column_widths);
     }
 }

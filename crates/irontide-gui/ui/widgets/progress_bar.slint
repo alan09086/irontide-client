@@ -1,0 +1,38 @@
+// Custom progress bar widget for torrent list rows.
+
+import { Palette } from "../palette.slint";
+
+export component TorrentProgressBar {
+    in property <float> progress: 0.0;
+    in property <color> fill-color: #4caf50;
+    in property <string> progress-text: "";
+
+    height: 14px;
+
+    // Track
+    Rectangle {
+        background: Palette.surface;
+        border-radius: 3px;
+
+        // Fill
+        Rectangle {
+            x: 0;
+            y: 0;
+            width: parent.width * clamp(root.progress, 0.0, 1.0);
+            height: parent.height;
+            background: root.fill-color;
+            border-radius: 3px;
+        }
+
+        // Percentage text overlay
+        Text {
+            text: root.progress-text;
+            color: Palette.text;
+            font-size: 10px;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+            x: 0;
+            width: parent.width - 4px;
+        }
+    }
+}

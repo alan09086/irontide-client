@@ -1,16 +1,27 @@
-// IronTide GUI — dark-theme Slint scaffold (M162)
+// IronTide GUI — dark-theme Slint scaffold (M162) + torrent list (M163)
 // Custom widgets only — no std-widgets (hit-region issues on native backends).
 
-global Palette {
-    out property <color> background: #1a1a2e;
-    out property <color> surface: #16213e;
-    out property <color> text: #e0e0e0;
-    out property <color> accent: #0f3460;
-    out property <color> border: #333333;
-    out property <color> menu-bg: #222244;
-    out property <color> menu-hover: #2a2a5e;
-    out property <color> disabled-text: #666666;
-    in-out property <bool> dark-mode: true;
+import { Palette } from "palette.slint";
+import { TorrentProgressBar } from "widgets/progress_bar.slint";
+import { StatusBar } from "widgets/status_bar.slint";
+
+export { Palette }
+
+export struct TorrentRow {
+    info-hash: string,
+    name: string,
+    total-size: string,
+    progress: float,
+    progress-text: string,
+    down-rate: string,
+    up-rate: string,
+    seeds: string,
+    peers: string,
+    eta: string,
+    state: string,
+    state-color: color,
+    ratio: string,
+    selected: bool,
 }
 
 component MenuButton {
@@ -185,89 +196,526 @@ component Spinner {
 
 export component MainWindow inherits Window {
     title: "IronTide";
+    min-width: 700px;
+    min-height: 400px;
     preferred-width: 900px;
     preferred-height: 600px;
     background: Palette.background;
 
+    // ── Session state ──
     in-out property <bool> session-ready: false;
     in-out property <string> status-text: "";
     in-out property <string> error-text: "";
     in-out property <string> toast-text: "";
     in-out property <bool> toast-visible: false;
 
+    // ── Torrent model ──
+    in-out property <[TorrentRow]> torrent-model;
+
+    // ── Sort state ──
+    in-out property <int> sort-column: 0;
+    in-out property <bool> sort-ascending: true;
+
+    // ── Status bar ──
+    in-out property <string> status-down-rate: "\u{2014}";
+    in-out property <string> status-up-rate: "\u{2014}";
+    in-out property <int> status-total-torrents: 0;
+    in-out property <int> status-dht-nodes: 0;
+    in-out property <int> status-listen-port: 0;
+
+    // ── Modifier tracking ──
+    in-out property <bool> shift-held: false;
+    in-out property <bool> ctrl-held: false;
+
+    // ── Column widths (set from Rust, used for layout) ──
+    // Fixed columns: Progress(120) + State(90) + DownRate(80) + UpRate(80) +
+    //                Seeds(50) + Peers(50) + Eta(70) + Size(80) + Ratio(60) = 680px
+    // Name gets the rest. These are the defaults; Rust can override.
+    in-out property <length> col-name-width: root.width > 780px ? root.width - 680px : 100px;
+    in-out property <length> col-progress-width: 120px;
+    in-out property <length> col-state-width: 90px;
+    in-out property <length> col-down-rate-width: 80px;
+    in-out property <length> col-up-rate-width: 80px;
+    in-out property <length> col-seeds-width: 50px;
+    in-out property <length> col-peers-width: 50px;
+    in-out property <length> col-eta-width: 70px;
+    in-out property <length> col-size-width: 80px;
+    in-out property <length> col-ratio-width: 60px;
+
+    // ── Callbacks ──
     callback menu-file-action(int);
     callback quit-requested();
+    callback sort-requested(/* column index */ int);
+    callback row-clicked(/* info-hash */ string, /* shift */ bool, /* ctrl */ bool);
 
-    VerticalLayout {
-        // Menu bar at top
-        menu := MenuBar {
-            menu-file-action(index) => {
-                root.menu-file-action(index);
+    // ── FocusScope for modifier key tracking ──
+    focus-scope := FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.Shift {
+                root.shift-held = true;
             }
+            if event.text == Key.Control {
+                root.ctrl-held = true;
+            }
+            accept
+        }
+        key-released(event) => {
+            if event.text == Key.Shift {
+                root.shift-held = false;
+            }
+            if event.text == Key.Control {
+                root.ctrl-held = false;
+            }
+            accept
         }
 
-        // Main content area
-        Rectangle {
-            background: Palette.background;
-            vertical-stretch: 1;
+        VerticalLayout {
+            // Menu bar at top
+            menu := MenuBar {
+                menu-file-action(index) => {
+                    root.menu-file-action(index);
+                }
+            }
 
-            // Loading state: spinner + message
-            if !root.session-ready && root.error-text == "": VerticalLayout {
-                alignment: center;
+            // Main content area
+            Rectangle {
+                background: Palette.background;
+                vertical-stretch: 1;
 
-                HorizontalLayout {
+                // Loading state: spinner + message
+                if !root.session-ready && root.error-text == "": VerticalLayout {
                     alignment: center;
-                    Spinner { }
+
+                    HorizontalLayout {
+                        alignment: center;
+                        Spinner { }
+                    }
+
+                    Text {
+                        text: "Starting session...";
+                        color: Palette.disabled-text;
+                        font-size: 16px;
+                        horizontal-alignment: center;
+                    }
                 }
 
-                Text {
-                    text: "Starting session...";
-                    color: Palette.disabled-text;
-                    font-size: 16px;
-                    horizontal-alignment: center;
+                // Ready state with empty model: empty placeholder
+                if root.session-ready && root.error-text == "" && root.torrent-model.length == 0: VerticalLayout {
+                    alignment: center;
+                    spacing: 8px;
+
+                    Text {
+                        text: "No torrents yet.";
+                        color: Palette.text;
+                        font-size: 20px;
+                        horizontal-alignment: center;
+                    }
+
+                    Text {
+                        text: "Use File > Add Magnet to get started.";
+                        color: Palette.disabled-text;
+                        font-size: 14px;
+                        horizontal-alignment: center;
+                    }
+                }
+
+                // Ready state with torrents: table header + list
+                if root.session-ready && root.error-text == "" && root.torrent-model.length > 0: VerticalLayout {
+                    spacing: 0px;
+
+                    // ── Table Header ──
+                    Rectangle {
+                        height: 24px;
+                        background: Palette.surface;
+
+                        // Name
+                        Rectangle {
+                            x: 0px;
+                            width: root.col-name-width;
+                            height: parent.height;
+
+                            hdr-name-touch := TouchArea {
+                                clicked => { root.sort-requested(0); }
+                                mouse-cursor: pointer;
+                            }
+                            Text {
+                                text: "Name" + (root.sort-column == 0 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
+                                color: Palette.text;
+                                font-size: 12px;
+                                font-weight: 700;
+                                vertical-alignment: center;
+                                horizontal-alignment: left;
+                                x: 6px;
+                            }
+                        }
+
+                        // Progress
+                        Rectangle {
+                            x: root.col-name-width;
+                            width: root.col-progress-width;
+                            height: parent.height;
+
+                            hdr-progress-touch := TouchArea {
+                                clicked => { root.sort-requested(1); }
+                                mouse-cursor: pointer;
+                            }
+                            Text {
+                                text: "Progress" + (root.sort-column == 1 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
+                                color: Palette.text;
+                                font-size: 12px;
+                                font-weight: 700;
+                                vertical-alignment: center;
+                                horizontal-alignment: left;
+                                x: 4px;
+                            }
+                        }
+
+                        // State
+                        Rectangle {
+                            x: root.col-name-width + root.col-progress-width;
+                            width: root.col-state-width;
+                            height: parent.height;
+
+                            hdr-state-touch := TouchArea {
+                                clicked => { root.sort-requested(2); }
+                                mouse-cursor: pointer;
+                            }
+                            Text {
+                                text: "State" + (root.sort-column == 2 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
+                                color: Palette.text;
+                                font-size: 12px;
+                                font-weight: 700;
+                                vertical-alignment: center;
+                                horizontal-alignment: left;
+                                x: 4px;
+                            }
+                        }
+
+                        // Down Rate
+                        Rectangle {
+                            x: root.col-name-width + root.col-progress-width + root.col-state-width;
+                            width: root.col-down-rate-width;
+                            height: parent.height;
+
+                            hdr-down-rate-touch := TouchArea {
+                                clicked => { root.sort-requested(3); }
+                                mouse-cursor: pointer;
+                            }
+                            Text {
+                                text: "\u{2193}" + (root.sort-column == 3 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
+                                color: Palette.text;
+                                font-size: 12px;
+                                font-weight: 700;
+                                vertical-alignment: center;
+                                horizontal-alignment: right;
+                                x: 0;
+                                width: parent.width - 6px;
+                            }
+                        }
+
+                        // Up Rate
+                        Rectangle {
+                            x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width;
+                            width: root.col-up-rate-width;
+                            height: parent.height;
+
+                            hdr-up-rate-touch := TouchArea {
+                                clicked => { root.sort-requested(4); }
+                                mouse-cursor: pointer;
+                            }
+                            Text {
+                                text: "\u{2191}" + (root.sort-column == 4 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
+                                color: Palette.text;
+                                font-size: 12px;
+                                font-weight: 700;
+                                vertical-alignment: center;
+                                horizontal-alignment: right;
+                                x: 0;
+                                width: parent.width - 6px;
+                            }
+                        }
+
+                        // Seeds
+                        Rectangle {
+                            x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width;
+                            width: root.col-seeds-width;
+                            height: parent.height;
+
+                            hdr-seeds-touch := TouchArea {
+                                clicked => { root.sort-requested(5); }
+                                mouse-cursor: pointer;
+                            }
+                            Text {
+                                text: "Seeds" + (root.sort-column == 5 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
+                                color: Palette.text;
+                                font-size: 12px;
+                                font-weight: 700;
+                                vertical-alignment: center;
+                                horizontal-alignment: right;
+                                x: 0;
+                                width: parent.width - 6px;
+                            }
+                        }
+
+                        // Peers
+                        Rectangle {
+                            x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width;
+                            width: root.col-peers-width;
+                            height: parent.height;
+
+                            hdr-peers-touch := TouchArea {
+                                clicked => { root.sort-requested(6); }
+                                mouse-cursor: pointer;
+                            }
+                            Text {
+                                text: "Peers" + (root.sort-column == 6 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
+                                color: Palette.text;
+                                font-size: 12px;
+                                font-weight: 700;
+                                vertical-alignment: center;
+                                horizontal-alignment: right;
+                                x: 0;
+                                width: parent.width - 6px;
+                            }
+                        }
+
+                        // ETA
+                        Rectangle {
+                            x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width;
+                            width: root.col-eta-width;
+                            height: parent.height;
+
+                            hdr-eta-touch := TouchArea {
+                                clicked => { root.sort-requested(7); }
+                                mouse-cursor: pointer;
+                            }
+                            Text {
+                                text: "ETA" + (root.sort-column == 7 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
+                                color: Palette.text;
+                                font-size: 12px;
+                                font-weight: 700;
+                                vertical-alignment: center;
+                                horizontal-alignment: right;
+                                x: 0;
+                                width: parent.width - 6px;
+                            }
+                        }
+
+                        // Size
+                        Rectangle {
+                            x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width;
+                            width: root.col-size-width;
+                            height: parent.height;
+
+                            hdr-size-touch := TouchArea {
+                                clicked => { root.sort-requested(8); }
+                                mouse-cursor: pointer;
+                            }
+                            Text {
+                                text: "Size" + (root.sort-column == 8 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
+                                color: Palette.text;
+                                font-size: 12px;
+                                font-weight: 700;
+                                vertical-alignment: center;
+                                horizontal-alignment: right;
+                                x: 0;
+                                width: parent.width - 6px;
+                            }
+                        }
+
+                        // Ratio
+                        Rectangle {
+                            x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width + root.col-size-width;
+                            width: root.col-ratio-width;
+                            height: parent.height;
+
+                            hdr-ratio-touch := TouchArea {
+                                clicked => { root.sort-requested(9); }
+                                mouse-cursor: pointer;
+                            }
+                            Text {
+                                text: "Ratio" + (root.sort-column == 9 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
+                                color: Palette.text;
+                                font-size: 12px;
+                                font-weight: 700;
+                                vertical-alignment: center;
+                                horizontal-alignment: right;
+                                x: 0;
+                                width: parent.width - 6px;
+                            }
+                        }
+
+                        // Header bottom border
+                        Rectangle {
+                            y: parent.height - 1px;
+                            height: 1px;
+                            background: Palette.border;
+                        }
+                    }
+
+                    // ── Torrent List (scrollable) ──
+                    Flickable {
+                        vertical-stretch: 1;
+
+                        for item[index] in root.torrent-model: Rectangle {
+                            height: 28px;
+                            background: item.selected
+                                ? Palette.accent
+                                : (row-touch.has-hover
+                                    ? Palette.menu-hover
+                                    : (mod(index, 2) == 0 ? Palette.background : Palette.row-alt));
+
+                            row-touch := TouchArea {
+                                clicked => {
+                                    root.row-clicked(item.info-hash, root.shift-held, root.ctrl-held);
+                                }
+                                mouse-cursor: pointer;
+                            }
+
+                            // Name
+                            Text {
+                                text: item.name;
+                                color: Palette.text;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                                horizontal-alignment: left;
+                                overflow: elide;
+                                x: 6px;
+                                width: root.col-name-width - 12px;
+                            }
+
+                            // Progress bar
+                            TorrentProgressBar {
+                                x: root.col-name-width + 4px;
+                                y: (parent.height - 14px) / 2;
+                                width: root.col-progress-width - 8px;
+                                progress: item.progress;
+                                fill-color: item.state-color;
+                                progress-text: item.progress-text;
+                            }
+
+                            // State
+                            Text {
+                                text: item.state;
+                                color: item.state-color;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                                horizontal-alignment: left;
+                                overflow: elide;
+                                x: root.col-name-width + root.col-progress-width + 4px;
+                                width: root.col-state-width - 8px;
+                            }
+
+                            // Down Rate
+                            Text {
+                                text: item.down-rate;
+                                color: Palette.text;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                                horizontal-alignment: right;
+                                x: root.col-name-width + root.col-progress-width + root.col-state-width;
+                                width: root.col-down-rate-width - 6px;
+                            }
+
+                            // Up Rate
+                            Text {
+                                text: item.up-rate;
+                                color: Palette.text;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                                horizontal-alignment: right;
+                                x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width;
+                                width: root.col-up-rate-width - 6px;
+                            }
+
+                            // Seeds
+                            Text {
+                                text: item.seeds;
+                                color: Palette.text;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                                horizontal-alignment: right;
+                                x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width;
+                                width: root.col-seeds-width - 6px;
+                            }
+
+                            // Peers
+                            Text {
+                                text: item.peers;
+                                color: Palette.text;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                                horizontal-alignment: right;
+                                x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width;
+                                width: root.col-peers-width - 6px;
+                            }
+
+                            // ETA
+                            Text {
+                                text: item.eta;
+                                color: Palette.text;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                                horizontal-alignment: right;
+                                x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width;
+                                width: root.col-eta-width - 6px;
+                            }
+
+                            // Size
+                            Text {
+                                text: item.total-size;
+                                color: Palette.text;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                                horizontal-alignment: right;
+                                x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width;
+                                width: root.col-size-width - 6px;
+                            }
+
+                            // Ratio
+                            Text {
+                                text: item.ratio;
+                                color: Palette.text;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                                horizontal-alignment: right;
+                                x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width + root.col-size-width;
+                                width: root.col-ratio-width - 6px;
+                            }
+                        }
+                    }
+                }
+
+                // Error state
+                if root.error-text != "": VerticalLayout {
+                    alignment: center;
+                    spacing: 8px;
+
+                    Text {
+                        text: "Error";
+                        color: #ff4444;
+                        font-size: 20px;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                    }
+
+                    Text {
+                        text: root.error-text;
+                        color: #ff6666;
+                        font-size: 14px;
+                        horizontal-alignment: center;
+                        wrap: word-wrap;
+                    }
                 }
             }
 
-            // Ready state: empty placeholder
-            if root.session-ready && root.error-text == "": VerticalLayout {
-                alignment: center;
-                spacing: 8px;
-
-                Text {
-                    text: "No torrents yet.";
-                    color: Palette.text;
-                    font-size: 20px;
-                    horizontal-alignment: center;
-                }
-
-                Text {
-                    text: "Use File > Add Magnet to get started.";
-                    color: Palette.disabled-text;
-                    font-size: 14px;
-                    horizontal-alignment: center;
-                }
-            }
-
-            // Error state
-            if root.error-text != "": VerticalLayout {
-                alignment: center;
-                spacing: 8px;
-
-                Text {
-                    text: "Error";
-                    color: #ff4444;
-                    font-size: 20px;
-                    font-weight: 700;
-                    horizontal-alignment: center;
-                }
-
-                Text {
-                    text: root.error-text;
-                    color: #ff6666;
-                    font-size: 14px;
-                    horizontal-alignment: center;
-                    wrap: word-wrap;
-                }
+            // Status bar at bottom (visible when session ready)
+            if root.session-ready: StatusBar {
+                down-rate: root.status-down-rate;
+                up-rate: root.status-up-rate;
+                total-torrents: root.status-total-torrents;
+                dht-nodes: root.status-dht-nodes;
+                listen-port: root.status-listen-port;
             }
         }
     }
