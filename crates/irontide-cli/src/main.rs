@@ -8,6 +8,7 @@ mod format;
 mod info;
 mod progress;
 mod repl;
+mod tui;
 
 use clap::{Parser, Subcommand};
 use std::io::Write as _;
@@ -237,6 +238,8 @@ enum Command {
     },
     /// Open an interactive REPL shell against a running daemon
     Shell,
+    /// Launch the full-screen TUI dashboard against a running daemon
+    Tui,
     // `Settings` subcommand deferred to a future milestone (M159 scope trim).
 }
 
@@ -495,6 +498,15 @@ fn main() {
             })
         }
         Command::Shell => match repl::run(repl::ShellOpts {
+            api_url: api_url_flag,
+        }) {
+            Ok(()) => 0,
+            Err(e) => {
+                eprintln!("error: {e}");
+                1
+            }
+        },
+        Command::Tui => match tui::run(tui::TuiOpts {
             api_url: api_url_flag,
         }) {
             Ok(()) => 0,

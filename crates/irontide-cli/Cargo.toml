@@ -39,6 +39,8 @@ futures = "0.3"
 thiserror = { workspace = true }
 rustyline = "14"
 shlex = "1"
+ratatui = "0.28"
+crossterm = { version = "0.28", features = ["event-stream"] }
 
 [dev-dependencies]
 insta = { version = "1", features = ["json"] }

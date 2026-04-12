@@ -447,6 +447,9 @@ fn dispatch_batch(rt: &tokio::runtime::Runtime, client: &ApiClient, cli: Cli) {
             Command::Shell => Err(CliError::InvalidInput(
                 "already inside 'shell' — ignoring nested invocation".to_owned(),
             )),
+            Command::Tui => Err(CliError::InvalidInput(
+                "'tui' is not available inside the REPL — use batch mode".to_owned(),
+            )),
         }
     });
 
