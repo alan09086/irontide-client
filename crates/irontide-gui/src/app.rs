@@ -21,10 +21,7 @@ pub enum MenuAction {
 /// The GUI callbacks are synchronous (main thread), but `SessionHandle` methods
 /// are async (tokio background thread). `GuiCommand` bridges that gap via an
 /// unbounded mpsc channel.
-///
-/// All variants will be wired to UI callbacks in M164 Steps 3-7.
 #[derive(Debug)]
-#[allow(dead_code)] // Variants used by bridge.rs + wired in Steps 3-7
 pub enum GuiCommand {
     /// Add a torrent from a magnet URI.
     AddMagnet {
@@ -80,10 +77,7 @@ pub enum GuiCommand {
 ///
 /// Mirrors the `MenuAction` pattern with `from_index` for Slint callback
 /// integration. Indices must remain stable across releases.
-///
-/// Wired to the context menu in M164 Step 3.
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[allow(dead_code)] // Wired in Step 3
 pub enum ContextAction {
     /// Pause the selected torrent(s).
     Pause,
@@ -106,7 +100,6 @@ pub enum ContextAction {
 impl ContextAction {
     /// Parse a context-menu callback index into a `ContextAction`.
     /// Returns `None` for out-of-bounds indices.
-    #[allow(dead_code)] // Wired in Step 3
     pub fn from_index(index: i32) -> Option<Self> {
         match index {
             0 => Some(Self::Pause),
@@ -180,7 +173,7 @@ impl AppState {
     }
 
     /// Select all torrents from the provided info-hash list.
-    #[allow(dead_code)] // Used by Ctrl+A handler in Step 3
+    #[allow(dead_code)] // Wired by Ctrl+A handler in a later step
     pub fn select_all(&mut self, all_hashes: &[String]) {
         self.selected.clear();
         for h in all_hashes {
@@ -229,6 +222,78 @@ impl AppState {
             }
         }
         // Don't update last_clicked on shift-click (anchor stays)
+    }
+}
+
+/// Smart enable/disable state for the context menu.
+///
+/// Computed from the display-state strings of the selected torrents.
+/// Rules:
+/// - Pause: enabled when at least one selected torrent is *not* paused.
+/// - Resume: enabled when at least one selected torrent *is* paused.
+/// - Seed Only: enabled when at least one is not in seed mode AND none are
+///   fetching metadata or checking.
+/// - Resume Download: enabled when at least one is in seed mode.
+/// - Recheck: enabled when none are fetching metadata or checking.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ContextMenuState {
+    /// Whether the "Pause" action should be enabled.
+    pub can_pause: bool,
+    /// Whether the "Resume" action should be enabled.
+    pub can_resume: bool,
+    /// Whether the "Seed Only" action should be enabled.
+    pub can_seed_only: bool,
+    /// Whether the "Resume Download" action should be enabled.
+    pub can_resume_download: bool,
+    /// Whether the "Recheck" action should be enabled.
+    pub can_recheck: bool,
+}
+
+impl ContextMenuState {
+    /// Compute the smart enable/disable state from a slice of display-state
+    /// strings (as produced by `format::format_state`).
+    ///
+    /// An empty slice disables all actions.
+    pub fn compute(states: &[&str]) -> Self {
+        if states.is_empty() {
+            return Self {
+                can_pause: false,
+                can_resume: false,
+                can_seed_only: false,
+                can_resume_download: false,
+                can_recheck: false,
+            };
+        }
+
+        let mut any_paused = false;
+        let mut any_not_paused = false;
+        let mut any_seed_mode = false;
+        let mut any_not_seed_mode = false;
+        let mut any_fetching_or_checking = false;
+
+        for &state_str in states {
+            if state_str == "paused" {
+                any_paused = true;
+            } else {
+                any_not_paused = true;
+            }
+            if state_str == "seed only" {
+                any_seed_mode = true;
+            } else {
+                any_not_seed_mode = true;
+            }
+            if state_str == "fetching metadata" || state_str == "checking" {
+                any_fetching_or_checking = true;
+            }
+        }
+
+        Self {
+            can_pause: any_not_paused,
+            can_resume: any_paused,
+            can_seed_only: any_not_seed_mode && !any_fetching_or_checking,
+            can_resume_download: any_seed_mode,
+            can_recheck: !any_fetching_or_checking,
+        }
     }
 }
 
@@ -402,5 +467,115 @@ mod tests {
         assert_eq!(MenuAction::from_index(0), Some(MenuAction::AddMagnet));
         assert_eq!(MenuAction::from_index(1), Some(MenuAction::AddTorrentFile));
         assert_eq!(MenuAction::from_index(2), Some(MenuAction::Quit));
+    }
+
+    // ── ContextMenuState tests ────────────────────────────────────────────
+
+    #[test]
+    fn ctx_menu_empty_selection_disables_all() {
+        let state = ContextMenuState::compute(&[]);
+        assert!(!state.can_pause);
+        assert!(!state.can_resume);
+        assert!(!state.can_seed_only);
+        assert!(!state.can_resume_download);
+        assert!(!state.can_recheck);
+    }
+
+    #[test]
+    fn ctx_menu_all_paused() {
+        let state = ContextMenuState::compute(&["paused", "paused"]);
+        // Can't pause something already paused.
+        assert!(!state.can_pause);
+        // Can resume paused torrents.
+        assert!(state.can_resume);
+        // Paused is not seed mode.
+        assert!(state.can_seed_only);
+        assert!(!state.can_resume_download);
+        assert!(state.can_recheck);
+    }
+
+    #[test]
+    fn ctx_menu_all_downloading() {
+        let state = ContextMenuState::compute(&["downloading", "downloading"]);
+        assert!(state.can_pause);
+        assert!(!state.can_resume);
+        assert!(state.can_seed_only);
+        assert!(!state.can_resume_download);
+        assert!(state.can_recheck);
+    }
+
+    #[test]
+    fn ctx_menu_mixed_paused_and_downloading() {
+        let state = ContextMenuState::compute(&["paused", "downloading"]);
+        // At least one not paused → can pause.
+        assert!(state.can_pause);
+        // At least one paused → can resume.
+        assert!(state.can_resume);
+        assert!(state.can_seed_only);
+        assert!(!state.can_resume_download);
+        assert!(state.can_recheck);
+    }
+
+    #[test]
+    fn ctx_menu_includes_seed_only() {
+        let state = ContextMenuState::compute(&["seed only", "downloading"]);
+        assert!(state.can_pause);
+        assert!(!state.can_resume);
+        assert!(state.can_seed_only);
+        // At least one in seed mode → can resume download.
+        assert!(state.can_resume_download);
+        assert!(state.can_recheck);
+    }
+
+    #[test]
+    fn ctx_menu_all_seed_only() {
+        let state = ContextMenuState::compute(&["seed only", "seed only"]);
+        assert!(state.can_pause);
+        assert!(!state.can_resume);
+        // All in seed mode → can't set seed only.
+        assert!(!state.can_seed_only);
+        assert!(state.can_resume_download);
+        assert!(state.can_recheck);
+    }
+
+    #[test]
+    fn ctx_menu_fetching_metadata_disables_seed_and_recheck() {
+        let state = ContextMenuState::compute(&["fetching metadata", "downloading"]);
+        assert!(state.can_pause);
+        assert!(!state.can_resume);
+        // Fetching metadata → can't seed only, can't recheck.
+        assert!(!state.can_seed_only);
+        assert!(!state.can_resume_download);
+        assert!(!state.can_recheck);
+    }
+
+    #[test]
+    fn ctx_menu_checking_disables_seed_and_recheck() {
+        let state = ContextMenuState::compute(&["checking"]);
+        assert!(state.can_pause);
+        assert!(!state.can_resume);
+        assert!(!state.can_seed_only);
+        assert!(!state.can_resume_download);
+        assert!(!state.can_recheck);
+    }
+
+    #[test]
+    fn ctx_menu_seeding_state() {
+        let state = ContextMenuState::compute(&["seeding"]);
+        assert!(state.can_pause);
+        assert!(!state.can_resume);
+        assert!(state.can_seed_only);
+        assert!(!state.can_resume_download);
+        assert!(state.can_recheck);
+    }
+
+    #[test]
+    fn ctx_menu_single_paused() {
+        let state = ContextMenuState::compute(&["paused"]);
+        assert!(!state.can_pause);
+        assert!(state.can_resume);
+        assert!(state.can_seed_only);
+        assert!(!state.can_resume_download);
+        assert!(state.can_recheck);
     }
 }

@@ -6,6 +6,7 @@ import { TorrentProgressBar } from "widgets/progress_bar.slint";
 import { StatusBar } from "widgets/status_bar.slint";
 import { AddMagnetDialog } from "widgets/add_magnet_dialog.slint";
 import { AddTorrentDialog } from "widgets/add_torrent_dialog.slint";
+import { ContextMenu } from "widgets/context_menu.slint";
 
 export { Palette }
 
@@ -260,6 +261,18 @@ export component MainWindow inherits Window {
     callback add-torrent-confirmed(string, string);
     callback browse-torrent-file();
     callback browse-torrent-download-dir();
+
+    // ── Context Menu ──
+    in-out property <bool> show-context-menu: false;
+    in-out property <length> context-menu-x: 0px;
+    in-out property <length> context-menu-y: 0px;
+    in-out property <bool> ctx-can-pause: true;
+    in-out property <bool> ctx-can-resume: true;
+    in-out property <bool> ctx-can-seed-only: true;
+    in-out property <bool> ctx-can-resume-download: true;
+    in-out property <bool> ctx-can-recheck: true;
+    callback context-action(int);
+    callback row-right-clicked(/* info-hash */ string, /* x */ length, /* y */ length);
 
     // ── Callbacks ──
     callback menu-file-action(int);
@@ -602,6 +615,11 @@ export component MainWindow inherits Window {
                                 clicked => {
                                     root.row-clicked(item.info-hash, root.shift-held, root.ctrl-held);
                                 }
+                                pointer-event(event) => {
+                                    if event.kind == PointerEventKind.down && event.button == PointerEventButton.right {
+                                        root.row-right-clicked(item.info-hash, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                                    }
+                                }
                                 mouse-cursor: pointer;
                             }
 
@@ -822,5 +840,26 @@ export component MainWindow inherits Window {
         }
         browse-torrent-file => { root.browse-torrent-file(); }
         browse-download-dir => { root.browse-torrent-download-dir(); }
+    }
+
+    // Context Menu overlay (on top of everything)
+    ContextMenu {
+        show: root.show-context-menu;
+        menu-x: root.context-menu-x;
+        menu-y: root.context-menu-y;
+        can-pause: root.ctx-can-pause;
+        can-resume: root.ctx-can-resume;
+        can-seed-only: root.ctx-can-seed-only;
+        can-resume-download: root.ctx-can-resume-download;
+        can-recheck: root.ctx-can-recheck;
+        width: root.width;
+        height: root.height;
+        context-action(index) => {
+            root.show-context-menu = false;
+            root.context-action(index);
+        }
+        dismiss => {
+            root.show-context-menu = false;
+        }
     }
 }

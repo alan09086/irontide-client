@@ -12,6 +12,7 @@ slint::include_modules!();
 use std::sync::Arc;
 
 use parking_lot::Mutex;
+use slint::Model as _;
 
 fn main() -> Result<(), error::GuiError> {
     // 1. Install panic hook.
@@ -156,6 +157,94 @@ fn main() -> Result<(), error::GuiError> {
         let weak = main_window.as_weak();
         main_window.on_browse_torrent_download_dir(move || {
             bridge::handle_browse_download_dir(&weak);
+        });
+    }
+
+    // 6f. Wire right-click context menu.
+    {
+        let cb_state = state.clone();
+        let weak = main_window.as_weak();
+        main_window.on_row_right_clicked(move |info_hash, x, y| {
+            let hash = info_hash.to_string();
+            // If right-clicked row is not selected, select it first.
+            let selected = {
+                let mut st = cb_state.lock();
+                if !st.selected.contains(&hash) {
+                    st.selection_click(&hash);
+                }
+                st.selected.clone()
+            };
+            // Immediately update selection in model.
+            crate::poll::update_selection(&selected);
+
+            // Show context menu at cursor position.
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                // Compute smart enable/disable state from the torrent model.
+                let model = win.get_torrent_model();
+                let mut state_strings: Vec<String> = Vec::new();
+
+                for i in 0..model.row_count() {
+                    if let Some(row) = model.row_data(i)
+                        && selected.contains(row.info_hash.as_str())
+                    {
+                        state_strings.push(row.state.to_string());
+                    }
+                }
+
+                let state_refs: Vec<&str> = state_strings.iter().map(String::as_str).collect();
+                let ctx = app::ContextMenuState::compute(&state_refs);
+
+                win.set_ctx_can_pause(ctx.can_pause);
+                win.set_ctx_can_resume(ctx.can_resume);
+                win.set_ctx_can_seed_only(ctx.can_seed_only);
+                win.set_ctx_can_resume_download(ctx.can_resume_download);
+                win.set_ctx_can_recheck(ctx.can_recheck);
+
+                win.set_context_menu_x(x);
+                win.set_context_menu_y(y);
+                win.set_show_context_menu(true);
+            });
+        });
+    }
+
+    // 6g. Wire context menu action dispatch.
+    {
+        let cb_state = state.clone();
+        main_window.on_context_action(move |action_index| {
+            let Some(action) = app::ContextAction::from_index(action_index) else {
+                return;
+            };
+            let (hashes, cmd_tx) = {
+                let st = cb_state.lock();
+                let hashes: Vec<String> = st.selected.iter().cloned().collect();
+                (hashes, st.cmd_tx.clone())
+            };
+            let Some(tx) = cmd_tx else { return };
+
+            use app::ContextAction;
+            let cmd = match action {
+                ContextAction::Pause => app::GuiCommand::PauseTorrents { hashes },
+                ContextAction::Resume => app::GuiCommand::ResumeTorrents { hashes },
+                ContextAction::SeedOnly => app::GuiCommand::SetSeedMode {
+                    hashes,
+                    enabled: true,
+                },
+                ContextAction::ResumeDownload => app::GuiCommand::SetSeedMode {
+                    hashes,
+                    enabled: false,
+                },
+                ContextAction::Remove => app::GuiCommand::RemoveTorrents {
+                    hashes,
+                    delete_files: false,
+                },
+                ContextAction::RemoveAndDelete => app::GuiCommand::RemoveTorrents {
+                    hashes,
+                    delete_files: true,
+                },
+                ContextAction::Recheck => app::GuiCommand::ForceRecheck { hashes },
+                ContextAction::ForceReannounce => app::GuiCommand::ForceReannounce { hashes },
+            };
+            let _ = tx.send(cmd);
         });
     }
 
