@@ -1,7 +1,7 @@
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use parking_lot::Mutex;
 use slint::ComponentHandle as _;
@@ -146,7 +146,9 @@ pub fn handle_menu_action(
             });
         }
         crate::app::MenuAction::AddMagnet => {
-            show_toast(weak, "Add Magnet: coming in M164 Step 4", false);
+            let _ = weak.upgrade_in_event_loop(|win| {
+                win.set_show_add_magnet_dialog(true);
+            });
         }
         crate::app::MenuAction::AddTorrentFile => {
             show_toast(weak, "Add Torrent File: coming in M164 Step 5", false);
@@ -163,7 +165,9 @@ pub fn handle_menu_action(
 /// When `is_error` is `true` the toast uses `Palette.danger` as its
 /// background and border colour.
 fn show_toast(weak: &slint::Weak<crate::MainWindow>, msg: &str, is_error: bool) {
-    let generation = TOAST_GENERATION.fetch_add(1, Ordering::Relaxed).wrapping_add(1);
+    let generation = TOAST_GENERATION
+        .fetch_add(1, Ordering::Relaxed)
+        .wrapping_add(1);
     let text = msg.to_owned();
     let weak_for_timer = weak.clone();
     let _ = weak.upgrade_in_event_loop(move |win| {
@@ -180,6 +184,13 @@ fn show_toast(weak: &slint::Weak<crate::MainWindow>, msg: &str, is_error: bool) 
             }
         });
     });
+}
+
+/// Handle a "Browse..." button click for selecting a download directory.
+///
+/// Stub implementation — shows a toast. Full `rfd` folder-picker in Step 5.
+pub fn handle_browse_download_dir(weak: &slint::Weak<crate::MainWindow>) {
+    show_toast(weak, "Browse: folder picker coming in Step 5", false);
 }
 
 /// Dispatch a `GuiCommand` to the appropriate session method.
@@ -216,7 +227,9 @@ async fn handle_gui_command(
             delete_files,
         } => {
             if delete_files {
-                tracing::warn!("delete_files=true but file deletion not yet implemented (M164 Step 7)");
+                tracing::warn!(
+                    "delete_files=true but file deletion not yet implemented (M164 Step 7)"
+                );
             }
             let msg = batch_action(&hashes, session, "Removed", |s, id| {
                 Box::pin(s.remove_torrent(id))
@@ -302,18 +315,39 @@ fn format_batch_result(label: &str, success: usize, failed: usize) -> String {
     }
 }
 
-/// Stub handler for adding a torrent from a magnet URI.
+/// Add a torrent from a magnet URI.
 ///
-/// Full implementation in M164 Step 4.
+/// Parses the magnet link, constructs `AddTorrentParams`, and submits to the
+/// session. Shows a toast on success or failure.
 async fn handle_add_magnet(
     uri: String,
-    _download_dir: Option<String>,
-    _session: &irontide::session::SessionHandle,
+    download_dir: Option<String>,
+    session: &irontide::session::SessionHandle,
     weak: &slint::Weak<crate::MainWindow>,
 ) {
-    // Magnet URIs are ASCII, but be safe about truncation at char boundaries.
-    let preview: String = uri.chars().take(40).collect();
-    show_toast(weak, &format!("Add Magnet: stub for '{preview}'"), false);
+    let magnet = match irontide::core::Magnet::parse(&uri) {
+        Ok(m) => m,
+        Err(e) => {
+            show_toast(weak, &format!("Invalid magnet: {e}"), true);
+            return;
+        }
+    };
+    let display_name = magnet
+        .display_name
+        .clone()
+        .unwrap_or_else(|| "unknown".to_string());
+    let mut params = irontide::AddTorrentParams::from_magnet(magnet);
+    if let Some(dir) = download_dir {
+        params = params.download_dir(dir);
+    }
+    match params.add_to(session).await {
+        Ok(_id) => {
+            show_toast(weak, &format!("Added: {display_name}"), false);
+        }
+        Err(e) => {
+            show_toast(weak, &format!("Failed to add: {e}"), true);
+        }
+    }
 }
 
 /// Stub handler for adding a torrent from a `.torrent` file.
@@ -384,5 +418,55 @@ mod tests {
     fn batch_toast_format_empty_label() {
         let msg = format_batch_result("", 1, 0);
         assert_eq!(msg, " 1 torrent(s)");
+    }
+
+    #[test]
+    fn valid_magnet_uri_parses() {
+        let uri = "magnet:?xt=urn:btih:aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d&dn=test";
+        let magnet = irontide::core::Magnet::parse(uri).expect("should parse valid magnet URI");
+        assert_eq!(magnet.display_name.as_deref(), Some("test"));
+    }
+
+    #[test]
+    fn invalid_magnet_uri_fails() {
+        let uri = "not a magnet";
+        assert!(irontide::core::Magnet::parse(uri).is_err());
+    }
+
+    #[test]
+    fn add_magnet_gui_command_round_trip() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<GuiCommand>();
+        tx.send(GuiCommand::AddMagnet {
+            uri: "magnet:?xt=urn:btih:aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d".into(),
+            download_dir: Some("/tmp/downloads".into()),
+        })
+        .expect("send should succeed");
+
+        let cmd = rx.try_recv().expect("should receive command");
+        match cmd {
+            GuiCommand::AddMagnet { uri, download_dir } => {
+                assert!(uri.starts_with("magnet:"));
+                assert_eq!(download_dir, Some("/tmp/downloads".to_owned()));
+            }
+            _ => panic!("expected AddMagnet variant"),
+        }
+    }
+
+    #[test]
+    fn add_magnet_gui_command_no_dir() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<GuiCommand>();
+        tx.send(GuiCommand::AddMagnet {
+            uri: "magnet:?xt=urn:btih:aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d".into(),
+            download_dir: None,
+        })
+        .expect("send should succeed");
+
+        let cmd = rx.try_recv().expect("should receive command");
+        match cmd {
+            GuiCommand::AddMagnet { download_dir, .. } => {
+                assert!(download_dir.is_none());
+            }
+            _ => panic!("expected AddMagnet variant"),
+        }
     }
 }

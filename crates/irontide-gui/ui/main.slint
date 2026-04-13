@@ -4,6 +4,7 @@
 import { Palette } from "palette.slint";
 import { TorrentProgressBar } from "widgets/progress_bar.slint";
 import { StatusBar } from "widgets/status_bar.slint";
+import { AddMagnetDialog } from "widgets/add_magnet_dialog.slint";
 
 export { Palette }
 
@@ -243,6 +244,11 @@ export component MainWindow inherits Window {
     in-out property <length> col-eta-width: 70px;
     in-out property <length> col-size-width: 80px;
     in-out property <length> col-ratio-width: 60px;
+
+    // ── Add Magnet Dialog ──
+    in-out property <bool> show-add-magnet-dialog: false;
+    callback add-magnet-confirmed(string, string);
+    callback browse-magnet-download-dir();
 
     // ── Callbacks ──
     callback menu-file-action(int);
@@ -761,6 +767,24 @@ export component MainWindow inherits Window {
             font-size: 13px;
             horizontal-alignment: center;
             vertical-alignment: center;
+        }
+    }
+
+    // Add Magnet Dialog overlay
+    AddMagnetDialog {
+        show: root.show-add-magnet-dialog;
+        default-dir: root.default-download-dir;
+        width: root.width;
+        height: root.height;
+        add-confirmed(uri, dir) => {
+            root.show-add-magnet-dialog = false;
+            root.add-magnet-confirmed(uri, dir);
+        }
+        cancel => {
+            root.show-add-magnet-dialog = false;
+        }
+        browse-download-dir => {
+            root.browse-magnet-download-dir();
         }
     }
 }

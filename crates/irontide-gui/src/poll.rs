@@ -183,10 +183,8 @@ pub fn sort_summaries(summaries: &mut [TorrentSummary], sort: &crate::columns::S
                 .progress
                 .partial_cmp(&b.progress)
                 .unwrap_or(std::cmp::Ordering::Equal),
-            ColumnId::State => {
-                crate::format::format_state(&a.state, a.user_seed_mode)
-                    .cmp(crate::format::format_state(&b.state, b.user_seed_mode))
-            }
+            ColumnId::State => crate::format::format_state(&a.state, a.user_seed_mode)
+                .cmp(crate::format::format_state(&b.state, b.user_seed_mode)),
             ColumnId::DownRate => a.download_rate.cmp(&b.download_rate),
             ColumnId::UpRate => a.upload_rate.cmp(&b.upload_rate),
             ColumnId::Seeds => a.num_seeds.cmp(&b.num_seeds),

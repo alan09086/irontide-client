@@ -164,10 +164,7 @@ mod tests {
     #[test]
     fn test_format_state_seed_mode() {
         // Downloading + seed mode → "seed only".
-        assert_eq!(
-            format_state(&TorrentState::Downloading, true),
-            "seed only"
-        );
+        assert_eq!(format_state(&TorrentState::Downloading, true), "seed only");
     }
 
     #[test]

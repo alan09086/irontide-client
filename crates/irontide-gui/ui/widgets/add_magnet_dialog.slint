@@ -1,0 +1,170 @@
+// Add Magnet Dialog — modal overlay for entering a magnet URI.
+// Custom widgets only (no std-widgets) for consistent hit regions.
+
+import { Palette } from "../palette.slint";
+
+export component AddMagnetDialog {
+    in property <bool> show;
+    in property <string> default-dir;
+    callback add-confirmed(string, string);
+    callback cancel();
+    callback browse-download-dir();
+
+    if root.show: Rectangle {
+        // Full-window backdrop
+        background: Palette.background.with-alpha(80%);
+
+        // Consume clicks on backdrop to dismiss
+        backdrop-touch := TouchArea {
+            clicked => { root.cancel(); }
+        }
+
+        // Dialog box centered
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 480px;
+            height: dialog-layout.preferred-height + 32px;
+            background: Palette.surface;
+            border-color: Palette.border;
+            border-width: 1px;
+            border-radius: 8px;
+
+            // Block backdrop click from reaching through dialog
+            TouchArea { }
+
+            dialog-layout := VerticalLayout {
+                padding: 16px;
+                spacing: 12px;
+
+                // Title
+                Text {
+                    text: "Add Magnet Link";
+                    color: Palette.text;
+                    font-size: 16px;
+                    font-weight: 700;
+                }
+
+                // URI label + input
+                VerticalLayout {
+                    spacing: 4px;
+                    Text { text: "Magnet URI:"; color: Palette.text; font-size: 13px; }
+                    Rectangle {
+                        height: 32px;
+                        background: Palette.input-bg;
+                        border-color: Palette.input-border;
+                        border-width: 1px;
+                        border-radius: 4px;
+
+                        uri-input := TextInput {
+                            x: 8px;
+                            y: 0;
+                            width: parent.width - 16px;
+                            height: parent.height;
+                            color: Palette.text;
+                            font-size: 13px;
+                        }
+                        // Placeholder text when empty
+                        if uri-input.text == "": Text {
+                            x: 8px;
+                            color: Palette.disabled-text;
+                            font-size: 13px;
+                            text: "magnet:?xt=urn:btih:...";
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                // Download directory label + input + Browse
+                VerticalLayout {
+                    spacing: 4px;
+                    Text { text: "Download to:"; color: Palette.text; font-size: 13px; }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            height: 32px;
+                            background: Palette.input-bg;
+                            border-color: Palette.input-border;
+                            border-width: 1px;
+                            border-radius: 4px;
+
+                            dir-input := TextInput {
+                                x: 8px;
+                                y: 0;
+                                width: parent.width - 16px;
+                                height: parent.height;
+                                color: Palette.text;
+                                font-size: 13px;
+                                text: root.default-dir;
+                            }
+                        }
+                        Rectangle {
+                            width: 80px;
+                            height: 32px;
+                            background: browse-touch.has-hover ? Palette.menu-hover : Palette.accent;
+                            border-radius: 4px;
+
+                            Text {
+                                text: "Browse...";
+                                color: Palette.text;
+                                font-size: 13px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                            browse-touch := TouchArea {
+                                clicked => { root.browse-download-dir(); }
+                            }
+                        }
+                    }
+                }
+
+                // Buttons row
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 8px;
+
+                    // Cancel
+                    Rectangle {
+                        width: 80px;
+                        height: 32px;
+                        background: cancel-touch.has-hover ? Palette.menu-hover : Palette.accent;
+                        border-radius: 4px;
+
+                        Text {
+                            text: "Cancel";
+                            color: Palette.text;
+                            font-size: 13px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        cancel-touch := TouchArea {
+                            clicked => { root.cancel(); }
+                        }
+                    }
+
+                    // Add (disabled when URI empty)
+                    Rectangle {
+                        width: 80px;
+                        height: 32px;
+                        background: uri-input.text == "" ? Palette.accent : (add-touch.has-hover ? Palette.menu-hover : Palette.checkbox-check);
+                        border-radius: 4px;
+                        opacity: uri-input.text == "" ? 0.5 : 1.0;
+
+                        Text {
+                            text: "Add";
+                            color: Palette.text;
+                            font-size: 13px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        add-touch := TouchArea {
+                            enabled: uri-input.text != "";
+                            clicked => { root.add-confirmed(uri-input.text, dir-input.text); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
