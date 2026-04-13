@@ -71,6 +71,11 @@ pub enum GuiCommand {
         /// Hex-encoded info-hash strings.
         hashes: Vec<String>,
     },
+    /// Update the default download directory (persists to config + session).
+    SetDefaultDownloadDir {
+        /// New download directory path.
+        dir: String,
+    },
 }
 
 /// Context-menu actions for selected torrents.

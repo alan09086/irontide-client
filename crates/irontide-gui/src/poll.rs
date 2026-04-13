@@ -269,12 +269,19 @@ fn ratio_value(s: &TorrentSummary) -> f64 {
 
 fn to_slint_row(s: &TorrentSummary, selected: &HashSet<String>) -> crate::TorrentRow {
     let remaining = remaining_bytes(s);
+    // During recheck, show checking progress instead of download progress.
+    let (progress, progress_text) = if s.state == TorrentState::Checking {
+        let pct = s.checking_progress * 100.0;
+        (s.checking_progress, format!("{pct:.1}%"))
+    } else {
+        (s.progress as f32, format!("{:.1}%", s.progress * 100.0))
+    };
     crate::TorrentRow {
         info_hash: SharedString::from(&s.info_hash),
         name: SharedString::from(&s.name),
         total_size: SharedString::from(crate::format::format_size(s.total_size)),
-        progress: s.progress as f32,
-        progress_text: SharedString::from(format!("{:.1}%", s.progress * 100.0)),
+        progress,
+        progress_text: SharedString::from(progress_text),
         down_rate: if s.download_rate > 0 {
             SharedString::from(crate::format::format_rate(s.download_rate))
         } else {
@@ -288,7 +295,14 @@ fn to_slint_row(s: &TorrentSummary, selected: &HashSet<String>) -> crate::Torren
         seeds: SharedString::from(s.num_seeds.to_string()),
         peers: SharedString::from(s.num_peers.to_string()),
         eta: SharedString::from(crate::format::format_eta(remaining, s.download_rate)),
-        state: SharedString::from(crate::format::format_state(&s.state, s.user_seed_mode)),
+        state: if s.state == TorrentState::Checking {
+            SharedString::from(format!(
+                "checking ({:.1}%)",
+                s.checking_progress * 100.0
+            ))
+        } else {
+            SharedString::from(crate::format::format_state(&s.state, s.user_seed_mode))
+        },
         state_color: state_color(&s.state, s.user_seed_mode),
         ratio: SharedString::from(crate::format::format_ratio(
             s.all_time_upload,
@@ -371,6 +385,7 @@ mod tests {
             all_time_upload: 0,
             all_time_download: 0,
             user_seed_mode: false,
+            checking_progress: 0.0,
         }
     }
 

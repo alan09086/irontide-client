@@ -192,17 +192,27 @@ pub fn show_toast(weak: &slint::Weak<crate::MainWindow>, msg: &str, is_error: bo
 ///
 /// Spawns `rfd::FileDialog` on a separate thread because the native GTK
 /// dialog blocks the calling thread. On selection, updates
-/// `default-download-dir` on the main window so all dialogs see the
-/// new value.
-pub fn handle_browse_download_dir(weak: &slint::Weak<crate::MainWindow>) {
+/// `default-download-dir` on the main window and sends a
+/// `SetDefaultDownloadDir` command to persist the change to the session
+/// settings and config file.
+pub fn handle_browse_download_dir(
+    weak: &slint::Weak<crate::MainWindow>,
+    state: &Arc<Mutex<AppState>>,
+) {
     let weak = weak.clone();
+    let cmd_tx = state.lock().cmd_tx.clone();
     std::thread::spawn(move || {
         let folder = rfd::FileDialog::new().pick_folder();
         if let Some(path) = folder {
             let path_str = path.to_string_lossy().into_owned();
+            let dir = path_str.clone();
             let _ = weak.upgrade_in_event_loop(move |win| {
                 win.set_default_download_dir(path_str.into());
             });
+            // Persist the new download dir to session + config file.
+            if let Some(tx) = cmd_tx {
+                let _ = tx.send(GuiCommand::SetDefaultDownloadDir { dir });
+            }
         }
     });
 }
@@ -335,6 +345,9 @@ async fn handle_gui_command(
             })
             .await;
             show_toast(weak, &msg, false);
+        }
+        GuiCommand::SetDefaultDownloadDir { dir } => {
+            handle_set_default_download_dir(&dir, session, weak).await;
         }
     }
 
@@ -527,6 +540,9 @@ async fn handle_remove_torrents(
 ///
 /// Returns `None` if either `torrent_stats` or `torrent_info` fails (e.g. the
 /// torrent is a magnet that never fetched metadata).
+///
+/// If the torrent's `save_path` is relative (e.g. `.`), it is resolved against
+/// the session's current `download_dir` to produce an absolute path.
 async fn gather_delete_info(
     session: &irontide::session::SessionHandle,
     id: irontide::core::Id20,
@@ -545,7 +561,33 @@ async fn gather_delete_info(
             return None;
         }
     };
-    let save_path = std::path::PathBuf::from(&stats.save_path);
+    let mut save_path = std::path::PathBuf::from(&stats.save_path);
+
+    // If save_path is relative, resolve it. The session stores download_dir
+    // which may be "." when no config file exists. Canonicalize to get the
+    // actual absolute path.
+    if save_path.is_relative() {
+        save_path = match save_path.canonicalize() {
+            Ok(p) => p,
+            Err(_) => {
+                // Fallback: try the session's current download_dir.
+                match session.settings().await {
+                    Ok(s) => {
+                        let abs = s.download_dir.clone();
+                        abs.canonicalize().unwrap_or(abs)
+                    }
+                    Err(_) => save_path,
+                }
+            }
+        };
+    }
+
+    tracing::debug!(
+        save_path = %save_path.display(),
+        name = %info.name,
+        files = info.files.len(),
+        "gathered delete info"
+    );
     Some((save_path, info.name.clone(), info.files.len()))
 }
 
@@ -614,6 +656,46 @@ fn delete_torrent_files(save_path: &std::path::Path, name: &str, file_count: usi
             tracing::info!(path = %canonical.display(), "deleted torrent file");
         }
     }
+}
+
+/// Update the default download directory in the session settings, config file, and UI.
+///
+/// Updates the session's `download_dir`, persists to the TOML config file, and
+/// pushes the new value to the UI for dialog pre-fill.
+async fn handle_set_default_download_dir(
+    dir: &str,
+    session: &irontide::session::SessionHandle,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    let path = std::path::PathBuf::from(dir);
+
+    // Update session settings (download_dir only; resume files stay in XDG state dir).
+    match session.settings().await {
+        Ok(mut settings) => {
+            settings.download_dir = path.clone();
+            if let Err(e) = session.apply_settings(settings).await {
+                tracing::warn!(error = %e, "failed to apply download dir to session");
+            }
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to read session settings");
+        }
+    }
+
+    // Persist to config file.
+    if let Err(e) = irontide_config::save_session_download_dir(None, &path) {
+        tracing::warn!(error = %e, "failed to persist download dir to config file");
+    } else {
+        tracing::info!(dir = %path.display(), "saved download dir to config");
+    }
+
+    // Update UI.
+    let dir_owned = dir.to_owned();
+    let _ = weak.upgrade_in_event_loop(move |win| {
+        win.set_default_download_dir(dir_owned.into());
+    });
+
+    show_toast(weak, &format!("Download directory: {dir}"), false);
 }
 
 #[cfg(test)]

@@ -381,6 +381,49 @@ pub fn save_gui_config(config_path: Option<&Path>, gui: &GuiConfig) -> Result<()
     Ok(())
 }
 
+/// Persist `[session]` download directory and resume directory to the TOML file.
+///
+/// Reads the existing file (if any), updates `session.download_dir` and
+/// `session.resume_dir`, and writes the result back. All other sections
+/// are preserved verbatim.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read/written.
+pub fn save_session_download_dir(
+    config_path: Option<&Path>,
+    download_dir: &Path,
+) -> Result<()> {
+    let path = resolve_config_path(config_path);
+
+    let mut config = if path.exists() {
+        let text = std::fs::read_to_string(&path)
+            .with_context(|| format!("failed to read config file: {path:?}"))?;
+        toml::from_str::<ConfigFile>(&text)
+            .with_context(|| format!("failed to parse config file: {path:?}"))?
+    } else {
+        ConfigFile::default()
+    };
+
+    config.session.download_dir = Some(download_dir.to_path_buf());
+
+    let serialized =
+        toml::to_string_pretty(&config).context("failed to serialize config to TOML")?;
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create config directory: {parent:?}"))?;
+    }
+
+    let tmp_path = path.with_extension("toml.tmp");
+    std::fs::write(&tmp_path, &serialized)
+        .with_context(|| format!("failed to write temp config file: {tmp_path:?}"))?;
+    std::fs::rename(&tmp_path, &path)
+        .with_context(|| format!("failed to rename temp config to {path:?}"))?;
+
+    Ok(())
+}
+
 // ── Runtime construction ────────────────────────────────────────────
 
 /// Build a multi-thread tokio runtime with optional CPU core affinity.

@@ -119,8 +119,9 @@ fn main() -> Result<(), error::GuiError> {
 
     {
         let weak = main_window.as_weak();
+        let cb_state = state.clone();
         main_window.on_browse_magnet_download_dir(move || {
-            bridge::handle_browse_download_dir(&weak);
+            bridge::handle_browse_download_dir(&weak, &cb_state);
         });
     }
 
@@ -155,8 +156,9 @@ fn main() -> Result<(), error::GuiError> {
 
     {
         let weak = main_window.as_weak();
+        let cb_state = state.clone();
         main_window.on_browse_torrent_download_dir(move || {
-            bridge::handle_browse_download_dir(&weak);
+            bridge::handle_browse_download_dir(&weak, &cb_state);
         });
     }
 
