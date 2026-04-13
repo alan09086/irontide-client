@@ -123,6 +123,42 @@ fn main() -> Result<(), error::GuiError> {
         });
     }
 
+    // 6e. Wire add-torrent dialog callbacks.
+    {
+        let cb_state = state.clone();
+        main_window.on_add_torrent_confirmed(move |path, dir| {
+            let cmd_tx = {
+                let st = cb_state.lock();
+                st.cmd_tx.clone()
+            };
+            if let Some(tx) = cmd_tx {
+                let download_dir = if dir.is_empty() {
+                    None
+                } else {
+                    Some(dir.to_string())
+                };
+                let _ = tx.send(app::GuiCommand::AddTorrentFile {
+                    path: path.to_string(),
+                    download_dir,
+                });
+            }
+        });
+    }
+
+    {
+        let weak = main_window.as_weak();
+        main_window.on_browse_torrent_file(move || {
+            bridge::handle_browse_torrent_file(&weak);
+        });
+    }
+
+    {
+        let weak = main_window.as_weak();
+        main_window.on_browse_torrent_download_dir(move || {
+            bridge::handle_browse_download_dir(&weak);
+        });
+    }
+
     // 7. Spawn session thread.
     let session_handle =
         bridge::spawn_session_thread(settings, main_window.as_weak(), shutdown_rx, state.clone());

@@ -1,0 +1,236 @@
+// Add Torrent File Dialog — modal overlay for selecting and adding a .torrent file.
+// Custom widgets only (no std-widgets) for consistent hit regions.
+
+import { Palette } from "../palette.slint";
+
+export component AddTorrentDialog {
+    in property <bool> show;
+    in property <string> default-dir;
+    in property <string> torrent-name: "";
+    in property <string> torrent-size: "";
+    in property <int> torrent-file-count: 0;
+    in property <string> selected-file-path: "";
+    callback add-confirmed(string, string);  // (path, download_dir)
+    callback cancel();
+    callback browse-torrent-file();
+    callback browse-download-dir();
+
+    if root.show: Rectangle {
+        // Full-window backdrop
+        background: Palette.background.with-alpha(80%);
+
+        // Consume clicks on backdrop to dismiss
+        backdrop-touch := TouchArea {
+            clicked => { root.cancel(); }
+        }
+
+        // Dialog box centered
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 480px;
+            height: dialog-layout.preferred-height + 32px;
+            background: Palette.surface;
+            border-color: Palette.border;
+            border-width: 1px;
+            border-radius: 8px;
+
+            // Block backdrop click from reaching through dialog
+            TouchArea { }
+
+            dialog-layout := VerticalLayout {
+                padding: 16px;
+                spacing: 12px;
+
+                // Title
+                Text {
+                    text: "Add Torrent File";
+                    color: Palette.text;
+                    font-size: 16px;
+                    font-weight: 700;
+                }
+
+                // File selection: display path + Browse button
+                VerticalLayout {
+                    spacing: 4px;
+                    Text { text: "File:"; color: Palette.text; font-size: 13px; }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            height: 32px;
+                            background: Palette.input-bg;
+                            border-color: Palette.input-border;
+                            border-width: 1px;
+                            border-radius: 4px;
+
+                            // Display-only text for selected file path
+                            Text {
+                                x: 8px;
+                                color: root.selected-file-path == "" ? Palette.disabled-text : Palette.text;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                                overflow: elide;
+                                text: root.selected-file-path == "" ? "(no file selected)" : root.selected-file-path;
+                                width: parent.width - 16px;
+                            }
+                        }
+                        Rectangle {
+                            width: 80px;
+                            height: 32px;
+                            background: browse-file-touch.has-hover ? Palette.menu-hover : Palette.accent;
+                            border-radius: 4px;
+
+                            Text {
+                                text: "Browse...";
+                                color: Palette.text;
+                                font-size: 13px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                            browse-file-touch := TouchArea {
+                                clicked => { root.browse-torrent-file(); }
+                            }
+                        }
+                    }
+                }
+
+                // Torrent info panel (visible only after file is selected)
+                if root.torrent-name != "": Rectangle {
+                    background: Palette.background;
+                    border-color: Palette.border;
+                    border-width: 1px;
+                    border-radius: 4px;
+                    height: info-layout.preferred-height + 16px;
+
+                    info-layout := VerticalLayout {
+                        padding: 8px;
+                        spacing: 4px;
+
+                        Text {
+                            text: "Torrent Info";
+                            color: Palette.text;
+                            font-size: 12px;
+                            font-weight: 700;
+                        }
+
+                        HorizontalLayout {
+                            spacing: 16px;
+                            Text {
+                                text: "Name: " + root.torrent-name;
+                                color: Palette.text;
+                                font-size: 12px;
+                                overflow: elide;
+                                horizontal-stretch: 1;
+                            }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 16px;
+                            Text {
+                                text: "Size: " + root.torrent-size;
+                                color: Palette.text;
+                                font-size: 12px;
+                            }
+                            Text {
+                                text: "Files: " + root.torrent-file-count;
+                                color: Palette.text;
+                                font-size: 12px;
+                            }
+                        }
+                    }
+                }
+
+                // Download directory label + input + Browse
+                VerticalLayout {
+                    spacing: 4px;
+                    Text { text: "Download to:"; color: Palette.text; font-size: 13px; }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            height: 32px;
+                            background: Palette.input-bg;
+                            border-color: Palette.input-border;
+                            border-width: 1px;
+                            border-radius: 4px;
+
+                            dir-input := TextInput {
+                                x: 8px;
+                                y: 0;
+                                width: parent.width - 16px;
+                                height: parent.height;
+                                color: Palette.text;
+                                font-size: 13px;
+                                text: root.default-dir;
+                            }
+                        }
+                        Rectangle {
+                            width: 80px;
+                            height: 32px;
+                            background: browse-dir-touch.has-hover ? Palette.menu-hover : Palette.accent;
+                            border-radius: 4px;
+
+                            Text {
+                                text: "Browse...";
+                                color: Palette.text;
+                                font-size: 13px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                            browse-dir-touch := TouchArea {
+                                clicked => { root.browse-download-dir(); }
+                            }
+                        }
+                    }
+                }
+
+                // Buttons row
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 8px;
+
+                    // Cancel
+                    Rectangle {
+                        width: 80px;
+                        height: 32px;
+                        background: cancel-touch.has-hover ? Palette.menu-hover : Palette.accent;
+                        border-radius: 4px;
+
+                        Text {
+                            text: "Cancel";
+                            color: Palette.text;
+                            font-size: 13px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        cancel-touch := TouchArea {
+                            clicked => { root.cancel(); }
+                        }
+                    }
+
+                    // Add (disabled when no file selected)
+                    Rectangle {
+                        width: 80px;
+                        height: 32px;
+                        background: root.torrent-name == "" ? Palette.accent : (add-touch.has-hover ? Palette.menu-hover : Palette.checkbox-check);
+                        border-radius: 4px;
+                        opacity: root.torrent-name == "" ? 0.5 : 1.0;
+
+                        Text {
+                            text: "Add";
+                            color: Palette.text;
+                            font-size: 13px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        add-touch := TouchArea {
+                            enabled: root.torrent-name != "";
+                            clicked => { root.add-confirmed(root.selected-file-path, dir-input.text); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

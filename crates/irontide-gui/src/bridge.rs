@@ -151,7 +151,9 @@ pub fn handle_menu_action(
             });
         }
         crate::app::MenuAction::AddTorrentFile => {
-            show_toast(weak, "Add Torrent File: coming in M164 Step 5", false);
+            let _ = weak.upgrade_in_event_loop(|win| {
+                win.set_show_add_torrent_dialog(true);
+            });
         }
     }
 }
@@ -188,9 +190,89 @@ fn show_toast(weak: &slint::Weak<crate::MainWindow>, msg: &str, is_error: bool) 
 
 /// Handle a "Browse..." button click for selecting a download directory.
 ///
-/// Stub implementation — shows a toast. Full `rfd` folder-picker in Step 5.
+/// Spawns `rfd::FileDialog` on a separate thread because the native GTK
+/// dialog blocks the calling thread. On selection, updates
+/// `default-download-dir` on the main window so all dialogs see the
+/// new value.
 pub fn handle_browse_download_dir(weak: &slint::Weak<crate::MainWindow>) {
-    show_toast(weak, "Browse: folder picker coming in Step 5", false);
+    let weak = weak.clone();
+    std::thread::spawn(move || {
+        let folder = rfd::FileDialog::new().pick_folder();
+        if let Some(path) = folder {
+            let path_str = path.to_string_lossy().into_owned();
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_default_download_dir(path_str.into());
+            });
+        }
+    });
+}
+
+/// Handle a "Browse..." button click for selecting a `.torrent` file.
+///
+/// Spawns `rfd::FileDialog` on a separate thread (GTK blocks). On
+/// selection, reads and parses the torrent file to extract name, total
+/// size, and file count, then pushes the results to the main window
+/// properties so the add-torrent dialog can display them.
+pub fn handle_browse_torrent_file(weak: &slint::Weak<crate::MainWindow>) {
+    let weak = weak.clone();
+    std::thread::spawn(move || {
+        let file = rfd::FileDialog::new()
+            .add_filter("Torrent", &["torrent"])
+            .pick_file();
+
+        if let Some(path) = file {
+            let path_str = path.to_string_lossy().into_owned();
+            match std::fs::read(&path) {
+                Ok(data) => match irontide::core::torrent_from_bytes_any(&data) {
+                    Ok(meta) => {
+                        let (name, total_size, file_count) = extract_torrent_info(&meta);
+                        let size_str = crate::format::format_size(total_size);
+                        let count = i32::try_from(file_count).unwrap_or(i32::MAX);
+                        let _ = weak.upgrade_in_event_loop(move |win| {
+                            win.set_add_torrent_file_path(path_str.into());
+                            win.set_add_torrent_name(name.into());
+                            win.set_add_torrent_size(size_str.into());
+                            win.set_add_torrent_file_count(count);
+                        });
+                    }
+                    Err(e) => {
+                        show_toast(&weak, &format!("Failed to parse torrent: {e}"), true);
+                    }
+                },
+                Err(e) => {
+                    show_toast(&weak, &format!("Failed to read file: {e}"), true);
+                }
+            }
+        }
+    });
+}
+
+/// Extract name, total size, and file count from parsed torrent metadata.
+fn extract_torrent_info(meta: &irontide::core::TorrentMeta) -> (String, u64, usize) {
+    use irontide::core::TorrentMeta;
+    match meta {
+        TorrentMeta::V1(v1) => {
+            let name = v1.info.name.clone();
+            let files = v1.info.files();
+            let total_size: u64 = files.iter().map(|f| f.length).sum();
+            let file_count = files.len();
+            (name, total_size, file_count)
+        }
+        TorrentMeta::V2(v2) => {
+            let name = v2.info.name.clone();
+            let total_size = v2.info.total_length();
+            let file_count = v2.info.files().len();
+            (name, total_size, file_count)
+        }
+        TorrentMeta::Hybrid(v1, _v2) => {
+            // Use v1 info — it has the most straightforward API.
+            let name = v1.info.name.clone();
+            let files = v1.info.files();
+            let total_size: u64 = files.iter().map(|f| f.length).sum();
+            let file_count = files.len();
+            (name, total_size, file_count)
+        }
+    }
 }
 
 /// Dispatch a `GuiCommand` to the appropriate session method.
@@ -350,16 +432,40 @@ async fn handle_add_magnet(
     }
 }
 
-/// Stub handler for adding a torrent from a `.torrent` file.
+/// Add a torrent from a `.torrent` file path.
 ///
-/// Full implementation in M164 Step 5.
+/// Constructs `AddTorrentParams`, optionally overrides the download
+/// directory, and submits to the session. Shows a toast on success or
+/// failure. Clears the dialog's file-selection state on success.
 async fn handle_add_torrent_file(
     path: String,
-    _download_dir: Option<String>,
-    _session: &irontide::session::SessionHandle,
+    download_dir: Option<String>,
+    session: &irontide::session::SessionHandle,
     weak: &slint::Weak<crate::MainWindow>,
 ) {
-    show_toast(weak, &format!("Add Torrent: stub for '{path}'"), false);
+    let mut params = irontide::AddTorrentParams::from_file(&path);
+    if let Some(dir) = download_dir {
+        params = params.download_dir(dir);
+    }
+    let filename = std::path::Path::new(&path)
+        .file_name()
+        .map(|f| f.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.clone());
+    match params.add_to(session).await {
+        Ok(_id) => {
+            // Clear file-selection state in the dialog.
+            let _ = weak.upgrade_in_event_loop(|win| {
+                win.set_add_torrent_file_path(slint::SharedString::new());
+                win.set_add_torrent_name(slint::SharedString::new());
+                win.set_add_torrent_size(slint::SharedString::new());
+                win.set_add_torrent_file_count(0);
+            });
+            show_toast(weak, &format!("Added: {filename}"), false);
+        }
+        Err(e) => {
+            show_toast(weak, &format!("Failed to add torrent: {e}"), true);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -468,5 +574,85 @@ mod tests {
             }
             _ => panic!("expected AddMagnet variant"),
         }
+    }
+
+    #[test]
+    fn add_torrent_file_gui_command_round_trip() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<GuiCommand>();
+        tx.send(GuiCommand::AddTorrentFile {
+            path: "/tmp/test.torrent".into(),
+            download_dir: Some("/tmp/downloads".into()),
+        })
+        .expect("send should succeed");
+
+        let cmd = rx.try_recv().expect("should receive command");
+        match cmd {
+            GuiCommand::AddTorrentFile { path, download_dir } => {
+                assert_eq!(path, "/tmp/test.torrent");
+                assert_eq!(download_dir, Some("/tmp/downloads".to_owned()));
+            }
+            _ => panic!("expected AddTorrentFile variant"),
+        }
+    }
+
+    #[test]
+    fn add_torrent_file_gui_command_no_dir() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<GuiCommand>();
+        tx.send(GuiCommand::AddTorrentFile {
+            path: "/home/user/big.torrent".into(),
+            download_dir: None,
+        })
+        .expect("send should succeed");
+
+        let cmd = rx.try_recv().expect("should receive command");
+        match cmd {
+            GuiCommand::AddTorrentFile { download_dir, .. } => {
+                assert!(download_dir.is_none());
+            }
+            _ => panic!("expected AddTorrentFile variant"),
+        }
+    }
+
+    #[test]
+    fn extract_torrent_info_single_file() {
+        // Create a single-file torrent via CreateTorrent.
+        let tmp = std::env::temp_dir().join("irontide_gui_test_single.bin");
+        std::fs::write(&tmp, b"hello torrent gui test").expect("write tmp file");
+        let result = irontide::core::CreateTorrent::new()
+            .add_file(&tmp)
+            .set_piece_size(16384)
+            .generate()
+            .expect("generate torrent");
+        let _ = std::fs::remove_file(&tmp);
+
+        let meta =
+            irontide::core::torrent_from_bytes_any(&result.bytes).expect("parse generated torrent");
+        let (name, total_size, file_count) = extract_torrent_info(&meta);
+        assert!(!name.is_empty());
+        assert_eq!(total_size, 22); // "hello torrent gui test" is 22 bytes
+        assert_eq!(file_count, 1);
+    }
+
+    #[test]
+    fn extract_torrent_info_multi_file() {
+        // Create a multi-file torrent.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_a = dir.path().join("file_a.txt");
+        let file_b = dir.path().join("file_b.txt");
+        std::fs::write(&file_a, b"aaaa").expect("write file_a");
+        std::fs::write(&file_b, b"bbbbb").expect("write file_b");
+        let result = irontide::core::CreateTorrent::new()
+            .add_file(&file_a)
+            .add_file(&file_b)
+            .set_piece_size(16384)
+            .generate()
+            .expect("generate torrent");
+
+        let meta =
+            irontide::core::torrent_from_bytes_any(&result.bytes).expect("parse generated torrent");
+        let (name, total_size, file_count) = extract_torrent_info(&meta);
+        assert!(!name.is_empty());
+        assert_eq!(total_size, 9); // 4 + 5
+        assert_eq!(file_count, 2);
     }
 }

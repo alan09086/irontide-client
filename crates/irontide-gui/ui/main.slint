@@ -5,6 +5,7 @@ import { Palette } from "palette.slint";
 import { TorrentProgressBar } from "widgets/progress_bar.slint";
 import { StatusBar } from "widgets/status_bar.slint";
 import { AddMagnetDialog } from "widgets/add_magnet_dialog.slint";
+import { AddTorrentDialog } from "widgets/add_torrent_dialog.slint";
 
 export { Palette }
 
@@ -249,6 +250,16 @@ export component MainWindow inherits Window {
     in-out property <bool> show-add-magnet-dialog: false;
     callback add-magnet-confirmed(string, string);
     callback browse-magnet-download-dir();
+
+    // ── Add Torrent Dialog ──
+    in-out property <bool> show-add-torrent-dialog: false;
+    in-out property <string> add-torrent-file-path: "";
+    in-out property <string> add-torrent-name: "";
+    in-out property <string> add-torrent-size: "";
+    in-out property <int> add-torrent-file-count: 0;
+    callback add-torrent-confirmed(string, string);
+    callback browse-torrent-file();
+    callback browse-torrent-download-dir();
 
     // ── Callbacks ──
     callback menu-file-action(int);
@@ -786,5 +797,30 @@ export component MainWindow inherits Window {
         browse-download-dir => {
             root.browse-magnet-download-dir();
         }
+    }
+
+    // Add Torrent File Dialog overlay
+    AddTorrentDialog {
+        show: root.show-add-torrent-dialog;
+        default-dir: root.default-download-dir;
+        torrent-name: root.add-torrent-name;
+        torrent-size: root.add-torrent-size;
+        torrent-file-count: root.add-torrent-file-count;
+        selected-file-path: root.add-torrent-file-path;
+        width: root.width;
+        height: root.height;
+        add-confirmed(path, dir) => {
+            root.show-add-torrent-dialog = false;
+            root.add-torrent-confirmed(path, dir);
+        }
+        cancel => {
+            root.show-add-torrent-dialog = false;
+            root.add-torrent-file-path = "";
+            root.add-torrent-name = "";
+            root.add-torrent-size = "";
+            root.add-torrent-file-count = 0;
+        }
+        browse-torrent-file => { root.browse-torrent-file(); }
+        browse-download-dir => { root.browse-torrent-download-dir(); }
     }
 }

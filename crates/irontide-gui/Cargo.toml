@@ -28,6 +28,7 @@ tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = { workspace = true }
 parking_lot = { workspace = true }
+rfd = "0.15"
 toml = "0.8"
 
 [build-dependencies]
