@@ -78,12 +78,20 @@ async fn run_session(
     let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel();
     state.lock().cmd_tx = Some(cmd_tx);
 
+    // Push default download directory to UI for dialog pre-fill.
+    let default_download_dir = session
+        .settings()
+        .await
+        .map(|s| s.download_dir.to_string_lossy().into_owned())
+        .unwrap_or_default();
+
     // Signal UI ready + initialise the torrent model.
     state.lock().phase = AppPhase::Ready;
-    let _ = weak.upgrade_in_event_loop(|win| {
+    let _ = weak.upgrade_in_event_loop(move |win| {
         crate::poll::init_model(&win);
         win.set_session_ready(true);
         win.set_status_text("Ready".into());
+        win.set_default_download_dir(default_download_dir.into());
     });
 
     // Start poll loop and wait for shutdown or commands.
