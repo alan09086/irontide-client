@@ -888,3 +888,196 @@ async fn test_ws_set_mask() {
         "should have timed out — STATUS alert should be filtered after set_mask to PEER-only"
     );
 }
+
+// ---------------------------------------------------------------------------
+// 7. Web UI
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_root_serves_index_html() {
+    let router = test_router().await;
+    let req = Request::get("/")
+        .body(Body::empty())
+        .expect("build request");
+    let response = router.clone().oneshot(req).await.expect("request failed");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let ct = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .expect("content-type header missing")
+        .to_str()
+        .expect("content-type not utf-8");
+    assert!(ct.contains("text/html"), "expected text/html, got {ct}");
+
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body collect")
+        .to_bytes();
+    let text = String::from_utf8_lossy(&body);
+    assert!(
+        text.contains("<!DOCTYPE html>"),
+        "body should contain <!DOCTYPE html>"
+    );
+}
+
+#[tokio::test]
+async fn test_static_css_served() {
+    let router = test_router().await;
+    let req = Request::get("/css/pico.min.css")
+        .body(Body::empty())
+        .expect("build request");
+    let response = router.clone().oneshot(req).await.expect("request failed");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let ct = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .expect("content-type header missing")
+        .to_str()
+        .expect("content-type not utf-8");
+    assert!(ct.contains("text/css"), "expected text/css, got {ct}");
+}
+
+#[tokio::test]
+async fn test_static_js_served() {
+    let router = test_router().await;
+    let req = Request::get("/js/htmx.min.js")
+        .body(Body::empty())
+        .expect("build request");
+    let response = router.clone().oneshot(req).await.expect("request failed");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let ct = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .expect("content-type header missing")
+        .to_str()
+        .expect("content-type not utf-8");
+    assert!(
+        ct.contains("javascript"),
+        "expected javascript content-type, got {ct}"
+    );
+}
+
+#[tokio::test]
+async fn test_torrent_list_fragment_empty() {
+    let router = test_router().await;
+    let req = Request::get("/webui/fragments/torrent-list")
+        .body(Body::empty())
+        .expect("build request");
+    let (status, body) = request(&router, req).await;
+
+    assert_eq!(status, StatusCode::OK);
+    let text = String::from_utf8_lossy(&body);
+    assert!(
+        text.contains("No torrents yet"),
+        "empty torrent list should contain 'No torrents yet'"
+    );
+}
+
+#[tokio::test]
+async fn test_torrent_list_fragment_with_data() {
+    let router = test_router().await;
+
+    // Add a magnet via the JSON API first.
+    let magnet = "magnet:?xt=urn:btih:aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d&dn=test";
+    let body_json = serde_json::json!({ "uri": magnet });
+    let req = Request::post("/api/v1/torrents")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::to_vec(&body_json).expect("serialize"),
+        ))
+        .expect("build request");
+    let (status, _) = request(&router, req).await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    // Allow a small delay for the session to process.
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Fetch the fragment and verify the torrent table is rendered (not the empty state).
+    let req = Request::get("/webui/fragments/torrent-list")
+        .body(Body::empty())
+        .expect("build request");
+    let (status, body) = request(&router, req).await;
+
+    assert_eq!(status, StatusCode::OK);
+    let text = String::from_utf8_lossy(&body);
+    assert!(
+        !text.contains("No torrents yet"),
+        "torrent list should not show empty state after adding a torrent"
+    );
+    assert!(
+        text.contains("<table"),
+        "torrent list fragment should render a table when torrents are present"
+    );
+}
+
+#[tokio::test]
+async fn test_add_magnet_valid() {
+    let router = test_router().await;
+    let form_body =
+        "uri=magnet%3A%3Fxt%3Durn%3Abtih%3Aaaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d%26dn%3Dtest";
+
+    let response = router
+        .clone()
+        .oneshot(
+            Request::post("/webui/add-magnet")
+                .header(
+                    header::CONTENT_TYPE,
+                    "application/x-www-form-urlencoded",
+                )
+                .body(Body::from(form_body))
+                .expect("build request"),
+        )
+        .await
+        .expect("request failed");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let hx_trigger = response
+        .headers()
+        .get("HX-Trigger")
+        .expect("HX-Trigger header missing")
+        .to_str()
+        .expect("HX-Trigger not utf-8");
+    assert_eq!(hx_trigger, "refreshList");
+}
+
+#[tokio::test]
+async fn test_add_magnet_invalid() {
+    let router = test_router().await;
+    let form_body = "uri=not-a-magnet";
+
+    let req = Request::post("/webui/add-magnet")
+        .header(
+            header::CONTENT_TYPE,
+            "application/x-www-form-urlencoded",
+        )
+        .body(Body::from(form_body))
+        .expect("build request");
+    let (status, body) = request(&router, req).await;
+
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let text = String::from_utf8_lossy(&body);
+    assert!(
+        !text.is_empty(),
+        "error response body should not be empty"
+    );
+}
+
+#[tokio::test]
+async fn test_path_traversal_blocked() {
+    let router = test_router().await;
+    let req = Request::get("/../Cargo.toml")
+        .body(Body::empty())
+        .expect("build request");
+    let (status, _) = request(&router, req).await;
+
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
