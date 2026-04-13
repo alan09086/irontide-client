@@ -1,0 +1,13 @@
+[package]
+name = "irontide-webui-assets"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Vendored static assets for the IronTide Web UI (HTMX + Pico CSS)"
+
+[lints]
+workspace = true
+
+[dependencies]
+rust-embed = { version = "8", features = ["mime-guess"] }
+mime_guess = "2"

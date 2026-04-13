@@ -1,0 +1,150 @@
+/* IronTide Web UI — custom overrides on top of Pico CSS */
+
+/* ─── Progress bar state colours ─────────────────────────────── */
+/* Webkit */
+progress[data-state="downloading"]::-webkit-progress-value {
+  background-color: var(--pico-primary);
+}
+progress[data-state="seeding"]::-webkit-progress-value {
+  background-color: #2ecc40;
+}
+progress[data-state="checking"]::-webkit-progress-value {
+  background-color: #ffdc00;
+}
+progress[data-state="paused"]::-webkit-progress-value {
+  background-color: #aaa;
+}
+
+/* Firefox */
+progress[data-state="downloading"]::-moz-progress-bar {
+  background-color: var(--pico-primary);
+}
+progress[data-state="seeding"]::-moz-progress-bar {
+  background-color: #2ecc40;
+}
+progress[data-state="checking"]::-moz-progress-bar {
+  background-color: #ffdc00;
+}
+progress[data-state="paused"]::-moz-progress-bar {
+  background-color: #aaa;
+}
+
+/* ─── Torrent list table ──────────────────────────────────────── */
+#torrent-list table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+#torrent-list th,
+#torrent-list td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── Responsive: hide detail columns on small screens ───────── */
+@media (max-width: 768px) {
+  .col-down,
+  .col-up,
+  .col-seeds,
+  .col-peers {
+    display: none;
+  }
+}
+
+/* ─── Add-magnet dialog ───────────────────────────────────────── */
+dialog#add-magnet-dialog article {
+  width: 100%;
+  max-width: 500px;
+  margin-inline: auto;
+}
+
+@media (max-width: 768px) {
+  dialog#add-magnet-dialog article {
+    max-width: 100%;
+    margin: 0;
+  }
+}
+
+dialog#add-magnet-dialog input[name="uri"] {
+  width: 100%;
+  font-family: monospace;
+  font-size: 0.875rem;
+}
+
+#add-magnet-error {
+  color: var(--pico-del-color, #c0392b);
+  font-size: 0.875rem;
+  min-height: 1.25rem;
+}
+
+/* ─── Toast notifications ─────────────────────────────────────── */
+#toast {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.toast-message {
+  background-color: var(--pico-primary-background, #1a1a2e);
+  color: var(--pico-primary, #92b4f4);
+  border: 1px solid var(--pico-primary, #92b4f4);
+  border-radius: var(--pico-border-radius, 0.25rem);
+  padding: 0.75rem 1.25rem;
+  font-size: 0.875rem;
+  opacity: 1;
+  transition: opacity 0.5s ease-out;
+}
+
+.toast-message.fade-out {
+  opacity: 0;
+}
+
+/* ─── Aggregate stats bar ─────────────────────────────────────── */
+#stats-bar {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  font-size: 0.8125rem;
+  color: var(--pico-muted-color, #888);
+}
+
+#stats-bar span {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+/* ─── Header layout ───────────────────────────────────────────── */
+body > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+body > header h1 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+/* ─── Main content ────────────────────────────────────────────── */
+main {
+  padding-block: 1rem;
+}
+
+#torrent-list {
+  min-height: 4rem;
+}
+
+/* ─── Footer ──────────────────────────────────────────────────── */
+body > footer {
+  border-top: 1px solid var(--pico-muted-border-color, #333);
+  padding-block: 0.75rem;
+}
