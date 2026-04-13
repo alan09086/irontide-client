@@ -21,6 +21,29 @@ thread_local! {
     static TORRENT_MODEL: RefCell<Option<Rc<VecModel<crate::TorrentRow>>>> = const { RefCell::new(None) };
 }
 
+/// Update selection state on the model immediately (called from main-thread callbacks).
+///
+/// Iterates through all model rows and sets `selected` to match the given set.
+/// Only touches rows whose selection state actually changed, to avoid redundant
+/// model notifications.
+pub fn update_selection(selected: &HashSet<String>) {
+    TORRENT_MODEL.with(|m| {
+        let borrow = m.borrow();
+        let Some(model) = borrow.as_ref() else {
+            return;
+        };
+        for i in 0..model.row_count() {
+            if let Some(mut row) = model.row_data(i) {
+                let should_select = selected.contains(row.info_hash.as_str());
+                if row.selected != should_select {
+                    row.selected = should_select;
+                    model.set_row_data(i, row);
+                }
+            }
+        }
+    });
+}
+
 /// Initialise the thread-local torrent model and bind it to the window.
 ///
 /// Must be called on the Slint main thread (inside `upgrade_in_event_loop`)

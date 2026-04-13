@@ -79,14 +79,18 @@ fn main() -> Result<(), error::GuiError> {
         let cb_state = state.clone();
         main_window.on_row_clicked(move |info_hash, shift, ctrl| {
             let hash = info_hash.as_str();
-            let mut st = cb_state.lock();
-            if ctrl {
-                st.selection_ctrl_click(hash);
-            } else if shift {
-                st.selection_shift_click(hash);
-            } else {
-                st.selection_click(hash);
-            }
+            let selected = {
+                let mut st = cb_state.lock();
+                if ctrl {
+                    st.selection_ctrl_click(hash);
+                } else if shift {
+                    st.selection_shift_click(hash);
+                } else {
+                    st.selection_click(hash);
+                }
+                st.selected.clone()
+            };
+            crate::poll::update_selection(&selected);
         });
     }
 
