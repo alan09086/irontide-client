@@ -1,0 +1,147 @@
+// Delete confirmation dialog — modal overlay shown before removing torrents.
+// Custom widgets only (no std-widgets) for consistent hit regions.
+
+import { Palette } from "../palette.slint";
+
+export component ConfirmDeleteDialog {
+    in property <bool> show;
+    in property <int> count: 0;
+    in property <bool> delete-files: false;
+    callback delete-confirmed(/* delete_files */ bool);
+    callback cancel();
+
+    // Internal checkbox state. Initialised from `delete-files` via binding;
+    // the binding is broken on first user toggle, then re-established when
+    // the dialog reopens with a fresh `delete-files` value.
+    in-out property <bool> check-active: root.delete-files;
+
+    if root.show: Rectangle {
+        // Full-window backdrop at 80% opacity
+        background: Palette.background.with-alpha(80%);
+
+        backdrop-touch := TouchArea {
+            clicked => { root.cancel(); }
+        }
+
+        // Dialog box centered
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 400px;
+            height: dialog-layout.preferred-height + 32px;
+            background: Palette.surface;
+            border-color: Palette.border;
+            border-width: 1px;
+            border-radius: 8px;
+
+            // Block backdrop click from reaching through dialog
+            TouchArea { }
+
+            dialog-layout := VerticalLayout {
+                padding: 16px;
+                spacing: 12px;
+
+                // Title
+                Text {
+                    text: "Remove Torrent(s)";
+                    color: Palette.text;
+                    font-size: 16px;
+                    font-weight: 700;
+                }
+
+                // Message
+                Text {
+                    text: "Remove " + root.count + " selected torrent(s)?";
+                    color: Palette.text;
+                    font-size: 13px;
+                }
+
+                // Custom checkbox: "Also delete files on disk"
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+
+                    // Checkbox box
+                    Rectangle {
+                        width: 18px;
+                        height: 18px;
+                        border-width: 1px;
+                        border-color: Palette.input-border;
+                        border-radius: 3px;
+                        background: Palette.input-bg;
+
+                        if root.check-active: Text {
+                            text: "\u{2713}";
+                            color: Palette.checkbox-check;
+                            font-size: 14px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        check-state := TouchArea {
+                            clicked => { root.check-active = !root.check-active; }
+                        }
+                    }
+
+                    // Checkbox label (also clickable)
+                    Text {
+                        text: "Also delete files on disk";
+                        color: Palette.text;
+                        font-size: 13px;
+                        vertical-alignment: center;
+
+                        label-touch := TouchArea {
+                            clicked => { root.check-active = !root.check-active; }
+                        }
+                    }
+                }
+
+                // Buttons row
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 8px;
+
+                    // Cancel
+                    Rectangle {
+                        width: 80px;
+                        height: 32px;
+                        background: cancel-touch.has-hover ? Palette.menu-hover : Palette.accent;
+                        border-radius: 4px;
+
+                        Text {
+                            text: "Cancel";
+                            color: Palette.text;
+                            font-size: 13px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        cancel-touch := TouchArea {
+                            clicked => { root.cancel(); }
+                        }
+                    }
+
+                    // Remove (danger colour)
+                    Rectangle {
+                        width: 80px;
+                        height: 32px;
+                        background: remove-touch.has-hover ? #c62828 : Palette.danger;
+                        border-radius: 4px;
+
+                        Text {
+                            text: "Remove";
+                            color: Palette.text;
+                            font-size: 13px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        remove-touch := TouchArea {
+                            clicked => { root.delete-confirmed(root.check-active); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

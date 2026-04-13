@@ -308,16 +308,7 @@ async fn handle_gui_command(
             hashes,
             delete_files,
         } => {
-            if delete_files {
-                tracing::warn!(
-                    "delete_files=true but file deletion not yet implemented (M164 Step 7)"
-                );
-            }
-            let msg = batch_action(&hashes, session, "Removed", |s, id| {
-                Box::pin(s.remove_torrent(id))
-            })
-            .await;
-            show_toast(weak, &msg, false);
+            handle_remove_torrents(&hashes, delete_files, session, weak).await;
         }
         GuiCommand::SetSeedMode { hashes, enabled } => {
             let label = if enabled {
@@ -464,6 +455,162 @@ async fn handle_add_torrent_file(
         }
         Err(e) => {
             show_toast(weak, &format!("Failed to add torrent: {e}"), true);
+        }
+    }
+}
+
+/// Remove one or more torrents, optionally deleting their files from disk.
+///
+/// When `delete_files` is `true`, each torrent's data is located via
+/// `torrent_stats().save_path` + `torrent_info().name`, canonicalised, and
+/// verified to be within the save directory before deletion. This prevents
+/// path-traversal attacks where a malicious torrent name like `../../etc`
+/// could escape the download directory.
+///
+/// The torrent is removed from the session *before* files are deleted so the
+/// session no longer holds any file handles.
+async fn handle_remove_torrents(
+    hashes: &[String],
+    delete_files: bool,
+    session: &irontide::session::SessionHandle,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    if hashes.is_empty() {
+        show_toast(weak, "Remove: no torrents selected", false);
+        return;
+    }
+
+    let mut success = 0usize;
+    let mut failed = 0usize;
+
+    for hash_str in hashes {
+        let Ok(id) = irontide::core::Id20::from_hex(hash_str) else {
+            tracing::warn!(hash = %hash_str, "invalid info hash for remove");
+            failed += 1;
+            continue;
+        };
+
+        if delete_files {
+            // Gather info needed for file deletion *before* removing the torrent.
+            let file_info = gather_delete_info(session, id).await;
+
+            // Remove from session first so file handles are released.
+            if let Err(e) = session.remove_torrent(id).await {
+                tracing::warn!(hash = %hash_str, error = %e, "remove_torrent failed");
+                failed += 1;
+                continue;
+            }
+
+            // Attempt file deletion if we gathered enough info.
+            if let Some((save_path, name, file_count)) = file_info {
+                delete_torrent_files(&save_path, &name, file_count);
+            }
+        } else if let Err(e) = session.remove_torrent(id).await {
+            tracing::warn!(hash = %hash_str, error = %e, "remove_torrent failed");
+            failed += 1;
+            continue;
+        }
+
+        success += 1;
+    }
+
+    let label = if delete_files {
+        "Removed + deleted files"
+    } else {
+        "Removed"
+    };
+    show_toast(weak, &format_batch_result(label, success, failed), false);
+}
+
+/// Gather the save path, torrent name, and file count needed for deletion.
+///
+/// Returns `None` if either `torrent_stats` or `torrent_info` fails (e.g. the
+/// torrent is a magnet that never fetched metadata).
+async fn gather_delete_info(
+    session: &irontide::session::SessionHandle,
+    id: irontide::core::Id20,
+) -> Option<(std::path::PathBuf, String, usize)> {
+    let stats = match session.torrent_stats(id).await {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::debug!(error = %e, "cannot get torrent_stats for file deletion");
+            return None;
+        }
+    };
+    let info = match session.torrent_info(id).await {
+        Ok(i) => i,
+        Err(e) => {
+            tracing::debug!(error = %e, "cannot get torrent_info for file deletion");
+            return None;
+        }
+    };
+    let save_path = std::path::PathBuf::from(&stats.save_path);
+    Some((save_path, info.name.clone(), info.files.len()))
+}
+
+/// Delete a torrent's files from disk with path-traversal protection.
+///
+/// The target path is canonicalised and verified to be a child of the save
+/// directory. Single-file torrents are removed with `remove_file`; multi-file
+/// torrents (directories) with `remove_dir_all`.
+fn delete_torrent_files(save_path: &std::path::Path, name: &str, file_count: usize) {
+    let torrent_path = save_path.join(name);
+
+    let canonical = match torrent_path.canonicalize() {
+        Ok(p) => p,
+        Err(_) => {
+            // File may not exist (magnet that never downloaded anything).
+            tracing::debug!(
+                path = %torrent_path.display(),
+                "cannot canonicalize torrent path, skipping file deletion"
+            );
+            return;
+        }
+    };
+
+    let canonical_save = match save_path.canonicalize() {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!(
+                path = %save_path.display(),
+                error = %e,
+                "cannot canonicalize save_path, skipping file deletion"
+            );
+            return;
+        }
+    };
+
+    // PATH TRAVERSAL SAFETY: verify the file is within the save directory.
+    if !canonical.starts_with(&canonical_save) {
+        tracing::warn!(
+            path = %canonical.display(),
+            save_path = %canonical_save.display(),
+            "path traversal detected, refusing to delete"
+        );
+        return;
+    }
+
+    if file_count > 1 {
+        // Multi-file torrent: remove the directory tree.
+        if let Err(e) = std::fs::remove_dir_all(&canonical) {
+            tracing::warn!(
+                path = %canonical.display(),
+                error = %e,
+                "failed to delete torrent directory"
+            );
+        } else {
+            tracing::info!(path = %canonical.display(), "deleted torrent directory");
+        }
+    } else {
+        // Single-file torrent: remove just the file.
+        if let Err(e) = std::fs::remove_file(&canonical) {
+            tracing::warn!(
+                path = %canonical.display(),
+                error = %e,
+                "failed to delete torrent file"
+            );
+        } else {
+            tracing::info!(path = %canonical.display(), "deleted torrent file");
         }
     }
 }
@@ -654,5 +801,85 @@ mod tests {
         assert!(!name.is_empty());
         assert_eq!(total_size, 9); // 4 + 5
         assert_eq!(file_count, 2);
+    }
+
+    // ── Path traversal safety tests ──────────────────────────────────────
+
+    #[test]
+    fn path_traversal_safe_path_within_dir() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let safe_file = dir.path().join("safe_file.txt");
+        std::fs::write(&safe_file, b"test").expect("write safe file");
+
+        let canonical = safe_file.canonicalize().expect("canonicalize safe file");
+        let canonical_dir = dir.path().canonicalize().expect("canonicalize dir");
+
+        assert!(canonical.starts_with(&canonical_dir));
+    }
+
+    #[test]
+    fn path_traversal_detects_escape() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let canonical_dir = dir.path().canonicalize().expect("canonicalize dir");
+
+        // Construct a path that attempts to escape the save directory.
+        let evil_path = dir.path().join("../");
+        if let Ok(canonical_evil) = evil_path.canonicalize() {
+            assert!(
+                !canonical_evil.starts_with(&canonical_dir) || canonical_evil == canonical_dir,
+                "traversal path should not be a strict child of save dir"
+            );
+        }
+        // If canonicalize fails (target doesn't exist), that's also safe
+        // because `delete_torrent_files` returns early in that case.
+    }
+
+    #[test]
+    fn delete_torrent_files_removes_single_file() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file = dir.path().join("test_torrent.bin");
+        std::fs::write(&file, b"data").expect("write file");
+        assert!(file.exists());
+
+        delete_torrent_files(dir.path(), "test_torrent.bin", 1);
+        assert!(!file.exists(), "single file should be deleted");
+    }
+
+    #[test]
+    fn delete_torrent_files_removes_directory() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let torrent_dir = dir.path().join("multi_file_torrent");
+        std::fs::create_dir(&torrent_dir).expect("create torrent dir");
+        std::fs::write(torrent_dir.join("file_a.bin"), b"aaa").expect("write a");
+        std::fs::write(torrent_dir.join("file_b.bin"), b"bbb").expect("write b");
+        assert!(torrent_dir.exists());
+
+        delete_torrent_files(dir.path(), "multi_file_torrent", 2);
+        assert!(!torrent_dir.exists(), "torrent directory should be deleted");
+    }
+
+    #[test]
+    fn delete_torrent_files_refuses_traversal() {
+        let parent = tempfile::tempdir().expect("create parent dir");
+        let save_dir = parent.path().join("downloads");
+        std::fs::create_dir(&save_dir).expect("create save dir");
+
+        // Create a file outside save_dir that a traversal attack would target.
+        let outside_file = parent.path().join("secret.txt");
+        std::fs::write(&outside_file, b"secret").expect("write secret");
+
+        // Attempt traversal: name = "../secret.txt"
+        delete_torrent_files(&save_dir, "../secret.txt", 1);
+        assert!(
+            outside_file.exists(),
+            "file outside save dir must NOT be deleted"
+        );
+    }
+
+    #[test]
+    fn delete_torrent_files_nonexistent_is_noop() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        // Should not panic — just returns early.
+        delete_torrent_files(dir.path(), "does_not_exist.bin", 1);
     }
 }

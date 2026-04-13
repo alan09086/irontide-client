@@ -7,6 +7,7 @@ import { StatusBar } from "widgets/status_bar.slint";
 import { AddMagnetDialog } from "widgets/add_magnet_dialog.slint";
 import { AddTorrentDialog } from "widgets/add_torrent_dialog.slint";
 import { ContextMenu } from "widgets/context_menu.slint";
+import { ConfirmDeleteDialog } from "widgets/confirm_delete_dialog.slint";
 
 export { Palette }
 
@@ -273,6 +274,12 @@ export component MainWindow inherits Window {
     in-out property <bool> ctx-can-recheck: true;
     callback context-action(int);
     callback row-right-clicked(/* info-hash */ string, /* x */ length, /* y */ length);
+
+    // ── Delete Confirmation Dialog ──
+    in-out property <bool> show-delete-dialog: false;
+    in-out property <int> delete-dialog-count: 0;
+    in-out property <bool> delete-dialog-delete-files: false;
+    callback delete-confirmed(/* delete_files */ bool);
 
     // ── Callbacks ──
     callback menu-file-action(int);
@@ -860,6 +867,22 @@ export component MainWindow inherits Window {
         }
         dismiss => {
             root.show-context-menu = false;
+        }
+    }
+
+    // Delete Confirmation Dialog overlay (on top of context menu)
+    ConfirmDeleteDialog {
+        show: root.show-delete-dialog;
+        count: root.delete-dialog-count;
+        delete-files: root.delete-dialog-delete-files;
+        width: root.width;
+        height: root.height;
+        delete-confirmed(delete-files) => {
+            root.show-delete-dialog = false;
+            root.delete-confirmed(delete-files);
+        }
+        cancel => {
+            root.show-delete-dialog = false;
         }
     }
 }

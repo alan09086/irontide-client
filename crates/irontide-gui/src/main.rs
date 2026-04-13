@@ -210,14 +210,34 @@ fn main() -> Result<(), error::GuiError> {
     // 6g. Wire context menu action dispatch.
     {
         let cb_state = state.clone();
+        let weak = main_window.as_weak();
         main_window.on_context_action(move |action_index| {
             let Some(action) = app::ContextAction::from_index(action_index) else {
                 return;
             };
-            let (hashes, cmd_tx) = {
+            let hashes: Vec<String> = {
                 let st = cb_state.lock();
-                let hashes: Vec<String> = st.selected.iter().cloned().collect();
-                (hashes, st.cmd_tx.clone())
+                st.selected.iter().cloned().collect()
+            };
+
+            // Remove/RemoveAndDelete: show confirmation dialog instead of immediate action.
+            if matches!(
+                action,
+                app::ContextAction::Remove | app::ContextAction::RemoveAndDelete
+            ) {
+                let delete_files = matches!(action, app::ContextAction::RemoveAndDelete);
+                let count = i32::try_from(hashes.len()).unwrap_or(i32::MAX);
+                let _ = weak.upgrade_in_event_loop(move |win| {
+                    win.set_delete_dialog_count(count);
+                    win.set_delete_dialog_delete_files(delete_files);
+                    win.set_show_delete_dialog(true);
+                });
+                return;
+            }
+
+            let cmd_tx = {
+                let st = cb_state.lock();
+                st.cmd_tx.clone()
             };
             let Some(tx) = cmd_tx else { return };
 
@@ -233,18 +253,32 @@ fn main() -> Result<(), error::GuiError> {
                     hashes,
                     enabled: false,
                 },
-                ContextAction::Remove => app::GuiCommand::RemoveTorrents {
-                    hashes,
-                    delete_files: false,
-                },
-                ContextAction::RemoveAndDelete => app::GuiCommand::RemoveTorrents {
-                    hashes,
-                    delete_files: true,
-                },
                 ContextAction::Recheck => app::GuiCommand::ForceRecheck { hashes },
                 ContextAction::ForceReannounce => app::GuiCommand::ForceReannounce { hashes },
+                // Handled by the confirmation dialog above; unreachable here.
+                ContextAction::Remove | ContextAction::RemoveAndDelete => return,
             };
             let _ = tx.send(cmd);
+        });
+    }
+
+    // 6h. Wire delete confirmation callback.
+    {
+        let cb_state = state.clone();
+        main_window.on_delete_confirmed(move |delete_files| {
+            let (hashes, cmd_tx) = {
+                let st = cb_state.lock();
+                (
+                    st.selected.iter().cloned().collect::<Vec<_>>(),
+                    st.cmd_tx.clone(),
+                )
+            };
+            if let Some(tx) = cmd_tx {
+                let _ = tx.send(app::GuiCommand::RemoveTorrents {
+                    hashes,
+                    delete_files,
+                });
+            }
         });
     }
 
