@@ -1,178 +1,27 @@
 //! Formatting helpers for the torrent list display.
 //!
-//! Provides human-readable strings for sizes, transfer rates, ETAs,
-//! share ratios, and torrent state labels used throughout the GUI.
+//! Thin `pub(crate)` wrappers around [`irontide_format`] so that existing
+//! call sites in the GUI don't need to change. All logic lives in the shared
+//! crate and is tested there.
 
 use irontide::session::TorrentState;
 
-/// Format a raw byte count as a human-readable size string.
-///
-/// Uses binary (KiB/MiB/GiB) units with decimal precision matching
-/// libtorrent / rqbit conventions.
 pub(crate) fn format_size(bytes: u64) -> String {
-    const KIB: u64 = 1024;
-    const MIB: u64 = 1024 * KIB;
-    const GIB: u64 = 1024 * MIB;
-    if bytes >= GIB {
-        format!("{:.2} GiB", bytes as f64 / GIB as f64)
-    } else if bytes >= MIB {
-        format!("{:.1} MiB", bytes as f64 / MIB as f64)
-    } else if bytes >= KIB {
-        format!("{:.1} KiB", bytes as f64 / KIB as f64)
-    } else {
-        format!("{bytes} B")
-    }
+    irontide_format::format_size(bytes)
 }
 
-/// Format a byte-per-second rate as a human-readable string.
-///
-/// Note: rates use the `KB/s` / `MB/s` suffix (without the `i`) to match
-/// libtorrent progress output.
 pub(crate) fn format_rate(bytes_per_sec: u64) -> String {
-    const KIB: u64 = 1024;
-    const MIB: u64 = 1024 * KIB;
-    if bytes_per_sec >= MIB {
-        format!("{:.1} MB/s", bytes_per_sec as f64 / MIB as f64)
-    } else if bytes_per_sec >= KIB {
-        format!("{:.1} KB/s", bytes_per_sec as f64 / KIB as f64)
-    } else {
-        format!("{bytes_per_sec} B/s")
-    }
+    irontide_format::format_rate(bytes_per_sec)
 }
 
-/// Estimate remaining download time given outstanding bytes and current rate.
-///
-/// Returns `"—"` (em dash) when the rate is zero. Otherwise formats the
-/// duration as `"Xd Yh"`, `"Xh Ym"`, `"Xm Ys"`, or `"Xs"` depending on
-/// the magnitude.
 pub(crate) fn format_eta(remaining_bytes: u64, rate_bps: u64) -> String {
-    if rate_bps == 0 {
-        return "\u{2014}".to_string(); // em dash
-    }
-    let secs = remaining_bytes / rate_bps;
-    if secs >= 86400 {
-        let days = secs / 86400;
-        let hours = (secs % 86400) / 3600;
-        format!("{days}d {hours}h")
-    } else if secs >= 3600 {
-        let hours = secs / 3600;
-        let mins = (secs % 3600) / 60;
-        format!("{hours}h {mins}m")
-    } else if secs >= 60 {
-        let mins = secs / 60;
-        let s = secs % 60;
-        format!("{mins}m {s}s")
-    } else {
-        format!("{secs}s")
-    }
+    irontide_format::format_eta(remaining_bytes, rate_bps)
 }
 
-/// Format the upload/download share ratio.
-///
-/// Returns `"∞"` when bytes were uploaded but nothing was downloaded,
-/// `"0.00"` when both counters are zero, and a two-decimal ratio otherwise.
 pub(crate) fn format_ratio(uploaded: u64, downloaded: u64) -> String {
-    if downloaded == 0 && uploaded > 0 {
-        return "\u{221e}".to_string(); // ∞
-    }
-    if downloaded == 0 {
-        return "0.00".to_string();
-    }
-    format!("{:.2}", uploaded as f64 / downloaded as f64)
+    irontide_format::format_ratio(uploaded, downloaded)
 }
 
-/// Map a `TorrentState` variant to its lowercase display label.
-///
-/// When `user_seed_mode` is true and the torrent is in the `Downloading`
-/// state, returns `"seed only"` to reflect the user-imposed constraint.
 pub(crate) fn format_state(state: &TorrentState, user_seed_mode: bool) -> &'static str {
-    if user_seed_mode && matches!(state, TorrentState::Downloading) {
-        return "seed only";
-    }
-    match state {
-        TorrentState::FetchingMetadata => "fetching metadata",
-        TorrentState::Checking => "checking",
-        TorrentState::Downloading => "downloading",
-        TorrentState::Complete => "complete",
-        TorrentState::Seeding => "seeding",
-        TorrentState::Paused => "paused",
-        TorrentState::Stopped => "stopped",
-        TorrentState::Sharing => "sharing",
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_format_eta_ranges() {
-        // Zero rate → em dash
-        assert_eq!(format_eta(1_000_000, 0), "\u{2014}");
-
-        // Seconds only
-        assert_eq!(format_eta(30, 1), "30s");
-
-        // Minutes and seconds
-        assert_eq!(format_eta(45 * 60 + 12, 1), "45m 12s");
-
-        // Hours and minutes
-        assert_eq!(format_eta(2 * 3600 + 15 * 60, 1), "2h 15m");
-
-        // Days and hours
-        assert_eq!(format_eta(2 * 86400 + 15 * 3600, 1), "2d 15h");
-    }
-
-    #[test]
-    fn test_format_ratio() {
-        // Normal ratio: 150 / 100 = 1.50
-        assert_eq!(format_ratio(150, 100), "1.50");
-
-        // Downloaded zero with upload → infinity
-        assert_eq!(format_ratio(500, 0), "\u{221e}");
-
-        // Both zero → 0.00
-        assert_eq!(format_ratio(0, 0), "0.00");
-    }
-
-    #[test]
-    fn test_format_size_units() {
-        assert_eq!(format_size(0), "0 B");
-        assert_eq!(format_size(1024), "1.0 KiB");
-        assert_eq!(format_size(1_048_576), "1.0 MiB");
-        assert_eq!(format_size(1_073_741_824), "1.00 GiB");
-    }
-
-    #[test]
-    fn test_format_state() {
-        assert_eq!(
-            format_state(&TorrentState::FetchingMetadata, false),
-            "fetching metadata"
-        );
-        assert_eq!(format_state(&TorrentState::Checking, false), "checking");
-        assert_eq!(
-            format_state(&TorrentState::Downloading, false),
-            "downloading"
-        );
-        assert_eq!(format_state(&TorrentState::Complete, false), "complete");
-        assert_eq!(format_state(&TorrentState::Seeding, false), "seeding");
-        assert_eq!(format_state(&TorrentState::Paused, false), "paused");
-        assert_eq!(format_state(&TorrentState::Stopped, false), "stopped");
-        assert_eq!(format_state(&TorrentState::Sharing, false), "sharing");
-    }
-
-    #[test]
-    fn test_format_state_seed_mode() {
-        // Downloading + seed mode → "seed only".
-        assert_eq!(format_state(&TorrentState::Downloading, true), "seed only");
-    }
-
-    #[test]
-    fn test_format_state_seed_mode_other_states() {
-        // Seed mode should NOT override non-Downloading states.
-        assert_eq!(format_state(&TorrentState::Seeding, true), "seeding");
-        assert_eq!(format_state(&TorrentState::Paused, true), "paused");
-        assert_eq!(format_state(&TorrentState::Complete, true), "complete");
-        assert_eq!(format_state(&TorrentState::Sharing, true), "sharing");
-    }
+    irontide_format::format_state(state, user_seed_mode)
 }

@@ -1,46 +1,21 @@
 //! Shared byte-count and rate formatting helpers for CLI output.
 //!
-//! Extracted from `download.rs` so every CLI mode (batch, REPL, TUI, and
-//! the progress renderer) can share a single implementation and keep the
-//! user-visible formatting stable.
+//! `format_size` and `format_rate` are thin wrappers around [`irontide_format`]
+//! so existing call sites don't need to change. `progress_bar` is CLI-specific
+//! and lives here.
 
 /// Format a raw byte count as a human-readable size string.
 ///
-/// Uses binary (KiB/MiB/GiB) units with decimal precision matching
-/// libtorrent / rqbit conventions. Sub-KiB values are reported as raw
-/// bytes, and the largest unit supported is GiB so that very large
-/// torrents stay on a single line.
+/// Delegates to [`irontide_format::format_size`].
 pub(crate) fn format_size(bytes: u64) -> String {
-    const KIB: u64 = 1024;
-    const MIB: u64 = 1024 * KIB;
-    const GIB: u64 = 1024 * MIB;
-
-    if bytes >= GIB {
-        format!("{:.2} GiB", bytes as f64 / GIB as f64)
-    } else if bytes >= MIB {
-        format!("{:.1} MiB", bytes as f64 / MIB as f64)
-    } else if bytes >= KIB {
-        format!("{:.1} KiB", bytes as f64 / KIB as f64)
-    } else {
-        format!("{bytes} B")
-    }
+    irontide_format::format_size(bytes)
 }
 
 /// Format a byte-per-second rate as a human-readable string.
 ///
-/// Note: rates use the `KB/s` / `MB/s` suffix (without the `i`) to match
-/// libtorrent progress output. Sub-KB/s values are reported in raw `B/s`.
+/// Delegates to [`irontide_format::format_rate`].
 pub(crate) fn format_rate(bytes_per_sec: u64) -> String {
-    const KIB: u64 = 1024;
-    const MIB: u64 = 1024 * KIB;
-
-    if bytes_per_sec >= MIB {
-        format!("{:.1} MB/s", bytes_per_sec as f64 / MIB as f64)
-    } else if bytes_per_sec >= KIB {
-        format!("{:.1} KB/s", bytes_per_sec as f64 / KIB as f64)
-    } else {
-        format!("{bytes_per_sec} B/s")
-    }
+    irontide_format::format_rate(bytes_per_sec)
 }
 
 /// Render a progress fraction as a fixed-width bar string.
@@ -76,22 +51,6 @@ pub(crate) fn progress_bar(progress: f64, width: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn format_size_units() {
-        assert_eq!(format_size(0), "0 B");
-        assert_eq!(format_size(512), "512 B");
-        assert_eq!(format_size(1024), "1.0 KiB");
-        assert_eq!(format_size(1_048_576), "1.0 MiB");
-        assert_eq!(format_size(1_073_741_824), "1.00 GiB");
-    }
-
-    #[test]
-    fn format_rate_units() {
-        assert_eq!(format_rate(0), "0 B/s");
-        assert_eq!(format_rate(1024), "1.0 KB/s");
-        assert_eq!(format_rate(1_048_576), "1.0 MB/s");
-    }
 
     #[test]
     fn progress_bar_endpoints() {

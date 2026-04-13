@@ -22,6 +22,7 @@ crypto-aws-lc = ["irontide/crypto-aws-lc"]
 [dependencies]
 irontide = { path = "../irontide", default-features = false }
 irontide-config = { workspace = true }
+irontide-format = { workspace = true }
 slint = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

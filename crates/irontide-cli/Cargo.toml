@@ -25,6 +25,7 @@ iocp = ["irontide/iocp"]
 irontide = { path = "../irontide", default-features = false }
 irontide-api = { path = "../irontide-api" }
 irontide-config = { workspace = true }
+irontide-format = { workspace = true }
 clap = { version = "4", features = ["derive"] }
 indicatif = "0.17"
 tokio = { workspace = true }
