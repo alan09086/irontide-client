@@ -4,6 +4,8 @@ pub mod events;
 pub mod extended;
 pub mod session;
 pub mod torrents;
+#[cfg(feature = "webui")]
+pub mod webui;
 
 use std::sync::Arc;
 
@@ -21,7 +23,8 @@ pub(crate) type AppState = Arc<SessionHandle>;
 pub fn build_router(session: SessionHandle) -> Router {
     let state: AppState = Arc::new(session);
 
-    Router::new()
+    #[allow(unused_mut)]
+    let mut router = Router::new()
         // -- Torrent routes --
         .route(
             "/api/v1/torrents",
@@ -74,6 +77,19 @@ pub fn build_router(session: SessionHandle) -> Router {
         .route("/api/v1/peers/ban", post(extended::ban_peer))
         .route("/api/v1/peers/ban/{ip}", delete(extended::unban_peer))
         // -- WebSocket event stream --
-        .route("/api/v1/events", any(events::ws_events))
-        .with_state(state)
+        .route("/api/v1/events", any(events::ws_events));
+
+    // -- Web UI routes (feature-gated) --
+    #[cfg(feature = "webui")]
+    {
+        router = router
+            .route(
+                "/webui/fragments/torrent-list",
+                get(webui::torrent_list_fragment),
+            )
+            .route("/webui/add-magnet", post(webui::add_magnet_redirect))
+            .fallback(webui::serve_static);
+    }
+
+    router.with_state(state)
 }

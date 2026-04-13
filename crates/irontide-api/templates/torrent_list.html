@@ -1,0 +1,34 @@
+{% if torrents.is_empty() %}
+<div class="empty-state">
+  <p>No torrents yet — add one above</p>
+</div>
+{% else %}
+<table role="grid">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Size</th>
+      <th>Progress</th>
+      <th class="col-down">Down</th>
+      <th class="col-up">Up</th>
+      <th class="col-seeds">Seeds</th>
+      <th class="col-peers">Peers</th>
+      <th>State</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for t in torrents %}
+    <tr>
+      <td>{{ t.name }}</td>
+      <td>{{ t.size }}</td>
+      <td><progress value="{{ t.progress }}" max="1" data-state="{{ t.state_class }}"></progress> {{ t.progress_pct }}</td>
+      <td class="col-down">{{ t.down_rate }}</td>
+      <td class="col-up">{{ t.up_rate }}</td>
+      <td class="col-seeds">{{ t.seeds }}</td>
+      <td class="col-peers">{{ t.peers }}</td>
+      <td><span class="state-{{ t.state_class }}">{{ t.state }}</span></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}

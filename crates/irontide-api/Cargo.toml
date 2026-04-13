@@ -9,9 +9,16 @@ description = "HTTP REST API for the irontide engine"
 workspace = true
 
 [features]
-default = ["crypto-aws-lc"]
+default = ["crypto-aws-lc", "webui"]
 crypto-aws-lc = ["irontide/crypto-aws-lc"]
 crypto-ring = ["irontide/crypto-ring"]
+webui = [
+    "dep:irontide-webui-assets",
+    "dep:irontide-format",
+    "dep:askama",
+    "dep:askama_web",
+]
+dev-webui = ["tower-http/fs"]
 
 [dependencies]
 irontide = { path = "../irontide", default-features = false }
@@ -21,6 +28,12 @@ serde_json = "1"
 tokio = { workspace = true }
 tower-http = { version = "0.6", features = ["cors"] }
 tracing = { workspace = true }
+
+# Web UI (behind "webui" feature)
+irontide-webui-assets = { path = "../irontide-webui-assets", optional = true }
+irontide-format = { workspace = true, optional = true }
+askama = { version = "0.15", optional = true }
+askama_web = { version = "0.15", features = ["axum-0.8"], optional = true }
 
 [dev-dependencies]
 futures-util = "0.3"
