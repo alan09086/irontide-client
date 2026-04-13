@@ -1,9 +1,15 @@
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use parking_lot::Mutex;
 use slint::ComponentHandle as _;
 
-use crate::app::{AppPhase, AppState};
+/// Monotonic counter so only the latest toast's timer dismisses.
+static TOAST_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+use crate::app::{AppPhase, AppState, GuiCommand};
 
 /// Spawn the session lifecycle on a background thread.
 ///
@@ -35,7 +41,10 @@ async fn run_session(
     state: Arc<Mutex<AppState>>,
 ) {
     // Start session.
-    let session = match irontide::ClientBuilder::from_settings(settings).start().await {
+    let session = match irontide::ClientBuilder::from_settings(settings)
+        .start()
+        .await
+    {
         Ok(s) => s,
         Err(e) => {
             let msg = format!("Session start failed: {e}");
@@ -65,21 +74,45 @@ async fn run_session(
         }
     }
 
+    // Create command channel and install the sender in shared state.
+    let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel();
+    state.lock().cmd_tx = Some(cmd_tx);
+
+    // Push default download directory to UI for dialog pre-fill.
+    let default_download_dir = session
+        .settings()
+        .await
+        .map(|s| s.download_dir.to_string_lossy().into_owned())
+        .unwrap_or_default();
+
     // Signal UI ready + initialise the torrent model.
     state.lock().phase = AppPhase::Ready;
-    let _ = weak.upgrade_in_event_loop(|win| {
+    let _ = weak.upgrade_in_event_loop(move |win| {
         crate::poll::init_model(&win);
         win.set_session_ready(true);
         win.set_status_text("Ready".into());
+        win.set_default_download_dir(default_download_dir.into());
     });
 
-    // Start poll loop and wait for shutdown.
-    let poll_handle = tokio::spawn(
-        crate::poll::poll_loop(session.clone(), weak.clone(), state.clone()),
-    );
-    tokio::select! {
-        _ = shutdown_rx => {}
-        _ = poll_handle => {}
+    // Start poll loop and wait for shutdown or commands.
+    let poll_handle = tokio::spawn(crate::poll::poll_loop(
+        session.clone(),
+        weak.clone(),
+        state.clone(),
+    ));
+
+    // `oneshot::Receiver` is `Unpin` in tokio, so `&mut` works directly.
+    // `JoinHandle` is also `Unpin`.
+    let mut shutdown_rx = shutdown_rx;
+    let mut poll_handle = poll_handle;
+    loop {
+        tokio::select! {
+            _ = &mut shutdown_rx => break,
+            _ = &mut poll_handle => break,
+            Some(cmd) = cmd_rx.recv() => {
+                handle_gui_command(cmd, &session, &weak).await;
+            }
+        }
     }
 
     // Save resume state before shutdown.
@@ -113,24 +146,480 @@ pub fn handle_menu_action(
             });
         }
         crate::app::MenuAction::AddMagnet => {
-            show_stub_toast(weak, "Add Magnet");
+            let _ = weak.upgrade_in_event_loop(|win| {
+                win.set_show_add_magnet_dialog(true);
+            });
         }
         crate::app::MenuAction::AddTorrentFile => {
-            show_stub_toast(weak, "Add Torrent File");
+            let _ = weak.upgrade_in_event_loop(|win| {
+                win.set_show_add_torrent_dialog(true);
+            });
         }
     }
 }
 
-fn show_stub_toast(weak: &slint::Weak<crate::MainWindow>, label: &str) {
-    let toast = format!("{label}: coming in M164");
+/// Display a toast notification in the UI.
+///
+/// The toast auto-dismisses after 3 seconds. Each new toast increments a
+/// generation counter so that only the *latest* toast's timer actually
+/// hides the overlay (older timers become no-ops).
+///
+/// When `is_error` is `true` the toast uses `Palette.danger` as its
+/// background and border colour.
+pub fn show_toast(weak: &slint::Weak<crate::MainWindow>, msg: &str, is_error: bool) {
+    let generation = TOAST_GENERATION
+        .fetch_add(1, Ordering::Relaxed)
+        .wrapping_add(1);
+    let text = msg.to_owned();
+    let weak_for_timer = weak.clone();
     let _ = weak.upgrade_in_event_loop(move |win| {
-        win.set_toast_text(toast.into());
+        win.set_toast_text(text.into());
         win.set_toast_visible(true);
+        win.set_toast_is_error(is_error);
+        // Auto-dismiss after 3 s. The generation guard ensures that if a
+        // newer toast appeared in the meantime, this callback is a no-op.
+        slint::Timer::single_shot(std::time::Duration::from_secs(3), move || {
+            if TOAST_GENERATION.load(Ordering::Relaxed) == generation {
+                let _ = weak_for_timer.upgrade_in_event_loop(|win| {
+                    win.set_toast_visible(false);
+                });
+            }
+        });
     });
+}
+
+/// Handle a "Browse..." button click for selecting a download directory.
+///
+/// Spawns `rfd::FileDialog` on a separate thread because the native GTK
+/// dialog blocks the calling thread. On selection, updates
+/// `default-download-dir` on the main window so all dialogs see the
+/// new value.
+pub fn handle_browse_download_dir(weak: &slint::Weak<crate::MainWindow>) {
+    let weak = weak.clone();
+    std::thread::spawn(move || {
+        let folder = rfd::FileDialog::new().pick_folder();
+        if let Some(path) = folder {
+            let path_str = path.to_string_lossy().into_owned();
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_default_download_dir(path_str.into());
+            });
+        }
+    });
+}
+
+/// Handle a "Browse..." button click for selecting a `.torrent` file.
+///
+/// Spawns `rfd::FileDialog` on a separate thread (GTK blocks). On
+/// selection, reads and parses the torrent file to extract name, total
+/// size, and file count, then pushes the results to the main window
+/// properties so the add-torrent dialog can display them.
+pub fn handle_browse_torrent_file(weak: &slint::Weak<crate::MainWindow>) {
+    let weak = weak.clone();
+    std::thread::spawn(move || {
+        let file = rfd::FileDialog::new()
+            .add_filter("Torrent", &["torrent"])
+            .pick_file();
+
+        if let Some(path) = file {
+            let path_str = path.to_string_lossy().into_owned();
+            match std::fs::read(&path) {
+                Ok(data) => match irontide::core::torrent_from_bytes_any(&data) {
+                    Ok(meta) => {
+                        let (name, total_size, file_count) = extract_torrent_info(&meta);
+                        let size_str = crate::format::format_size(total_size);
+                        let count = i32::try_from(file_count).unwrap_or(i32::MAX);
+                        let _ = weak.upgrade_in_event_loop(move |win| {
+                            win.set_add_torrent_file_path(path_str.into());
+                            win.set_add_torrent_name(name.into());
+                            win.set_add_torrent_size(size_str.into());
+                            win.set_add_torrent_file_count(count);
+                        });
+                    }
+                    Err(e) => {
+                        show_toast(&weak, &format!("Failed to parse torrent: {e}"), true);
+                    }
+                },
+                Err(e) => {
+                    show_toast(&weak, &format!("Failed to read file: {e}"), true);
+                }
+            }
+        }
+    });
+}
+
+/// Extract name, total size, and file count from parsed torrent metadata.
+fn extract_torrent_info(meta: &irontide::core::TorrentMeta) -> (String, u64, usize) {
+    use irontide::core::TorrentMeta;
+    match meta {
+        TorrentMeta::V1(v1) => {
+            let name = v1.info.name.clone();
+            let files = v1.info.files();
+            let total_size: u64 = files.iter().map(|f| f.length).sum();
+            let file_count = files.len();
+            (name, total_size, file_count)
+        }
+        TorrentMeta::V2(v2) => {
+            let name = v2.info.name.clone();
+            let total_size = v2.info.total_length();
+            let file_count = v2.info.files().len();
+            (name, total_size, file_count)
+        }
+        TorrentMeta::Hybrid(v1, _v2) => {
+            // Use v1 info — it has the most straightforward API.
+            let name = v1.info.name.clone();
+            let files = v1.info.files();
+            let total_size: u64 = files.iter().map(|f| f.length).sum();
+            let file_count = files.len();
+            (name, total_size, file_count)
+        }
+    }
+}
+
+/// Dispatch a `GuiCommand` to the appropriate session method.
+async fn handle_gui_command(
+    cmd: GuiCommand,
+    session: &irontide::session::SessionHandle,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    let start = std::time::Instant::now();
+
+    match cmd {
+        GuiCommand::AddMagnet { uri, download_dir } => {
+            handle_add_magnet(uri, download_dir, session, weak).await;
+        }
+        GuiCommand::AddTorrentFile { path, download_dir } => {
+            handle_add_torrent_file(path, download_dir, session, weak).await;
+        }
+        GuiCommand::PauseTorrents { hashes } => {
+            let msg = batch_action(&hashes, session, "Paused", |s, id| {
+                Box::pin(s.pause_torrent(id))
+            })
+            .await;
+            show_toast(weak, &msg, false);
+        }
+        GuiCommand::ResumeTorrents { hashes } => {
+            let msg = batch_action(&hashes, session, "Resumed", |s, id| {
+                Box::pin(s.resume_torrent(id))
+            })
+            .await;
+            show_toast(weak, &msg, false);
+        }
+        GuiCommand::RemoveTorrents {
+            hashes,
+            delete_files,
+        } => {
+            handle_remove_torrents(&hashes, delete_files, session, weak).await;
+        }
+        GuiCommand::SetSeedMode { hashes, enabled } => {
+            let label = if enabled {
+                "Set seed mode"
+            } else {
+                "Cleared seed mode"
+            };
+            let msg = batch_action(&hashes, session, label, |s, id| {
+                Box::pin(s.set_seed_mode(id, enabled))
+            })
+            .await;
+            show_toast(weak, &msg, false);
+        }
+        GuiCommand::ForceRecheck { hashes } => {
+            let msg = batch_action(&hashes, session, "Rechecking", |s, id| {
+                Box::pin(s.force_recheck(id))
+            })
+            .await;
+            show_toast(weak, &msg, false);
+        }
+        GuiCommand::ForceReannounce { hashes } => {
+            let msg = batch_action(&hashes, session, "Reannounced", |s, id| {
+                Box::pin(s.force_reannounce(id))
+            })
+            .await;
+            show_toast(weak, &msg, false);
+        }
+    }
+
+    let elapsed = start.elapsed();
+    if elapsed.as_millis() > 100 {
+        tracing::warn!("GUI command took {elapsed:?}");
+    }
+}
+
+/// Execute an async action for each info-hash and format the result.
+async fn batch_action<F>(
+    hashes: &[String],
+    session: &irontide::session::SessionHandle,
+    label: &str,
+    action: F,
+) -> String
+where
+    F: Fn(
+        &irontide::session::SessionHandle,
+        irontide::core::Id20,
+    ) -> Pin<Box<dyn Future<Output = Result<(), irontide::session::Error>> + '_>>,
+{
+    if hashes.is_empty() {
+        return format!("{label}: no torrents selected");
+    }
+    let mut success = 0usize;
+    let mut failed = 0usize;
+    for hash_str in hashes {
+        let Ok(id) = irontide::core::Id20::from_hex(hash_str) else {
+            tracing::warn!(hash = %hash_str, "invalid info hash in batch action");
+            failed += 1;
+            continue;
+        };
+        match action(session, id).await {
+            Ok(()) => success += 1,
+            Err(e) => {
+                tracing::warn!(hash = %hash_str, error = %e, "{label} failed for torrent");
+                failed += 1;
+            }
+        }
+    }
+    format_batch_result(label, success, failed)
+}
+
+/// Format the result of a batch action into a human-readable toast message.
+fn format_batch_result(label: &str, success: usize, failed: usize) -> String {
+    if failed == 0 {
+        format!("{label} {success} torrent(s)")
+    } else {
+        format!("{label} {success} torrent(s), {failed} failed")
+    }
+}
+
+/// Add a torrent from a magnet URI.
+///
+/// Parses the magnet link, constructs `AddTorrentParams`, and submits to the
+/// session. Shows a toast on success or failure.
+async fn handle_add_magnet(
+    uri: String,
+    download_dir: Option<String>,
+    session: &irontide::session::SessionHandle,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    let uri = uri.trim();
+    let magnet = match irontide::core::Magnet::parse(uri) {
+        Ok(m) => m,
+        Err(e) => {
+            show_toast(weak, &format!("Invalid magnet: {e}"), true);
+            return;
+        }
+    };
+    let display_name = magnet
+        .display_name
+        .clone()
+        .unwrap_or_else(|| "unknown".to_string());
+    let mut params = irontide::AddTorrentParams::from_magnet(magnet);
+    if let Some(dir) = download_dir {
+        params = params.download_dir(dir);
+    }
+    match params.add_to(session).await {
+        Ok(_id) => {
+            show_toast(weak, &format!("Added: {display_name}"), false);
+        }
+        Err(e) => {
+            show_toast(weak, &format!("Failed to add: {e}"), true);
+        }
+    }
+}
+
+/// Add a torrent from a `.torrent` file path.
+///
+/// Constructs `AddTorrentParams`, optionally overrides the download
+/// directory, and submits to the session. Shows a toast on success or
+/// failure. Clears the dialog's file-selection state on success.
+async fn handle_add_torrent_file(
+    path: String,
+    download_dir: Option<String>,
+    session: &irontide::session::SessionHandle,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    let mut params = irontide::AddTorrentParams::from_file(&path);
+    if let Some(dir) = download_dir {
+        params = params.download_dir(dir);
+    }
+    let filename = std::path::Path::new(&path)
+        .file_name()
+        .map(|f| f.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.clone());
+    match params.add_to(session).await {
+        Ok(_id) => {
+            // Clear file-selection state in the dialog.
+            let _ = weak.upgrade_in_event_loop(|win| {
+                win.set_add_torrent_file_path(slint::SharedString::new());
+                win.set_add_torrent_name(slint::SharedString::new());
+                win.set_add_torrent_size(slint::SharedString::new());
+                win.set_add_torrent_file_count(0);
+            });
+            show_toast(weak, &format!("Added: {filename}"), false);
+        }
+        Err(e) => {
+            show_toast(weak, &format!("Failed to add torrent: {e}"), true);
+        }
+    }
+}
+
+/// Remove one or more torrents, optionally deleting their files from disk.
+///
+/// When `delete_files` is `true`, each torrent's data is located via
+/// `torrent_stats().save_path` + `torrent_info().name`, canonicalised, and
+/// verified to be within the save directory before deletion. This prevents
+/// path-traversal attacks where a malicious torrent name like `../../etc`
+/// could escape the download directory.
+///
+/// The torrent is removed from the session *before* files are deleted so the
+/// session no longer holds any file handles.
+async fn handle_remove_torrents(
+    hashes: &[String],
+    delete_files: bool,
+    session: &irontide::session::SessionHandle,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    if hashes.is_empty() {
+        show_toast(weak, "Remove: no torrents selected", false);
+        return;
+    }
+
+    let mut success = 0usize;
+    let mut failed = 0usize;
+
+    for hash_str in hashes {
+        let Ok(id) = irontide::core::Id20::from_hex(hash_str) else {
+            tracing::warn!(hash = %hash_str, "invalid info hash for remove");
+            failed += 1;
+            continue;
+        };
+
+        if delete_files {
+            // Gather info needed for file deletion *before* removing the torrent.
+            let file_info = gather_delete_info(session, id).await;
+
+            // Remove from session first so file handles are released.
+            if let Err(e) = session.remove_torrent(id).await {
+                tracing::warn!(hash = %hash_str, error = %e, "remove_torrent failed");
+                failed += 1;
+                continue;
+            }
+
+            // Attempt file deletion if we gathered enough info.
+            if let Some((save_path, name, file_count)) = file_info {
+                delete_torrent_files(&save_path, &name, file_count);
+            }
+        } else if let Err(e) = session.remove_torrent(id).await {
+            tracing::warn!(hash = %hash_str, error = %e, "remove_torrent failed");
+            failed += 1;
+            continue;
+        }
+
+        success += 1;
+    }
+
+    let label = if delete_files {
+        "Removed + deleted files"
+    } else {
+        "Removed"
+    };
+    show_toast(weak, &format_batch_result(label, success, failed), false);
+}
+
+/// Gather the save path, torrent name, and file count needed for deletion.
+///
+/// Returns `None` if either `torrent_stats` or `torrent_info` fails (e.g. the
+/// torrent is a magnet that never fetched metadata).
+async fn gather_delete_info(
+    session: &irontide::session::SessionHandle,
+    id: irontide::core::Id20,
+) -> Option<(std::path::PathBuf, String, usize)> {
+    let stats = match session.torrent_stats(id).await {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::debug!(error = %e, "cannot get torrent_stats for file deletion");
+            return None;
+        }
+    };
+    let info = match session.torrent_info(id).await {
+        Ok(i) => i,
+        Err(e) => {
+            tracing::debug!(error = %e, "cannot get torrent_info for file deletion");
+            return None;
+        }
+    };
+    let save_path = std::path::PathBuf::from(&stats.save_path);
+    Some((save_path, info.name.clone(), info.files.len()))
+}
+
+/// Delete a torrent's files from disk with path-traversal protection.
+///
+/// The target path is canonicalised and verified to be a child of the save
+/// directory. Single-file torrents are removed with `remove_file`; multi-file
+/// torrents (directories) with `remove_dir_all`.
+fn delete_torrent_files(save_path: &std::path::Path, name: &str, file_count: usize) {
+    let torrent_path = save_path.join(name);
+
+    let canonical = match torrent_path.canonicalize() {
+        Ok(p) => p,
+        Err(_) => {
+            // File may not exist (magnet that never downloaded anything).
+            tracing::debug!(
+                path = %torrent_path.display(),
+                "cannot canonicalize torrent path, skipping file deletion"
+            );
+            return;
+        }
+    };
+
+    let canonical_save = match save_path.canonicalize() {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!(
+                path = %save_path.display(),
+                error = %e,
+                "cannot canonicalize save_path, skipping file deletion"
+            );
+            return;
+        }
+    };
+
+    // PATH TRAVERSAL SAFETY: verify the file is within the save directory.
+    if !canonical.starts_with(&canonical_save) {
+        tracing::warn!(
+            path = %canonical.display(),
+            save_path = %canonical_save.display(),
+            "path traversal detected, refusing to delete"
+        );
+        return;
+    }
+
+    if file_count > 1 {
+        // Multi-file torrent: remove the directory tree.
+        if let Err(e) = std::fs::remove_dir_all(&canonical) {
+            tracing::warn!(
+                path = %canonical.display(),
+                error = %e,
+                "failed to delete torrent directory"
+            );
+        } else {
+            tracing::info!(path = %canonical.display(), "deleted torrent directory");
+        }
+    } else {
+        // Single-file torrent: remove just the file.
+        if let Err(e) = std::fs::remove_file(&canonical) {
+            tracing::warn!(
+                path = %canonical.display(),
+                error = %e,
+                "failed to delete torrent file"
+            );
+        } else {
+            tracing::info!(path = %canonical.display(), "deleted torrent file");
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn shutdown_oneshot_round_trip() {
         let (tx, rx) = tokio::sync::oneshot::channel::<()>();
@@ -142,5 +631,256 @@ mod tests {
             .unwrap();
         let result = rt.block_on(rx);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn command_channel_roundtrip() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<GuiCommand>();
+        tx.send(GuiCommand::PauseTorrents {
+            hashes: vec!["abc123".into()],
+        })
+        .expect("send should succeed");
+
+        let cmd = rx.try_recv().expect("should receive command");
+        match cmd {
+            GuiCommand::PauseTorrents { hashes } => {
+                assert_eq!(hashes, vec!["abc123".to_owned()]);
+            }
+            _ => panic!("expected PauseTorrents variant"),
+        }
+    }
+
+    #[test]
+    fn batch_toast_format_success() {
+        let msg = format_batch_result("Paused", 3, 0);
+        assert_eq!(msg, "Paused 3 torrent(s)");
+    }
+
+    #[test]
+    fn batch_toast_format_partial() {
+        let msg = format_batch_result("Paused", 2, 1);
+        assert_eq!(msg, "Paused 2 torrent(s), 1 failed");
+    }
+
+    #[test]
+    fn batch_toast_format_all_failed() {
+        let msg = format_batch_result("Removed", 0, 3);
+        assert_eq!(msg, "Removed 0 torrent(s), 3 failed");
+    }
+
+    #[test]
+    fn batch_toast_format_empty_label() {
+        let msg = format_batch_result("", 1, 0);
+        assert_eq!(msg, " 1 torrent(s)");
+    }
+
+    #[test]
+    fn valid_magnet_uri_parses() {
+        let uri = "magnet:?xt=urn:btih:aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d&dn=test";
+        let magnet = irontide::core::Magnet::parse(uri).expect("should parse valid magnet URI");
+        assert_eq!(magnet.display_name.as_deref(), Some("test"));
+    }
+
+    #[test]
+    fn invalid_magnet_uri_fails() {
+        let uri = "not a magnet";
+        assert!(irontide::core::Magnet::parse(uri).is_err());
+    }
+
+    #[test]
+    fn add_magnet_gui_command_round_trip() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<GuiCommand>();
+        tx.send(GuiCommand::AddMagnet {
+            uri: "magnet:?xt=urn:btih:aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d".into(),
+            download_dir: Some("/tmp/downloads".into()),
+        })
+        .expect("send should succeed");
+
+        let cmd = rx.try_recv().expect("should receive command");
+        match cmd {
+            GuiCommand::AddMagnet { uri, download_dir } => {
+                assert!(uri.starts_with("magnet:"));
+                assert_eq!(download_dir, Some("/tmp/downloads".to_owned()));
+            }
+            _ => panic!("expected AddMagnet variant"),
+        }
+    }
+
+    #[test]
+    fn add_magnet_gui_command_no_dir() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<GuiCommand>();
+        tx.send(GuiCommand::AddMagnet {
+            uri: "magnet:?xt=urn:btih:aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d".into(),
+            download_dir: None,
+        })
+        .expect("send should succeed");
+
+        let cmd = rx.try_recv().expect("should receive command");
+        match cmd {
+            GuiCommand::AddMagnet { download_dir, .. } => {
+                assert!(download_dir.is_none());
+            }
+            _ => panic!("expected AddMagnet variant"),
+        }
+    }
+
+    #[test]
+    fn add_torrent_file_gui_command_round_trip() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<GuiCommand>();
+        tx.send(GuiCommand::AddTorrentFile {
+            path: "/tmp/test.torrent".into(),
+            download_dir: Some("/tmp/downloads".into()),
+        })
+        .expect("send should succeed");
+
+        let cmd = rx.try_recv().expect("should receive command");
+        match cmd {
+            GuiCommand::AddTorrentFile { path, download_dir } => {
+                assert_eq!(path, "/tmp/test.torrent");
+                assert_eq!(download_dir, Some("/tmp/downloads".to_owned()));
+            }
+            _ => panic!("expected AddTorrentFile variant"),
+        }
+    }
+
+    #[test]
+    fn add_torrent_file_gui_command_no_dir() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<GuiCommand>();
+        tx.send(GuiCommand::AddTorrentFile {
+            path: "/home/user/big.torrent".into(),
+            download_dir: None,
+        })
+        .expect("send should succeed");
+
+        let cmd = rx.try_recv().expect("should receive command");
+        match cmd {
+            GuiCommand::AddTorrentFile { download_dir, .. } => {
+                assert!(download_dir.is_none());
+            }
+            _ => panic!("expected AddTorrentFile variant"),
+        }
+    }
+
+    #[test]
+    fn extract_torrent_info_single_file() {
+        // Create a single-file torrent via CreateTorrent.
+        let tmp = std::env::temp_dir().join("irontide_gui_test_single.bin");
+        std::fs::write(&tmp, b"hello torrent gui test").expect("write tmp file");
+        let result = irontide::core::CreateTorrent::new()
+            .add_file(&tmp)
+            .set_piece_size(16384)
+            .generate()
+            .expect("generate torrent");
+        let _ = std::fs::remove_file(&tmp);
+
+        let meta =
+            irontide::core::torrent_from_bytes_any(&result.bytes).expect("parse generated torrent");
+        let (name, total_size, file_count) = extract_torrent_info(&meta);
+        assert!(!name.is_empty());
+        assert_eq!(total_size, 22); // "hello torrent gui test" is 22 bytes
+        assert_eq!(file_count, 1);
+    }
+
+    #[test]
+    fn extract_torrent_info_multi_file() {
+        // Create a multi-file torrent.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_a = dir.path().join("file_a.txt");
+        let file_b = dir.path().join("file_b.txt");
+        std::fs::write(&file_a, b"aaaa").expect("write file_a");
+        std::fs::write(&file_b, b"bbbbb").expect("write file_b");
+        let result = irontide::core::CreateTorrent::new()
+            .add_file(&file_a)
+            .add_file(&file_b)
+            .set_piece_size(16384)
+            .generate()
+            .expect("generate torrent");
+
+        let meta =
+            irontide::core::torrent_from_bytes_any(&result.bytes).expect("parse generated torrent");
+        let (name, total_size, file_count) = extract_torrent_info(&meta);
+        assert!(!name.is_empty());
+        assert_eq!(total_size, 9); // 4 + 5
+        assert_eq!(file_count, 2);
+    }
+
+    // ── Path traversal safety tests ──────────────────────────────────────
+
+    #[test]
+    fn path_traversal_safe_path_within_dir() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let safe_file = dir.path().join("safe_file.txt");
+        std::fs::write(&safe_file, b"test").expect("write safe file");
+
+        let canonical = safe_file.canonicalize().expect("canonicalize safe file");
+        let canonical_dir = dir.path().canonicalize().expect("canonicalize dir");
+
+        assert!(canonical.starts_with(&canonical_dir));
+    }
+
+    #[test]
+    fn path_traversal_detects_escape() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let canonical_dir = dir.path().canonicalize().expect("canonicalize dir");
+
+        // Construct a path that attempts to escape the save directory.
+        let evil_path = dir.path().join("../");
+        if let Ok(canonical_evil) = evil_path.canonicalize() {
+            assert!(
+                !canonical_evil.starts_with(&canonical_dir) || canonical_evil == canonical_dir,
+                "traversal path should not be a strict child of save dir"
+            );
+        }
+        // If canonicalize fails (target doesn't exist), that's also safe
+        // because `delete_torrent_files` returns early in that case.
+    }
+
+    #[test]
+    fn delete_torrent_files_removes_single_file() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file = dir.path().join("test_torrent.bin");
+        std::fs::write(&file, b"data").expect("write file");
+        assert!(file.exists());
+
+        delete_torrent_files(dir.path(), "test_torrent.bin", 1);
+        assert!(!file.exists(), "single file should be deleted");
+    }
+
+    #[test]
+    fn delete_torrent_files_removes_directory() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let torrent_dir = dir.path().join("multi_file_torrent");
+        std::fs::create_dir(&torrent_dir).expect("create torrent dir");
+        std::fs::write(torrent_dir.join("file_a.bin"), b"aaa").expect("write a");
+        std::fs::write(torrent_dir.join("file_b.bin"), b"bbb").expect("write b");
+        assert!(torrent_dir.exists());
+
+        delete_torrent_files(dir.path(), "multi_file_torrent", 2);
+        assert!(!torrent_dir.exists(), "torrent directory should be deleted");
+    }
+
+    #[test]
+    fn delete_torrent_files_refuses_traversal() {
+        let parent = tempfile::tempdir().expect("create parent dir");
+        let save_dir = parent.path().join("downloads");
+        std::fs::create_dir(&save_dir).expect("create save dir");
+
+        // Create a file outside save_dir that a traversal attack would target.
+        let outside_file = parent.path().join("secret.txt");
+        std::fs::write(&outside_file, b"secret").expect("write secret");
+
+        // Attempt traversal: name = "../secret.txt"
+        delete_torrent_files(&save_dir, "../secret.txt", 1);
+        assert!(
+            outside_file.exists(),
+            "file outside save dir must NOT be deleted"
+        );
+    }
+
+    #[test]
+    fn delete_torrent_files_nonexistent_is_noop() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        // Should not panic — just returns early.
+        delete_torrent_files(dir.path(), "does_not_exist.bin", 1);
     }
 }

@@ -12,6 +12,7 @@ slint::include_modules!();
 use std::sync::Arc;
 
 use parking_lot::Mutex;
+use slint::Model as _;
 
 fn main() -> Result<(), error::GuiError> {
     // 1. Install panic hook.
@@ -20,8 +21,7 @@ fn main() -> Result<(), error::GuiError> {
     // 2. Init tracing.
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .with_target(false)
         .init();
@@ -33,8 +33,7 @@ fn main() -> Result<(), error::GuiError> {
         let path = irontide_config::resolve_config_path(None);
         if path.exists() {
             let text = std::fs::read_to_string(&path).unwrap_or_default();
-            let cf: irontide_config::ConfigFile =
-                toml::from_str(&text).unwrap_or_default();
+            let cf: irontide_config::ConfigFile = toml::from_str(&text).unwrap_or_default();
             cf.gui
         } else {
             irontide_config::GuiConfig::default()
@@ -81,24 +80,275 @@ fn main() -> Result<(), error::GuiError> {
         let cb_state = state.clone();
         main_window.on_row_clicked(move |info_hash, shift, ctrl| {
             let hash = info_hash.as_str();
-            let mut st = cb_state.lock();
-            if ctrl {
-                st.selection_ctrl_click(hash);
-            } else if shift {
-                st.selection_shift_click(hash);
-            } else {
-                st.selection_click(hash);
+            let selected = {
+                let mut st = cb_state.lock();
+                if ctrl {
+                    st.selection_ctrl_click(hash);
+                } else if shift {
+                    st.selection_shift_click(hash);
+                } else {
+                    st.selection_click(hash);
+                }
+                st.selected.clone()
+            };
+            crate::poll::update_selection(&selected);
+        });
+    }
+
+    // 6d. Wire add-magnet dialog callbacks.
+    {
+        let cb_state = state.clone();
+        main_window.on_add_magnet_confirmed(move |uri, dir| {
+            let cmd_tx = {
+                let st = cb_state.lock();
+                st.cmd_tx.clone()
+            };
+            if let Some(tx) = cmd_tx {
+                let download_dir = if dir.is_empty() {
+                    None
+                } else {
+                    Some(dir.to_string())
+                };
+                let _ = tx.send(app::GuiCommand::AddMagnet {
+                    uri: uri.to_string(),
+                    download_dir,
+                });
             }
         });
     }
 
+    {
+        let weak = main_window.as_weak();
+        main_window.on_browse_magnet_download_dir(move || {
+            bridge::handle_browse_download_dir(&weak);
+        });
+    }
+
+    // 6e. Wire add-torrent dialog callbacks.
+    {
+        let cb_state = state.clone();
+        main_window.on_add_torrent_confirmed(move |path, dir| {
+            let cmd_tx = {
+                let st = cb_state.lock();
+                st.cmd_tx.clone()
+            };
+            if let Some(tx) = cmd_tx {
+                let download_dir = if dir.is_empty() {
+                    None
+                } else {
+                    Some(dir.to_string())
+                };
+                let _ = tx.send(app::GuiCommand::AddTorrentFile {
+                    path: path.to_string(),
+                    download_dir,
+                });
+            }
+        });
+    }
+
+    {
+        let weak = main_window.as_weak();
+        main_window.on_browse_torrent_file(move || {
+            bridge::handle_browse_torrent_file(&weak);
+        });
+    }
+
+    {
+        let weak = main_window.as_weak();
+        main_window.on_browse_torrent_download_dir(move || {
+            bridge::handle_browse_download_dir(&weak);
+        });
+    }
+
+    // 6f. Wire right-click context menu.
+    {
+        let cb_state = state.clone();
+        let weak = main_window.as_weak();
+        main_window.on_row_right_clicked(move |info_hash, x, y| {
+            let hash = info_hash.to_string();
+            // If right-clicked row is not selected, select it first.
+            let selected = {
+                let mut st = cb_state.lock();
+                if !st.selected.contains(&hash) {
+                    st.selection_click(&hash);
+                }
+                st.selected.clone()
+            };
+            // Immediately update selection in model.
+            crate::poll::update_selection(&selected);
+
+            // Show context menu at cursor position.
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                // Compute smart enable/disable state from the torrent model.
+                let model = win.get_torrent_model();
+                let mut state_strings: Vec<String> = Vec::new();
+
+                for i in 0..model.row_count() {
+                    if let Some(row) = model.row_data(i)
+                        && selected.contains(row.info_hash.as_str())
+                    {
+                        state_strings.push(row.state.to_string());
+                    }
+                }
+
+                let state_refs: Vec<&str> = state_strings.iter().map(String::as_str).collect();
+                let ctx = app::ContextMenuState::compute(&state_refs);
+
+                win.set_ctx_can_pause(ctx.can_pause);
+                win.set_ctx_can_resume(ctx.can_resume);
+                win.set_ctx_can_seed_only(ctx.can_seed_only);
+                win.set_ctx_can_resume_download(ctx.can_resume_download);
+                win.set_ctx_can_recheck(ctx.can_recheck);
+
+                win.set_context_menu_x(x);
+                win.set_context_menu_y(y);
+                win.set_show_context_menu(true);
+            });
+        });
+    }
+
+    // 6g. Wire context menu action dispatch.
+    {
+        let cb_state = state.clone();
+        let weak = main_window.as_weak();
+        main_window.on_context_action(move |action_index| {
+            let Some(action) = app::ContextAction::from_index(action_index) else {
+                return;
+            };
+            let hashes: Vec<String> = {
+                let st = cb_state.lock();
+                st.selected.iter().cloned().collect()
+            };
+
+            // Remove/RemoveAndDelete: show confirmation dialog instead of immediate action.
+            if matches!(
+                action,
+                app::ContextAction::Remove | app::ContextAction::RemoveAndDelete
+            ) {
+                let delete_files = matches!(action, app::ContextAction::RemoveAndDelete);
+                let count = i32::try_from(hashes.len()).unwrap_or(i32::MAX);
+                let _ = weak.upgrade_in_event_loop(move |win| {
+                    win.set_delete_dialog_count(count);
+                    win.set_delete_dialog_delete_files(delete_files);
+                    win.set_show_delete_dialog(true);
+                });
+                return;
+            }
+
+            let cmd_tx = {
+                let st = cb_state.lock();
+                st.cmd_tx.clone()
+            };
+            let Some(tx) = cmd_tx else { return };
+
+            use app::ContextAction;
+            let cmd = match action {
+                ContextAction::Pause => app::GuiCommand::PauseTorrents { hashes },
+                ContextAction::Resume => app::GuiCommand::ResumeTorrents { hashes },
+                ContextAction::SeedOnly => app::GuiCommand::SetSeedMode {
+                    hashes,
+                    enabled: true,
+                },
+                ContextAction::ResumeDownload => app::GuiCommand::SetSeedMode {
+                    hashes,
+                    enabled: false,
+                },
+                ContextAction::Recheck => app::GuiCommand::ForceRecheck { hashes },
+                ContextAction::ForceReannounce => app::GuiCommand::ForceReannounce { hashes },
+                // Handled by the confirmation dialog above; unreachable here.
+                ContextAction::Remove | ContextAction::RemoveAndDelete => return,
+            };
+            let _ = tx.send(cmd);
+        });
+    }
+
+    // 6h. Wire delete confirmation callback.
+    {
+        let cb_state = state.clone();
+        main_window.on_delete_confirmed(move |delete_files| {
+            let (hashes, cmd_tx) = {
+                let st = cb_state.lock();
+                (
+                    st.selected.iter().cloned().collect::<Vec<_>>(),
+                    st.cmd_tx.clone(),
+                )
+            };
+            if let Some(tx) = cmd_tx {
+                let _ = tx.send(app::GuiCommand::RemoveTorrents {
+                    hashes,
+                    delete_files,
+                });
+            }
+        });
+    }
+
+    // 6i. Wire keyboard shortcuts.
+    {
+        // Space: toggle pause/resume for selected torrents.
+        let cb_state = state.clone();
+        main_window.on_toggle_pause_resume(move || {
+            let (selected, cmd_tx) = {
+                let st = cb_state.lock();
+                (st.selected.clone(), st.cmd_tx.clone())
+            };
+            if selected.is_empty() {
+                return;
+            }
+            let Some(tx) = cmd_tx else { return };
+            // We are on the main thread — can read the thread-local model directly.
+            let all_paused = crate::poll::check_all_paused(&selected);
+            let hashes: Vec<String> = selected.into_iter().collect();
+            let cmd = if all_paused {
+                app::GuiCommand::ResumeTorrents { hashes }
+            } else {
+                app::GuiCommand::PauseTorrents { hashes }
+            };
+            let _ = tx.send(cmd);
+        });
+    }
+    {
+        // Delete: open delete confirmation for selected torrents.
+        let cb_state = state.clone();
+        let weak = main_window.as_weak();
+        main_window.on_delete_selected(move || {
+            let count = {
+                let st = cb_state.lock();
+                i32::try_from(st.selected.len()).unwrap_or(i32::MAX)
+            };
+            if count == 0 {
+                return;
+            }
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_delete_dialog_count(count);
+                win.set_delete_dialog_delete_files(false);
+                win.set_show_delete_dialog(true);
+            });
+        });
+    }
+    {
+        // Ctrl+A: select all torrents.
+        let cb_state = state.clone();
+        main_window.on_select_all(move || {
+            let selected = {
+                let mut st = cb_state.lock();
+                let all_hashes = st.current_order.clone();
+                st.select_all(&all_hashes);
+                st.selected.clone()
+            };
+            crate::poll::update_selection(&selected);
+        });
+    }
+    {
+        // Enter: stub toast for details panel.
+        let weak = main_window.as_weak();
+        main_window.on_show_details_stub(move || {
+            bridge::show_toast(&weak, "Details panel: coming in M172", false);
+        });
+    }
+
     // 7. Spawn session thread.
-    let session_handle = bridge::spawn_session_thread(
-        settings,
-        main_window.as_weak(),
-        shutdown_rx,
-        state.clone(),
-    );
+    let session_handle =
+        bridge::spawn_session_thread(settings, main_window.as_weak(), shutdown_rx, state.clone());
 
     // 8. Run Slint event loop (blocks until window is closed).
     main_window.run()?;

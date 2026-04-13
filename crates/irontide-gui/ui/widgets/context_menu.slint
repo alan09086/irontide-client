@@ -1,0 +1,216 @@
+// IronTide right-click context menu overlay.
+// Custom overlay pattern (not PopupWindow) to avoid Slint native positioning issues.
+
+import { Palette } from "../palette.slint";
+
+export component ContextMenu {
+    in property <bool> show;
+    in property <length> menu-x;
+    in property <length> menu-y;
+    // Enable flags for smart context menu
+    in property <bool> can-pause: true;
+    in property <bool> can-resume: true;
+    in property <bool> can-seed-only: true;
+    in property <bool> can-resume-download: true;
+    in property <bool> can-recheck: true;
+    callback context-action(int);  // action index
+    callback dismiss();
+
+    if root.show: Rectangle {
+        // Transparent full-window overlay to catch clicks outside
+        background: transparent;
+
+        dismiss-touch := TouchArea {
+            clicked => { root.dismiss(); }
+        }
+
+        // Menu box at cursor position
+        Rectangle {
+            x: root.menu-x;
+            y: root.menu-y;
+            width: 200px;
+            height: menu-layout.preferred-height + 8px;
+            background: Palette.menu-bg;
+            border-color: Palette.border;
+            border-width: 1px;
+            border-radius: 4px;
+
+            // Block dismiss click from passing through
+            TouchArea { }
+
+            menu-layout := VerticalLayout {
+                padding: 4px;
+                spacing: 2px;
+
+                // Item 0: Pause
+                Rectangle {
+                    height: 28px;
+                    background: root.can-pause ? (pause-touch.has-hover ? Palette.menu-hover : Palette.menu-bg) : Palette.menu-bg;
+                    border-radius: 2px;
+
+                    Text {
+                        text: "Pause";
+                        color: root.can-pause ? Palette.text : Palette.disabled-text;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                        x: 8px;
+                    }
+
+                    pause-touch := TouchArea {
+                        enabled: root.can-pause;
+                        clicked => { root.context-action(0); }
+                    }
+                }
+
+                // Item 1: Resume
+                Rectangle {
+                    height: 28px;
+                    background: root.can-resume ? (resume-touch.has-hover ? Palette.menu-hover : Palette.menu-bg) : Palette.menu-bg;
+                    border-radius: 2px;
+
+                    Text {
+                        text: "Resume";
+                        color: root.can-resume ? Palette.text : Palette.disabled-text;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                        x: 8px;
+                    }
+
+                    resume-touch := TouchArea {
+                        enabled: root.can-resume;
+                        clicked => { root.context-action(1); }
+                    }
+                }
+
+                // Item 2: Seed Only
+                Rectangle {
+                    height: 28px;
+                    background: root.can-seed-only ? (seed-touch.has-hover ? Palette.menu-hover : Palette.menu-bg) : Palette.menu-bg;
+                    border-radius: 2px;
+
+                    Text {
+                        text: "Seed Only";
+                        color: root.can-seed-only ? Palette.text : Palette.disabled-text;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                        x: 8px;
+                    }
+
+                    seed-touch := TouchArea {
+                        enabled: root.can-seed-only;
+                        clicked => { root.context-action(2); }
+                    }
+                }
+
+                // Item 3: Resume Download
+                Rectangle {
+                    height: 28px;
+                    background: root.can-resume-download ? (resume-dl-touch.has-hover ? Palette.menu-hover : Palette.menu-bg) : Palette.menu-bg;
+                    border-radius: 2px;
+
+                    Text {
+                        text: "Resume Download";
+                        color: root.can-resume-download ? Palette.text : Palette.disabled-text;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                        x: 8px;
+                    }
+
+                    resume-dl-touch := TouchArea {
+                        enabled: root.can-resume-download;
+                        clicked => { root.context-action(3); }
+                    }
+                }
+
+                // Separator
+                Rectangle {
+                    height: 1px;
+                    background: Palette.border;
+                }
+
+                // Item 4: Remove (always enabled)
+                Rectangle {
+                    height: 28px;
+                    background: remove-touch.has-hover ? Palette.menu-hover : Palette.menu-bg;
+                    border-radius: 2px;
+
+                    Text {
+                        text: "Remove";
+                        color: Palette.text;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                        x: 8px;
+                    }
+
+                    remove-touch := TouchArea {
+                        clicked => { root.context-action(4); }
+                    }
+                }
+
+                // Item 5: Remove + Delete Files (always enabled)
+                Rectangle {
+                    height: 28px;
+                    background: remove-del-touch.has-hover ? Palette.menu-hover : Palette.menu-bg;
+                    border-radius: 2px;
+
+                    Text {
+                        text: "Remove + Delete Files";
+                        color: Palette.text;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                        x: 8px;
+                    }
+
+                    remove-del-touch := TouchArea {
+                        clicked => { root.context-action(5); }
+                    }
+                }
+
+                // Separator
+                Rectangle {
+                    height: 1px;
+                    background: Palette.border;
+                }
+
+                // Item 6: Recheck
+                Rectangle {
+                    height: 28px;
+                    background: root.can-recheck ? (recheck-touch.has-hover ? Palette.menu-hover : Palette.menu-bg) : Palette.menu-bg;
+                    border-radius: 2px;
+
+                    Text {
+                        text: "Recheck";
+                        color: root.can-recheck ? Palette.text : Palette.disabled-text;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                        x: 8px;
+                    }
+
+                    recheck-touch := TouchArea {
+                        enabled: root.can-recheck;
+                        clicked => { root.context-action(6); }
+                    }
+                }
+
+                // Item 7: Force Reannounce (always enabled)
+                Rectangle {
+                    height: 28px;
+                    background: reannounce-touch.has-hover ? Palette.menu-hover : Palette.menu-bg;
+                    border-radius: 2px;
+
+                    Text {
+                        text: "Force Reannounce";
+                        color: Palette.text;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                        x: 8px;
+                    }
+
+                    reannounce-touch := TouchArea {
+                        clicked => { root.context-action(7); }
+                    }
+                }
+            }
+        }
+    }
+}

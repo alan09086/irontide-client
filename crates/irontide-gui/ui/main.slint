@@ -4,6 +4,10 @@
 import { Palette } from "palette.slint";
 import { TorrentProgressBar } from "widgets/progress_bar.slint";
 import { StatusBar } from "widgets/status_bar.slint";
+import { AddMagnetDialog } from "widgets/add_magnet_dialog.slint";
+import { AddTorrentDialog } from "widgets/add_torrent_dialog.slint";
+import { ContextMenu } from "widgets/context_menu.slint";
+import { ConfirmDeleteDialog } from "widgets/confirm_delete_dialog.slint";
 
 export { Palette }
 
@@ -208,6 +212,8 @@ export component MainWindow inherits Window {
     in-out property <string> error-text: "";
     in-out property <string> toast-text: "";
     in-out property <bool> toast-visible: false;
+    in-out property <bool> toast-is-error: false;
+    in-out property <string> default-download-dir: "";
 
     // ── Torrent model ──
     in-out property <[TorrentRow]> torrent-model;
@@ -242,15 +248,93 @@ export component MainWindow inherits Window {
     in-out property <length> col-size-width: 80px;
     in-out property <length> col-ratio-width: 60px;
 
+    // ── Add Magnet Dialog ──
+    in-out property <bool> show-add-magnet-dialog: false;
+    callback add-magnet-confirmed(string, string);
+    callback browse-magnet-download-dir();
+
+    // ── Add Torrent Dialog ──
+    in-out property <bool> show-add-torrent-dialog: false;
+    in-out property <string> add-torrent-file-path: "";
+    in-out property <string> add-torrent-name: "";
+    in-out property <string> add-torrent-size: "";
+    in-out property <int> add-torrent-file-count: 0;
+    callback add-torrent-confirmed(string, string);
+    callback browse-torrent-file();
+    callback browse-torrent-download-dir();
+
+    // ── Context Menu ──
+    in-out property <bool> show-context-menu: false;
+    in-out property <length> context-menu-x: 0px;
+    in-out property <length> context-menu-y: 0px;
+    in-out property <bool> ctx-can-pause: true;
+    in-out property <bool> ctx-can-resume: true;
+    in-out property <bool> ctx-can-seed-only: true;
+    in-out property <bool> ctx-can-resume-download: true;
+    in-out property <bool> ctx-can-recheck: true;
+    callback context-action(int);
+    callback row-right-clicked(/* info-hash */ string, /* x */ length, /* y */ length);
+
+    // ── Delete Confirmation Dialog ──
+    in-out property <bool> show-delete-dialog: false;
+    in-out property <int> delete-dialog-count: 0;
+    in-out property <bool> delete-dialog-delete-files: false;
+    callback delete-confirmed(/* delete_files */ bool);
+
+    // ── Keyboard shortcuts ──
+    callback toggle-pause-resume();
+    callback delete-selected();
+    callback select-all();
+    callback show-details-stub();
+
     // ── Callbacks ──
     callback menu-file-action(int);
     callback quit-requested();
     callback sort-requested(/* column index */ int);
     callback row-clicked(/* info-hash */ string, /* shift */ bool, /* ctrl */ bool);
 
-    // ── FocusScope for modifier key tracking ──
+    // ── FocusScope for keyboard shortcuts + modifier key tracking ──
     focus-scope := FocusScope {
         key-pressed(event) => {
+            // Keyboard shortcuts (only when no dialog/menu is open)
+            if !root.show-add-magnet-dialog && !root.show-add-torrent-dialog && !root.show-delete-dialog && !root.show-context-menu {
+                if event.text == " " {
+                    root.toggle-pause-resume();
+                    return accept;
+                }
+                if event.text == Key.Delete {
+                    root.delete-selected();
+                    return accept;
+                }
+                if event.text == Key.Return {
+                    root.show-details-stub();
+                    return accept;
+                }
+                if event.text == "a" && root.ctrl-held {
+                    root.select-all();
+                    return accept;
+                }
+            }
+            // Escape: dismiss open dialogs/menus (priority order)
+            if event.text == Key.Escape {
+                if root.show-context-menu {
+                    root.show-context-menu = false;
+                    return accept;
+                }
+                if root.show-delete-dialog {
+                    root.show-delete-dialog = false;
+                    return accept;
+                }
+                if root.show-add-magnet-dialog {
+                    root.show-add-magnet-dialog = false;
+                    return accept;
+                }
+                if root.show-add-torrent-dialog {
+                    root.show-add-torrent-dialog = false;
+                    return accept;
+                }
+            }
+            // Modifier tracking
             if event.text == Key.Shift {
                 root.shift-held = true;
             }
@@ -583,6 +667,11 @@ export component MainWindow inherits Window {
                                 clicked => {
                                     root.row-clicked(item.info-hash, root.shift-held, root.ctrl-held);
                                 }
+                                pointer-event(event) => {
+                                    if event.kind == PointerEventKind.down && event.button == PointerEventButton.right {
+                                        root.row-right-clicked(item.info-hash, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                                    }
+                                }
                                 mouse-cursor: pointer;
                             }
 
@@ -749,8 +838,8 @@ export component MainWindow inherits Window {
         width: 400px;
         height: 36px;
         border-radius: 6px;
-        background: Palette.surface;
-        border-color: Palette.border;
+        background: root.toast-is-error ? Palette.danger : Palette.surface;
+        border-color: root.toast-is-error ? Palette.danger : Palette.border;
         border-width: 1px;
 
         Text {
@@ -759,6 +848,86 @@ export component MainWindow inherits Window {
             font-size: 13px;
             horizontal-alignment: center;
             vertical-alignment: center;
+        }
+    }
+
+    // Add Magnet Dialog overlay
+    AddMagnetDialog {
+        show: root.show-add-magnet-dialog;
+        default-dir: root.default-download-dir;
+        width: root.width;
+        height: root.height;
+        add-confirmed(uri, dir) => {
+            root.show-add-magnet-dialog = false;
+            root.add-magnet-confirmed(uri, dir);
+        }
+        cancel => {
+            root.show-add-magnet-dialog = false;
+        }
+        browse-download-dir => {
+            root.browse-magnet-download-dir();
+        }
+    }
+
+    // Add Torrent File Dialog overlay
+    AddTorrentDialog {
+        show: root.show-add-torrent-dialog;
+        default-dir: root.default-download-dir;
+        torrent-name: root.add-torrent-name;
+        torrent-size: root.add-torrent-size;
+        torrent-file-count: root.add-torrent-file-count;
+        selected-file-path: root.add-torrent-file-path;
+        width: root.width;
+        height: root.height;
+        add-confirmed(path, dir) => {
+            root.show-add-torrent-dialog = false;
+            root.add-torrent-confirmed(path, dir);
+        }
+        cancel => {
+            root.show-add-torrent-dialog = false;
+            root.add-torrent-file-path = "";
+            root.add-torrent-name = "";
+            root.add-torrent-size = "";
+            root.add-torrent-file-count = 0;
+        }
+        browse-torrent-file => { root.browse-torrent-file(); }
+        browse-download-dir => { root.browse-torrent-download-dir(); }
+    }
+
+    // Context Menu overlay (on top of everything)
+    ContextMenu {
+        show: root.show-context-menu;
+        menu-x: root.context-menu-x;
+        menu-y: root.context-menu-y;
+        can-pause: root.ctx-can-pause;
+        can-resume: root.ctx-can-resume;
+        can-seed-only: root.ctx-can-seed-only;
+        can-resume-download: root.ctx-can-resume-download;
+        can-recheck: root.ctx-can-recheck;
+        width: root.width;
+        height: root.height;
+        context-action(index) => {
+            root.show-context-menu = false;
+            root.context-action(index);
+        }
+        dismiss => {
+            root.show-context-menu = false;
+        }
+    }
+
+    // Delete Confirmation Dialog overlay (on top of context menu)
+    ConfirmDeleteDialog {
+        show: root.show-delete-dialog;
+        count: root.delete-dialog-count;
+        delete-files: root.delete-dialog-delete-files;
+        width: root.width;
+        height: root.height;
+        delete-confirmed(delete-files) => {
+            root.show-delete-dialog = false;
+            root.delete-confirmed(delete-files);
+        }
+        cancel => {
+            root.show-delete-dialog = false;
         }
     }
 }
