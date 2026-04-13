@@ -1,9 +1,13 @@
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use parking_lot::Mutex;
 use slint::ComponentHandle as _;
+
+/// Monotonic counter so only the latest toast's timer dismisses.
+static TOAST_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 use crate::app::{AppPhase, AppState, GuiCommand};
 
@@ -144,12 +148,29 @@ pub fn handle_menu_action(
 
 /// Display a toast notification in the UI.
 ///
-/// `_is_error` is reserved for Step 2 (error styling). For now it is unused.
-fn show_toast(weak: &slint::Weak<crate::MainWindow>, msg: &str, _is_error: bool) {
+/// The toast auto-dismisses after 3 seconds. Each new toast increments a
+/// generation counter so that only the *latest* toast's timer actually
+/// hides the overlay (older timers become no-ops).
+///
+/// When `is_error` is `true` the toast uses `Palette.danger` as its
+/// background and border colour.
+fn show_toast(weak: &slint::Weak<crate::MainWindow>, msg: &str, is_error: bool) {
+    let generation = TOAST_GENERATION.fetch_add(1, Ordering::Relaxed).wrapping_add(1);
     let text = msg.to_owned();
+    let weak_for_timer = weak.clone();
     let _ = weak.upgrade_in_event_loop(move |win| {
         win.set_toast_text(text.into());
         win.set_toast_visible(true);
+        win.set_toast_is_error(is_error);
+        // Auto-dismiss after 3 s. The generation guard ensures that if a
+        // newer toast appeared in the meantime, this callback is a no-op.
+        slint::Timer::single_shot(std::time::Duration::from_secs(3), move || {
+            if TOAST_GENERATION.load(Ordering::Relaxed) == generation {
+                let _ = weak_for_timer.upgrade_in_event_loop(|win| {
+                    win.set_toast_visible(false);
+                });
+            }
+        });
     });
 }
 

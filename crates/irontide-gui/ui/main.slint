@@ -208,6 +208,7 @@ export component MainWindow inherits Window {
     in-out property <string> error-text: "";
     in-out property <string> toast-text: "";
     in-out property <bool> toast-visible: false;
+    in-out property <bool> toast-is-error: false;
 
     // ── Torrent model ──
     in-out property <[TorrentRow]> torrent-model;
@@ -749,8 +750,8 @@ export component MainWindow inherits Window {
         width: 400px;
         height: 36px;
         border-radius: 6px;
-        background: Palette.surface;
-        border-color: Palette.border;
+        background: root.toast-is-error ? Palette.danger : Palette.surface;
+        border-color: root.toast-is-error ? Palette.danger : Palette.border;
         border-width: 1px;
 
         Text {
