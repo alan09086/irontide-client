@@ -82,7 +82,13 @@ pub(crate) fn format_ratio(uploaded: u64, downloaded: u64) -> String {
 }
 
 /// Map a `TorrentState` variant to its lowercase display label.
-pub(crate) fn format_state(state: &TorrentState) -> &'static str {
+///
+/// When `user_seed_mode` is true and the torrent is in the `Downloading`
+/// state, returns `"seed only"` to reflect the user-imposed constraint.
+pub(crate) fn format_state(state: &TorrentState, user_seed_mode: bool) -> &'static str {
+    if user_seed_mode && matches!(state, TorrentState::Downloading) {
+        return "seed only";
+    }
     match state {
         TorrentState::FetchingMetadata => "fetching metadata",
         TorrentState::Checking => "checking",
@@ -140,15 +146,36 @@ mod tests {
     #[test]
     fn test_format_state() {
         assert_eq!(
-            format_state(&TorrentState::FetchingMetadata),
+            format_state(&TorrentState::FetchingMetadata, false),
             "fetching metadata"
         );
-        assert_eq!(format_state(&TorrentState::Checking), "checking");
-        assert_eq!(format_state(&TorrentState::Downloading), "downloading");
-        assert_eq!(format_state(&TorrentState::Complete), "complete");
-        assert_eq!(format_state(&TorrentState::Seeding), "seeding");
-        assert_eq!(format_state(&TorrentState::Paused), "paused");
-        assert_eq!(format_state(&TorrentState::Stopped), "stopped");
-        assert_eq!(format_state(&TorrentState::Sharing), "sharing");
+        assert_eq!(format_state(&TorrentState::Checking, false), "checking");
+        assert_eq!(
+            format_state(&TorrentState::Downloading, false),
+            "downloading"
+        );
+        assert_eq!(format_state(&TorrentState::Complete, false), "complete");
+        assert_eq!(format_state(&TorrentState::Seeding, false), "seeding");
+        assert_eq!(format_state(&TorrentState::Paused, false), "paused");
+        assert_eq!(format_state(&TorrentState::Stopped, false), "stopped");
+        assert_eq!(format_state(&TorrentState::Sharing, false), "sharing");
+    }
+
+    #[test]
+    fn test_format_state_seed_mode() {
+        // Downloading + seed mode → "seed only".
+        assert_eq!(
+            format_state(&TorrentState::Downloading, true),
+            "seed only"
+        );
+    }
+
+    #[test]
+    fn test_format_state_seed_mode_other_states() {
+        // Seed mode should NOT override non-Downloading states.
+        assert_eq!(format_state(&TorrentState::Seeding, true), "seeding");
+        assert_eq!(format_state(&TorrentState::Paused, true), "paused");
+        assert_eq!(format_state(&TorrentState::Complete, true), "complete");
+        assert_eq!(format_state(&TorrentState::Sharing, true), "sharing");
     }
 }

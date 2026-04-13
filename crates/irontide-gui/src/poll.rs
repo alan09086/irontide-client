@@ -184,7 +184,8 @@ pub fn sort_summaries(summaries: &mut [TorrentSummary], sort: &crate::columns::S
                 .partial_cmp(&b.progress)
                 .unwrap_or(std::cmp::Ordering::Equal),
             ColumnId::State => {
-                crate::format::format_state(&a.state).cmp(crate::format::format_state(&b.state))
+                crate::format::format_state(&a.state, a.user_seed_mode)
+                    .cmp(crate::format::format_state(&b.state, b.user_seed_mode))
             }
             ColumnId::DownRate => a.download_rate.cmp(&b.download_rate),
             ColumnId::UpRate => a.upload_rate.cmp(&b.upload_rate),
@@ -259,8 +260,8 @@ fn to_slint_row(s: &TorrentSummary, selected: &HashSet<String>) -> crate::Torren
         seeds: SharedString::from(s.num_seeds.to_string()),
         peers: SharedString::from(s.num_peers.to_string()),
         eta: SharedString::from(crate::format::format_eta(remaining, s.download_rate)),
-        state: SharedString::from(crate::format::format_state(&s.state)),
-        state_color: state_color(&s.state),
+        state: SharedString::from(crate::format::format_state(&s.state, s.user_seed_mode)),
+        state_color: state_color(&s.state, s.user_seed_mode),
         ratio: SharedString::from(crate::format::format_ratio(
             s.all_time_upload,
             s.all_time_download,
@@ -272,7 +273,14 @@ fn to_slint_row(s: &TorrentSummary, selected: &HashSet<String>) -> crate::Torren
 // ── State color mapping ─────────────────────────────────────────────────────
 
 /// Map a `TorrentState` to a display color.
-pub fn state_color(state: &TorrentState) -> slint::Color {
+///
+/// When `user_seed_mode` is true and the torrent is `Downloading`, returns
+/// purple (`#ab47bc`) — the same colour as `Sharing` — to visually indicate
+/// the seed-only constraint.
+pub fn state_color(state: &TorrentState, user_seed_mode: bool) -> slint::Color {
+    if user_seed_mode && matches!(state, TorrentState::Downloading) {
+        return slint::Color::from_rgb_u8(0xab, 0x47, 0xbc); // #ab47bc (purple)
+    }
     match state {
         TorrentState::Downloading => slint::Color::from_rgb_u8(0x4c, 0xaf, 0x50), // #4caf50
         TorrentState::Seeding => slint::Color::from_rgb_u8(0x21, 0x96, 0xf3),     // #2196f3
@@ -334,6 +342,7 @@ mod tests {
             num_seeds: 2,
             all_time_upload: 0,
             all_time_download: 0,
+            user_seed_mode: false,
         }
     }
 
@@ -449,11 +458,27 @@ mod tests {
         ];
 
         for (state, (r, g, b)) in cases {
-            let color = state_color(&state);
+            let color = state_color(&state, false);
             assert_eq!(color.red(), r, "red mismatch for {state:?}");
             assert_eq!(color.green(), g, "green mismatch for {state:?}");
             assert_eq!(color.blue(), b, "blue mismatch for {state:?}");
         }
+    }
+
+    #[test]
+    fn test_state_color_seed_mode() {
+        // Downloading + seed mode → purple (#ab47bc), same as Sharing.
+        let color = state_color(&TorrentState::Downloading, true);
+        assert_eq!(color.red(), 0xab);
+        assert_eq!(color.green(), 0x47);
+        assert_eq!(color.blue(), 0xbc);
+
+        // Seeding + seed mode → normal seeding colour (seed mode only
+        // overrides Downloading).
+        let color = state_color(&TorrentState::Seeding, true);
+        assert_eq!(color.red(), 0x21);
+        assert_eq!(color.green(), 0x96);
+        assert_eq!(color.blue(), 0xf3);
     }
 
     #[test]
