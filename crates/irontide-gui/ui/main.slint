@@ -281,15 +281,60 @@ export component MainWindow inherits Window {
     in-out property <bool> delete-dialog-delete-files: false;
     callback delete-confirmed(/* delete_files */ bool);
 
+    // ── Keyboard shortcuts ──
+    callback toggle-pause-resume();
+    callback delete-selected();
+    callback select-all();
+    callback show-details-stub();
+
     // ── Callbacks ──
     callback menu-file-action(int);
     callback quit-requested();
     callback sort-requested(/* column index */ int);
     callback row-clicked(/* info-hash */ string, /* shift */ bool, /* ctrl */ bool);
 
-    // ── FocusScope for modifier key tracking ──
+    // ── FocusScope for keyboard shortcuts + modifier key tracking ──
     focus-scope := FocusScope {
         key-pressed(event) => {
+            // Keyboard shortcuts (only when no dialog/menu is open)
+            if !root.show-add-magnet-dialog && !root.show-add-torrent-dialog && !root.show-delete-dialog && !root.show-context-menu {
+                if event.text == " " {
+                    root.toggle-pause-resume();
+                    return accept;
+                }
+                if event.text == Key.Delete {
+                    root.delete-selected();
+                    return accept;
+                }
+                if event.text == Key.Return {
+                    root.show-details-stub();
+                    return accept;
+                }
+                if event.text == "a" && root.ctrl-held {
+                    root.select-all();
+                    return accept;
+                }
+            }
+            // Escape: dismiss open dialogs/menus (priority order)
+            if event.text == Key.Escape {
+                if root.show-context-menu {
+                    root.show-context-menu = false;
+                    return accept;
+                }
+                if root.show-delete-dialog {
+                    root.show-delete-dialog = false;
+                    return accept;
+                }
+                if root.show-add-magnet-dialog {
+                    root.show-add-magnet-dialog = false;
+                    return accept;
+                }
+                if root.show-add-torrent-dialog {
+                    root.show-add-torrent-dialog = false;
+                    return accept;
+                }
+            }
+            // Modifier tracking
             if event.text == Key.Shift {
                 root.shift-held = true;
             }

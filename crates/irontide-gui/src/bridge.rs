@@ -166,7 +166,7 @@ pub fn handle_menu_action(
 ///
 /// When `is_error` is `true` the toast uses `Palette.danger` as its
 /// background and border colour.
-fn show_toast(weak: &slint::Weak<crate::MainWindow>, msg: &str, is_error: bool) {
+pub fn show_toast(weak: &slint::Weak<crate::MainWindow>, msg: &str, is_error: bool) {
     let generation = TOAST_GENERATION
         .fetch_add(1, Ordering::Relaxed)
         .wrapping_add(1);

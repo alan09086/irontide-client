@@ -282,6 +282,72 @@ fn main() -> Result<(), error::GuiError> {
         });
     }
 
+    // 6i. Wire keyboard shortcuts.
+    {
+        // Space: toggle pause/resume for selected torrents.
+        let cb_state = state.clone();
+        main_window.on_toggle_pause_resume(move || {
+            let (hashes, cmd_tx) = {
+                let st = cb_state.lock();
+                (
+                    st.selected.iter().cloned().collect::<Vec<_>>(),
+                    st.cmd_tx.clone(),
+                )
+            };
+            if hashes.is_empty() {
+                return;
+            }
+            let Some(tx) = cmd_tx else { return };
+            // We are on the main thread — can read the thread-local model directly.
+            let all_paused = crate::poll::check_all_paused(&hashes);
+            let cmd = if all_paused {
+                app::GuiCommand::ResumeTorrents { hashes }
+            } else {
+                app::GuiCommand::PauseTorrents { hashes }
+            };
+            let _ = tx.send(cmd);
+        });
+    }
+    {
+        // Delete: open delete confirmation for selected torrents.
+        let cb_state = state.clone();
+        let weak = main_window.as_weak();
+        main_window.on_delete_selected(move || {
+            let count = {
+                let st = cb_state.lock();
+                i32::try_from(st.selected.len()).unwrap_or(i32::MAX)
+            };
+            if count == 0 {
+                return;
+            }
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_delete_dialog_count(count);
+                win.set_delete_dialog_delete_files(false);
+                win.set_show_delete_dialog(true);
+            });
+        });
+    }
+    {
+        // Ctrl+A: select all torrents.
+        let cb_state = state.clone();
+        main_window.on_select_all(move || {
+            let selected = {
+                let mut st = cb_state.lock();
+                let all_hashes = st.current_order.clone();
+                st.select_all(&all_hashes);
+                st.selected.clone()
+            };
+            crate::poll::update_selection(&selected);
+        });
+    }
+    {
+        // Enter: stub toast for details panel.
+        let weak = main_window.as_weak();
+        main_window.on_show_details_stub(move || {
+            bridge::show_toast(&weak, "Details panel: coming in M172", false);
+        });
+    }
+
     // 7. Spawn session thread.
     let session_handle =
         bridge::spawn_session_thread(settings, main_window.as_weak(), shutdown_rx, state.clone());

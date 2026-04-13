@@ -173,7 +173,6 @@ impl AppState {
     }
 
     /// Select all torrents from the provided info-hash list.
-    #[allow(dead_code)] // Wired by Ctrl+A handler in a later step
     pub fn select_all(&mut self, all_hashes: &[String]) {
         self.selected.clear();
         for h in all_hashes {

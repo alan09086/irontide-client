@@ -44,6 +44,36 @@ pub fn update_selection(selected: &HashSet<String>) {
     });
 }
 
+/// Check if all selected torrents are in the "paused" state.
+///
+/// Returns `true` only when every matched torrent has `state == "paused"` AND at
+/// least one match was found. Returns `false` for empty or unmatched selections.
+///
+/// # Safety
+///
+/// Must be called from the Slint main thread (inside a Slint callback) because
+/// it accesses the thread-local `TORRENT_MODEL`.
+pub fn check_all_paused(hashes: &[String]) -> bool {
+    TORRENT_MODEL.with(|m| {
+        let borrow = m.borrow();
+        let Some(model) = borrow.as_ref() else {
+            return false;
+        };
+        let mut found_any = false;
+        for i in 0..model.row_count() {
+            if let Some(row) = model.row_data(i)
+                && hashes.contains(&row.info_hash.to_string())
+            {
+                found_any = true;
+                if row.state.as_str() != "paused" {
+                    return false;
+                }
+            }
+        }
+        found_any
+    })
+}
+
 /// Initialise the thread-local torrent model and bind it to the window.
 ///
 /// Must be called on the Slint main thread (inside `upgrade_in_event_loop`)
