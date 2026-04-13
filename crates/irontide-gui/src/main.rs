@@ -20,8 +20,7 @@ fn main() -> Result<(), error::GuiError> {
     // 2. Init tracing.
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .with_target(false)
         .init();
@@ -33,8 +32,7 @@ fn main() -> Result<(), error::GuiError> {
         let path = irontide_config::resolve_config_path(None);
         if path.exists() {
             let text = std::fs::read_to_string(&path).unwrap_or_default();
-            let cf: irontide_config::ConfigFile =
-                toml::from_str(&text).unwrap_or_default();
+            let cf: irontide_config::ConfigFile = toml::from_str(&text).unwrap_or_default();
             cf.gui
         } else {
             irontide_config::GuiConfig::default()
@@ -93,12 +91,8 @@ fn main() -> Result<(), error::GuiError> {
     }
 
     // 7. Spawn session thread.
-    let session_handle = bridge::spawn_session_thread(
-        settings,
-        main_window.as_weak(),
-        shutdown_rx,
-        state.clone(),
-    );
+    let session_handle =
+        bridge::spawn_session_thread(settings, main_window.as_weak(), shutdown_rx, state.clone());
 
     // 8. Run Slint event loop (blocks until window is closed).
     main_window.run()?;

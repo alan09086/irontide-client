@@ -77,10 +77,8 @@ pub async fn poll_loop(
         sort_summaries(&mut sorted, &sort);
 
         // Convert to Slint rows.
-        let new_rows: Vec<crate::TorrentRow> = sorted
-            .iter()
-            .map(|s| to_slint_row(s, &selected))
-            .collect();
+        let new_rows: Vec<crate::TorrentRow> =
+            sorted.iter().map(|s| to_slint_row(s, &selected)).collect();
 
         // Update current_order in state (for shift-click range).
         {
@@ -194,11 +192,7 @@ pub fn sort_summaries(summaries: &mut [TorrentSummary], sort: &crate::columns::S
         };
         // Secondary sort key: info_hash (stable tiebreaker).
         let cmp = cmp.then_with(|| a.info_hash.cmp(&b.info_hash));
-        if sort.ascending {
-            cmp
-        } else {
-            cmp.reverse()
-        }
+        if sort.ascending { cmp } else { cmp.reverse() }
     });
 }
 

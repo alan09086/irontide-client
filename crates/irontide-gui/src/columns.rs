@@ -164,7 +164,11 @@ impl Default for ColumnConfig {
         let order: Vec<ColumnId> = DEFAULT_ORDER.to_vec();
         let visible: HashSet<ColumnId> = order.iter().copied().collect();
         let widths: Vec<f32> = order.iter().map(|c| c.default_width()).collect();
-        Self { order, visible, widths }
+        Self {
+            order,
+            visible,
+            widths,
+        }
     }
 }
 
@@ -238,8 +242,7 @@ impl ColumnConfig {
     /// Serialise this `ColumnConfig` into a [`irontide_config::GuiConfig`]
     /// suitable for persistence.
     pub fn to_gui_config(&self) -> irontide_config::GuiConfig {
-        let column_order: Vec<String> =
-            self.order.iter().map(|c| c.to_name().to_owned()).collect();
+        let column_order: Vec<String> = self.order.iter().map(|c| c.to_name().to_owned()).collect();
         let column_visibility: Vec<String> = self
             .order
             .iter()
@@ -300,7 +303,10 @@ pub struct SortState {
 
 impl Default for SortState {
     fn default() -> Self {
-        Self { column: ColumnId::Name, ascending: true }
+        Self {
+            column: ColumnId::Name,
+            ascending: true,
+        }
     }
 }
 
@@ -343,7 +349,10 @@ mod tests {
     #[test]
     fn test_name_always_visible() {
         let mut cfg = ColumnConfig::default();
-        assert!(cfg.visible.contains(&ColumnId::Name), "Name should start visible");
+        assert!(
+            cfg.visible.contains(&ColumnId::Name),
+            "Name should start visible"
+        );
         cfg.toggle_visibility(ColumnId::Name);
         assert!(
             cfg.visible.contains(&ColumnId::Name),
@@ -365,11 +374,24 @@ mod tests {
 
         // After moving index 0 to index 2:
         // [Progress, State, Name, DownRate, UpRate, Seeds, Peers, Eta, Size, Ratio]
-        assert_eq!(cfg.order[0], original_at_1, "index 0 should now hold old index 1");
-        assert_eq!(cfg.order[1], original_at_2, "index 1 should now hold old index 2");
-        assert_eq!(cfg.order[2], moved_col, "index 2 should hold the moved column");
+        assert_eq!(
+            cfg.order[0], original_at_1,
+            "index 0 should now hold old index 1"
+        );
+        assert_eq!(
+            cfg.order[1], original_at_2,
+            "index 1 should now hold old index 2"
+        );
+        assert_eq!(
+            cfg.order[2], moved_col,
+            "index 2 should hold the moved column"
+        );
         assert_eq!(cfg.order.len(), 10, "total column count must be unchanged");
-        assert_eq!(cfg.widths.len(), 10, "widths length must match order length");
+        assert_eq!(
+            cfg.widths.len(),
+            10,
+            "widths length must match order length"
+        );
     }
 
     /// Serialise to `GuiConfig`, deserialise back, verify order/visibility/widths.
@@ -387,7 +409,10 @@ mod tests {
         let gui = original.to_gui_config();
         let restored = ColumnConfig::from_gui_config(&gui);
 
-        assert_eq!(restored.order, original.order, "order must survive round-trip");
+        assert_eq!(
+            restored.order, original.order,
+            "order must survive round-trip"
+        );
         assert_eq!(
             restored.visible, original.visible,
             "visibility must survive round-trip"

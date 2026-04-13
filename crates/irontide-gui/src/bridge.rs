@@ -1,9 +1,11 @@
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 
 use parking_lot::Mutex;
 use slint::ComponentHandle as _;
 
-use crate::app::{AppPhase, AppState};
+use crate::app::{AppPhase, AppState, GuiCommand};
 
 /// Spawn the session lifecycle on a background thread.
 ///
@@ -35,7 +37,10 @@ async fn run_session(
     state: Arc<Mutex<AppState>>,
 ) {
     // Start session.
-    let session = match irontide::ClientBuilder::from_settings(settings).start().await {
+    let session = match irontide::ClientBuilder::from_settings(settings)
+        .start()
+        .await
+    {
         Ok(s) => s,
         Err(e) => {
             let msg = format!("Session start failed: {e}");
@@ -65,6 +70,10 @@ async fn run_session(
         }
     }
 
+    // Create command channel and install the sender in shared state.
+    let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel();
+    state.lock().cmd_tx = Some(cmd_tx);
+
     // Signal UI ready + initialise the torrent model.
     state.lock().phase = AppPhase::Ready;
     let _ = weak.upgrade_in_event_loop(|win| {
@@ -73,13 +82,25 @@ async fn run_session(
         win.set_status_text("Ready".into());
     });
 
-    // Start poll loop and wait for shutdown.
-    let poll_handle = tokio::spawn(
-        crate::poll::poll_loop(session.clone(), weak.clone(), state.clone()),
-    );
-    tokio::select! {
-        _ = shutdown_rx => {}
-        _ = poll_handle => {}
+    // Start poll loop and wait for shutdown or commands.
+    let poll_handle = tokio::spawn(crate::poll::poll_loop(
+        session.clone(),
+        weak.clone(),
+        state.clone(),
+    ));
+
+    // `oneshot::Receiver` is `Unpin` in tokio, so `&mut` works directly.
+    // `JoinHandle` is also `Unpin`.
+    let mut shutdown_rx = shutdown_rx;
+    let mut poll_handle = poll_handle;
+    loop {
+        tokio::select! {
+            _ = &mut shutdown_rx => break,
+            _ = &mut poll_handle => break,
+            Some(cmd) = cmd_rx.recv() => {
+                handle_gui_command(cmd, &session, &weak).await;
+            }
+        }
     }
 
     // Save resume state before shutdown.
@@ -113,24 +134,175 @@ pub fn handle_menu_action(
             });
         }
         crate::app::MenuAction::AddMagnet => {
-            show_stub_toast(weak, "Add Magnet");
+            show_toast(weak, "Add Magnet: coming in M164 Step 4", false);
         }
         crate::app::MenuAction::AddTorrentFile => {
-            show_stub_toast(weak, "Add Torrent File");
+            show_toast(weak, "Add Torrent File: coming in M164 Step 5", false);
         }
     }
 }
 
-fn show_stub_toast(weak: &slint::Weak<crate::MainWindow>, label: &str) {
-    let toast = format!("{label}: coming in M164");
+/// Display a toast notification in the UI.
+///
+/// `_is_error` is reserved for Step 2 (error styling). For now it is unused.
+fn show_toast(weak: &slint::Weak<crate::MainWindow>, msg: &str, _is_error: bool) {
+    let text = msg.to_owned();
     let _ = weak.upgrade_in_event_loop(move |win| {
-        win.set_toast_text(toast.into());
+        win.set_toast_text(text.into());
         win.set_toast_visible(true);
     });
 }
 
+/// Dispatch a `GuiCommand` to the appropriate session method.
+async fn handle_gui_command(
+    cmd: GuiCommand,
+    session: &irontide::session::SessionHandle,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    let start = std::time::Instant::now();
+
+    match cmd {
+        GuiCommand::AddMagnet { uri, download_dir } => {
+            handle_add_magnet(uri, download_dir, session, weak).await;
+        }
+        GuiCommand::AddTorrentFile { path, download_dir } => {
+            handle_add_torrent_file(path, download_dir, session, weak).await;
+        }
+        GuiCommand::PauseTorrents { hashes } => {
+            let msg = batch_action(&hashes, session, "Paused", |s, id| {
+                Box::pin(s.pause_torrent(id))
+            })
+            .await;
+            show_toast(weak, &msg, false);
+        }
+        GuiCommand::ResumeTorrents { hashes } => {
+            let msg = batch_action(&hashes, session, "Resumed", |s, id| {
+                Box::pin(s.resume_torrent(id))
+            })
+            .await;
+            show_toast(weak, &msg, false);
+        }
+        GuiCommand::RemoveTorrents {
+            hashes,
+            delete_files,
+        } => {
+            if delete_files {
+                tracing::warn!("delete_files=true but file deletion not yet implemented (M164 Step 7)");
+            }
+            let msg = batch_action(&hashes, session, "Removed", |s, id| {
+                Box::pin(s.remove_torrent(id))
+            })
+            .await;
+            show_toast(weak, &msg, false);
+        }
+        GuiCommand::SetSeedMode { hashes, enabled } => {
+            let label = if enabled {
+                "Set seed mode"
+            } else {
+                "Cleared seed mode"
+            };
+            let msg = batch_action(&hashes, session, label, |s, id| {
+                Box::pin(s.set_seed_mode(id, enabled))
+            })
+            .await;
+            show_toast(weak, &msg, false);
+        }
+        GuiCommand::ForceRecheck { hashes } => {
+            let msg = batch_action(&hashes, session, "Rechecking", |s, id| {
+                Box::pin(s.force_recheck(id))
+            })
+            .await;
+            show_toast(weak, &msg, false);
+        }
+        GuiCommand::ForceReannounce { hashes } => {
+            let msg = batch_action(&hashes, session, "Reannounced", |s, id| {
+                Box::pin(s.force_reannounce(id))
+            })
+            .await;
+            show_toast(weak, &msg, false);
+        }
+    }
+
+    let elapsed = start.elapsed();
+    if elapsed.as_millis() > 100 {
+        tracing::warn!("GUI command took {elapsed:?}");
+    }
+}
+
+/// Execute an async action for each info-hash and format the result.
+async fn batch_action<F>(
+    hashes: &[String],
+    session: &irontide::session::SessionHandle,
+    label: &str,
+    action: F,
+) -> String
+where
+    F: Fn(
+        &irontide::session::SessionHandle,
+        irontide::core::Id20,
+    ) -> Pin<Box<dyn Future<Output = Result<(), irontide::session::Error>> + '_>>,
+{
+    if hashes.is_empty() {
+        return format!("{label}: no torrents selected");
+    }
+    let mut success = 0usize;
+    let mut failed = 0usize;
+    for hash_str in hashes {
+        let Ok(id) = irontide::core::Id20::from_hex(hash_str) else {
+            tracing::warn!(hash = %hash_str, "invalid info hash in batch action");
+            failed += 1;
+            continue;
+        };
+        match action(session, id).await {
+            Ok(()) => success += 1,
+            Err(e) => {
+                tracing::warn!(hash = %hash_str, error = %e, "{label} failed for torrent");
+                failed += 1;
+            }
+        }
+    }
+    format_batch_result(label, success, failed)
+}
+
+/// Format the result of a batch action into a human-readable toast message.
+fn format_batch_result(label: &str, success: usize, failed: usize) -> String {
+    if failed == 0 {
+        format!("{label} {success} torrent(s)")
+    } else {
+        format!("{label} {success} torrent(s), {failed} failed")
+    }
+}
+
+/// Stub handler for adding a torrent from a magnet URI.
+///
+/// Full implementation in M164 Step 4.
+async fn handle_add_magnet(
+    uri: String,
+    _download_dir: Option<String>,
+    _session: &irontide::session::SessionHandle,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    // Magnet URIs are ASCII, but be safe about truncation at char boundaries.
+    let preview: String = uri.chars().take(40).collect();
+    show_toast(weak, &format!("Add Magnet: stub for '{preview}'"), false);
+}
+
+/// Stub handler for adding a torrent from a `.torrent` file.
+///
+/// Full implementation in M164 Step 5.
+async fn handle_add_torrent_file(
+    path: String,
+    _download_dir: Option<String>,
+    _session: &irontide::session::SessionHandle,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    show_toast(weak, &format!("Add Torrent: stub for '{path}'"), false);
+}
+
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn shutdown_oneshot_round_trip() {
         let (tx, rx) = tokio::sync::oneshot::channel::<()>();
@@ -142,5 +314,46 @@ mod tests {
             .unwrap();
         let result = rt.block_on(rx);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn command_channel_roundtrip() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<GuiCommand>();
+        tx.send(GuiCommand::PauseTorrents {
+            hashes: vec!["abc123".into()],
+        })
+        .expect("send should succeed");
+
+        let cmd = rx.try_recv().expect("should receive command");
+        match cmd {
+            GuiCommand::PauseTorrents { hashes } => {
+                assert_eq!(hashes, vec!["abc123".to_owned()]);
+            }
+            _ => panic!("expected PauseTorrents variant"),
+        }
+    }
+
+    #[test]
+    fn batch_toast_format_success() {
+        let msg = format_batch_result("Paused", 3, 0);
+        assert_eq!(msg, "Paused 3 torrent(s)");
+    }
+
+    #[test]
+    fn batch_toast_format_partial() {
+        let msg = format_batch_result("Paused", 2, 1);
+        assert_eq!(msg, "Paused 2 torrent(s), 1 failed");
+    }
+
+    #[test]
+    fn batch_toast_format_all_failed() {
+        let msg = format_batch_result("Removed", 0, 3);
+        assert_eq!(msg, "Removed 0 torrent(s), 3 failed");
+    }
+
+    #[test]
+    fn batch_toast_format_empty_label() {
+        let msg = format_batch_result("", 1, 0);
+        assert_eq!(msg, " 1 torrent(s)");
     }
 }

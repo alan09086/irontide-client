@@ -139,7 +139,10 @@ mod tests {
 
     #[test]
     fn test_format_state() {
-        assert_eq!(format_state(&TorrentState::FetchingMetadata), "fetching metadata");
+        assert_eq!(
+            format_state(&TorrentState::FetchingMetadata),
+            "fetching metadata"
+        );
         assert_eq!(format_state(&TorrentState::Checking), "checking");
         assert_eq!(format_state(&TorrentState::Downloading), "downloading");
         assert_eq!(format_state(&TorrentState::Complete), "complete");
