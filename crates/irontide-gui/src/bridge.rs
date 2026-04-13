@@ -398,7 +398,8 @@ async fn handle_add_magnet(
     session: &irontide::session::SessionHandle,
     weak: &slint::Weak<crate::MainWindow>,
 ) {
-    let magnet = match irontide::core::Magnet::parse(&uri) {
+    let uri = uri.trim();
+    let magnet = match irontide::core::Magnet::parse(uri) {
         Ok(m) => m,
         Err(e) => {
             show_toast(weak, &format!("Invalid magnet: {e}"), true);

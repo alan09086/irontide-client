@@ -287,19 +287,17 @@ fn main() -> Result<(), error::GuiError> {
         // Space: toggle pause/resume for selected torrents.
         let cb_state = state.clone();
         main_window.on_toggle_pause_resume(move || {
-            let (hashes, cmd_tx) = {
+            let (selected, cmd_tx) = {
                 let st = cb_state.lock();
-                (
-                    st.selected.iter().cloned().collect::<Vec<_>>(),
-                    st.cmd_tx.clone(),
-                )
+                (st.selected.clone(), st.cmd_tx.clone())
             };
-            if hashes.is_empty() {
+            if selected.is_empty() {
                 return;
             }
             let Some(tx) = cmd_tx else { return };
             // We are on the main thread — can read the thread-local model directly.
-            let all_paused = crate::poll::check_all_paused(&hashes);
+            let all_paused = crate::poll::check_all_paused(&selected);
+            let hashes: Vec<String> = selected.into_iter().collect();
             let cmd = if all_paused {
                 app::GuiCommand::ResumeTorrents { hashes }
             } else {

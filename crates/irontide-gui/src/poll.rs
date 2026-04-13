@@ -53,7 +53,7 @@ pub fn update_selection(selected: &HashSet<String>) {
 ///
 /// Must be called from the Slint main thread (inside a Slint callback) because
 /// it accesses the thread-local `TORRENT_MODEL`.
-pub fn check_all_paused(hashes: &[String]) -> bool {
+pub fn check_all_paused(hashes: &HashSet<String>) -> bool {
     TORRENT_MODEL.with(|m| {
         let borrow = m.borrow();
         let Some(model) = borrow.as_ref() else {
@@ -62,7 +62,7 @@ pub fn check_all_paused(hashes: &[String]) -> bool {
         let mut found_any = false;
         for i in 0..model.row_count() {
             if let Some(row) = model.row_data(i)
-                && hashes.contains(&row.info_hash.to_string())
+                && hashes.contains(row.info_hash.as_str())
             {
                 found_any = true;
                 if row.state.as_str() != "paused" {
