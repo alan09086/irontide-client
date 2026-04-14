@@ -20,6 +20,7 @@
 use std::io::{BufRead as _, BufReader};
 use std::net::TcpListener;
 use std::process::{Child, Command, Stdio};
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use tempfile::TempDir;
@@ -34,6 +35,12 @@ struct DaemonHandle {
     child: Child,
     port: u16,
     _tempdir: TempDir,
+    /// Drains the daemon's stderr pipe in the background. Keeping the read
+    /// end of the pipe open is critical: if it were dropped after reading the
+    /// startup banner, the daemon would receive SIGPIPE the next time it logs
+    /// anything and die mid-request — causing "daemon unreachable" failures on
+    /// operations that trigger logging (e.g. `add` but not `list`).
+    _stderr_drain: JoinHandle<()>,
 }
 
 impl DaemonHandle {
@@ -119,10 +126,24 @@ fn setup_daemon() -> DaemonHandle {
         }
     }
 
+    // Keep reading stderr so the pipe's read end stays open. If we drop the
+    // BufReader here instead, the daemon gets SIGPIPE on its next log write.
+    let drain = std::thread::spawn(move || {
+        let mut buf = String::new();
+        loop {
+            buf.clear();
+            match reader.read_line(&mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {}
+            }
+        }
+    });
+
     DaemonHandle {
         child,
         port,
         _tempdir: tempdir,
+        _stderr_drain: drain,
     }
 }
 
