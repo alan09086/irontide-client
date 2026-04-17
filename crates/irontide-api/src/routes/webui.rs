@@ -98,6 +98,28 @@ pub(crate) struct TorrentDetailTemplate {
     pub download_path: String,
 }
 
+/// A single row in the Files tab table, pre-formatted so the template
+/// contains no formatting logic.
+pub(crate) struct FileRow {
+    pub idx: usize,
+    pub path: String,
+    pub size: String,
+    /// Fraction done in `[0.0, 1.0]`, fed straight into `<progress value>`.
+    pub progress: f64,
+    pub progress_pct: String,
+    /// Lowercase slug matching the PATCH form value: `skip|low|normal|high`.
+    pub priority: &'static str,
+}
+
+/// Askama template for the Files tab.
+#[derive(Template)]
+#[template(path = "files_tab.html")]
+pub(crate) struct FilesTabTemplate {
+    /// Lowercase hex info hash — embedded into the PATCH URLs on each row.
+    pub hash: String,
+    pub files: Vec<FileRow>,
+}
+
 /// Askama template that renders ONLY the Info tab, as a standalone fragment.
 /// Used by `GET /webui/fragments/torrent/{hash}/info` (Task 3).
 #[derive(Template)]
@@ -569,6 +591,97 @@ pub async fn torrent_detail(
     tmpl.into_web_template().into_response()
 }
 
+/// Map a [`FilePriority`](irontide::core::FilePriority) to its lowercase
+/// form-value slug. The inverse (`parse_priority_form_value`) is used by
+/// the PATCH handler in Task 5.
+fn priority_slug(p: irontide::core::FilePriority) -> &'static str {
+    match p {
+        irontide::core::FilePriority::Skip => "skip",
+        irontide::core::FilePriority::Low => "low",
+        irontide::core::FilePriority::Normal => "normal",
+        irontide::core::FilePriority::High => "high",
+    }
+}
+
+/// `GET /webui/fragments/torrent/{hash}/files`
+///
+/// Render the Files tab as an HTML fragment. Uses `info.files` × `file_progress`
+/// × `file_priorities` via a length-safe `.zip()` that truncates to the
+/// shortest if metadata is arriving mid-request (warns on mismatch so
+/// operators can spot a systemic discrepancy).
+pub async fn files_fragment(
+    State(session): State<AppState>,
+    Path(hash): Path<String>,
+) -> Response {
+    let id = match crate::extractors::parse_info_hash(&hash) {
+        Ok(id) => id,
+        Err(e) => return api_error_fragment(e),
+    };
+
+    // Metadata-not-ready is a valid state for magnets — render the empty-state.
+    let info = match session.torrent_info(id).await {
+        Ok(info) => info,
+        Err(irontide::session::Error::MetadataNotReady(_)) => {
+            let tmpl = FilesTabTemplate {
+                hash: id.to_hex(),
+                files: Vec::new(),
+            };
+            return tmpl.into_web_template().into_response();
+        }
+        Err(e) => return api_error_fragment(e.into()),
+    };
+
+    let progress = match session.file_progress(id).await {
+        Ok(p) => p,
+        Err(e) => return api_error_fragment(e.into()),
+    };
+    let priorities = match session.file_priorities(id).await {
+        Ok(p) => p,
+        Err(e) => return api_error_fragment(e.into()),
+    };
+
+    if info.files.len() != progress.len() || info.files.len() != priorities.len() {
+        tracing::warn!(
+            files = info.files.len(),
+            progress = progress.len(),
+            priorities = priorities.len(),
+            "file metadata length mismatch — rendering the common prefix only"
+        );
+    }
+
+    // Length-safe zip — truncates to the shortest of the three. Rows that
+    // share all three pieces of state render fully; the rest wait for the
+    // next refresh cycle.
+    let rows: Vec<FileRow> = info
+        .files
+        .iter()
+        .zip(progress.iter().copied())
+        .zip(priorities.iter().copied())
+        .enumerate()
+        .map(|(idx, ((entry, done), prio))| {
+            let progress = if entry.length == 0 {
+                1.0
+            } else {
+                (done as f64 / entry.length as f64).clamp(0.0, 1.0)
+            };
+            FileRow {
+                idx,
+                path: entry.path.to_string_lossy().into_owned(),
+                size: irontide_format::format_size(entry.length),
+                progress,
+                progress_pct: format!("{:.1}%", progress * 100.0),
+                priority: priority_slug(prio),
+            }
+        })
+        .collect();
+
+    let tmpl = FilesTabTemplate {
+        hash: id.to_hex(),
+        files: rows,
+    };
+    tmpl.into_web_template().into_response()
+}
+
 /// `GET /webui/fragments/torrent/{hash}/info`
 ///
 /// Renders ONLY the Info tab as a standalone fragment. Shares its template
@@ -649,6 +762,85 @@ pub async fn serve_static(req: Request) -> impl IntoResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn files_template_renders_rows_with_priority_selected() {
+        let tmpl = FilesTabTemplate {
+            hash: "aa".repeat(20),
+            files: vec![
+                FileRow {
+                    idx: 0,
+                    path: "README.txt".to_string(),
+                    size: "1.2 KiB".to_string(),
+                    progress: 1.0,
+                    progress_pct: "100.0%".to_string(),
+                    priority: "normal",
+                },
+                FileRow {
+                    idx: 1,
+                    path: "data/<x>.bin".to_string(),
+                    size: "10 MB".to_string(),
+                    progress: 0.25,
+                    progress_pct: "25.0%".to_string(),
+                    priority: "skip",
+                },
+            ],
+        };
+        let out = tmpl.render().expect("render files template");
+
+        // Each row has a <select> pointing at the PATCH URL.
+        for idx in [0usize, 1] {
+            assert!(
+                out.contains(&format!(
+                    r#"hx-patch="/webui/torrents/{}/files/{}""#,
+                    "aa".repeat(20),
+                    idx
+                )),
+                "row {idx} missing hx-patch: {out}"
+            );
+        }
+        // `selected` attribute matches the row's current priority — normal
+        // on row 0 and skip on row 1.
+        assert!(
+            out.contains(r#"<option value="normal" selected>Normal</option>"#),
+            "row 0 must mark Normal as selected: {out}"
+        );
+        assert!(
+            out.contains(r#"<option value="skip" selected>Skip</option>"#),
+            "row 1 must mark Skip as selected: {out}"
+        );
+        // Hostile path is escaped, never passed through raw.
+        assert!(
+            !out.contains("data/<x>.bin") || out.contains("data/&#60;x&#62;.bin"),
+            "hostile path must be HTML-escaped: {out}"
+        );
+    }
+
+    #[test]
+    fn files_template_empty_renders_placeholder() {
+        let tmpl = FilesTabTemplate {
+            hash: "bb".repeat(20),
+            files: Vec::new(),
+        };
+        let out = tmpl.render().expect("render files template");
+        assert!(
+            out.contains("Metadata not yet received"),
+            "empty template must render the waiting-on-peers copy: {out}"
+        );
+        assert!(
+            !out.contains("<table"),
+            "empty template must not render a table: {out}"
+        );
+    }
+
+    #[test]
+    fn priority_slug_matches_form_values() {
+        use irontide::core::FilePriority;
+        assert_eq!(priority_slug(FilePriority::Skip), "skip");
+        assert_eq!(priority_slug(FilePriority::Low), "low");
+        assert_eq!(priority_slug(FilePriority::Normal), "normal");
+        assert_eq!(priority_slug(FilePriority::High), "high");
+    }
 
     #[test]
     fn detail_template_escapes_hostile_name() {

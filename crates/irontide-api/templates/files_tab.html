@@ -1,0 +1,42 @@
+{% if files.is_empty() %}
+<p class="muted">Metadata not yet received. Waiting on peers...</p>
+{% else %}
+<table role="grid" class="files-table">
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Path</th>
+      <th class="col-size">Size</th>
+      <th class="col-progress">Progress</th>
+      <th class="col-priority">Priority</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in files %}
+    <tr>
+      <td class="col-idx">{{ row.idx }}</td>
+      <td class="col-path">{{ row.path }}</td>
+      <td class="col-size">{{ row.size }}</td>
+      <td class="col-progress">
+        <progress value="{{ row.progress }}" max="1"></progress>
+        <span>{{ row.progress_pct }}</span>
+      </td>
+      <td class="col-priority">
+        <select name="priority"
+                class="priority-select"
+                hx-patch="/webui/torrents/{{ hash }}/files/{{ row.idx }}"
+                hx-trigger="change"
+                hx-swap="none"
+                hx-include="this"
+                aria-label="Priority for {{ row.path }}">
+          <option value="skip"{% if row.priority == "skip" %} selected{% endif %}>Skip</option>
+          <option value="low"{% if row.priority == "low" %} selected{% endif %}>Low</option>
+          <option value="normal"{% if row.priority == "normal" %} selected{% endif %}>Normal</option>
+          <option value="high"{% if row.priority == "high" %} selected{% endif %}>High</option>
+        </select>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
