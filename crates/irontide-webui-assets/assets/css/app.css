@@ -1,5 +1,15 @@
 /* IronTide Web UI — custom overrides on top of Pico CSS */
 
+/* IronTide Web UI — de-facto design tokens (consolidated in DESIGN.md) */
+/* Colors: Pico dark theme primary → var(--pico-primary) (accent blue) */
+/*         state-downloading → #22c55e, state-seeding → #3b82f6, */
+/*         state-paused → #9ca3af, state-error → #ef4444 */
+/* Type:   Pico default sans; monospace for info hashes */
+/* Space:  Pico default scale (0.25rem / 0.5rem / 1rem / 1.5rem / 2rem / 3rem) */
+/* Radius: Pico default --pico-border-radius (0.25rem) */
+/* Breakpoints: 375px (small phone) / 768px (tablet) / 1024px (laptop+) */
+
+
 /* ─── Progress bar state colours ─────────────────────────────── */
 /* Webkit */
 progress[data-state="downloading"]::-webkit-progress-value {
@@ -270,3 +280,323 @@ body > header nav {
   font-size: 0.85rem;
   margin-top: 0.5rem;
 }
+
+/* ─── M167 Detail view ────────────────────────────────────────── */
+
+/* Row-click navigation — torrent name links to detail page. */
+.torrent-name-link {
+  color: inherit;
+  text-decoration: none;
+  display: inline-block;
+  padding: 12px 8px;   /* 44px tappable area (WCAG 2.1 AAA) */
+  margin: -12px -8px;  /* pull back so the row's visual density is unchanged */
+}
+.torrent-name-link:hover {
+  text-decoration: underline;
+}
+.torrent-name-link:focus-visible {
+  outline: 2px solid var(--pico-primary, #92b4f4);
+  outline-offset: 2px;
+}
+
+/* Detail container + breadcrumb. */
+.detail-container {
+  max-width: 1280px;
+}
+.breadcrumb {
+  font-size: 0.85rem;
+  color: var(--pico-muted-color, #888);
+  margin-block: 0.5rem 1rem;
+}
+.breadcrumb .back-link {
+  color: inherit;
+  text-decoration: none;
+}
+.breadcrumb .back-link:hover,
+.breadcrumb .back-link:focus-visible {
+  color: var(--pico-primary, #92b4f4);
+  text-decoration: underline;
+}
+
+/* Header block. */
+.detail-header {
+  margin-block: 0.5rem 1.5rem;
+}
+.detail-header .torrent-name {
+  margin: 0 0 0.5rem;
+  font-size: 1.5rem;
+  word-break: break-all;
+}
+.detail-status-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-block: 0.5rem;
+}
+.detail-status-row progress {
+  flex: 1;
+  max-width: 24rem;
+}
+.detail-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  font-size: 0.875rem;
+  color: var(--pico-muted-color, #888);
+}
+
+/* State chip — coloured pill, one per known state. */
+.state-chip {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.state-chip.state-downloading { background: rgba(34, 197, 94, 0.18); color: #22c55e; }
+.state-chip.state-seeding     { background: rgba(59, 130, 246, 0.18); color: #3b82f6; }
+.state-chip.state-paused      { background: rgba(156, 163, 175, 0.18); color: #9ca3af; }
+.state-chip.state-checking    { background: rgba(255, 220, 0, 0.18); color: #ffdc00; }
+.state-chip.state-fetching    { background: rgba(156, 163, 175, 0.18); color: #9ca3af; }
+.state-chip.state-complete,
+.state-chip.state-sharing,
+.state-chip.state-seed-only   { background: rgba(59, 130, 246, 0.18); color: #3b82f6; }
+.state-chip.state-stopped,
+.state-chip.state-unknown     { background: rgba(156, 163, 175, 0.18); color: #9ca3af; }
+
+/* ARIA tablist. */
+.detail-tablist {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--pico-muted-border-color, #333);
+  margin-block: 1rem;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.detail-tablist [role="tab"] {
+  background: transparent;
+  border: none;
+  color: var(--pico-muted-color, #888);
+  padding: 0.5rem 1rem;
+  min-height: 44px;          /* WCAG 2.1 AAA touch target */
+  font-size: 0.95rem;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 120ms ease, border-color 120ms ease;
+  white-space: nowrap;
+}
+.detail-tablist [role="tab"]:hover {
+  color: var(--pico-color, #cdd);
+}
+.detail-tablist [role="tab"][aria-selected="true"] {
+  color: var(--pico-primary, #92b4f4);
+  border-bottom-color: var(--pico-primary, #92b4f4);
+  font-weight: 600;
+}
+.detail-tablist [role="tab"]:focus-visible {
+  outline: 2px solid var(--pico-primary, #92b4f4);
+  outline-offset: -2px;
+}
+
+[role="tabpanel"] {
+  padding-block: 1rem;
+}
+[role="tabpanel"][hidden] {
+  display: none;
+}
+[role="tabpanel"]:focus-visible {
+  outline: none;  /* focus moves here programmatically on tab activation */
+}
+
+/* Info-tab grid. */
+.info-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 1.5rem;
+  row-gap: 0.4rem;
+  align-items: baseline;
+}
+.info-grid dt {
+  color: var(--pico-muted-color, #888);
+  font-size: 0.85rem;
+}
+.info-grid dd {
+  margin: 0;
+  font-size: 0.9rem;
+  word-break: break-all;
+}
+.info-grid code {
+  font-family: var(--pico-font-family-monospace, monospace);
+  font-size: 0.85rem;
+}
+
+/* Files table. */
+.files-table,
+.trackers-table,
+.peers-table {
+  width: 100%;
+  table-layout: auto;
+  font-size: 0.875rem;
+}
+.files-table .col-size,
+.files-table .col-progress,
+.trackers-table .col-tier,
+.trackers-table .col-seeders,
+.trackers-table .col-leechers,
+.peers-table .col-pieces,
+.peers-table .col-down-rate,
+.peers-table .col-up-rate {
+  text-align: right;
+}
+.files-table progress {
+  width: 10rem;
+  max-width: 100%;
+}
+.priority-select {
+  min-height: 44px;
+  max-width: 8rem;
+}
+
+/* Trackers tab. */
+.tracker-status {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.8rem;
+}
+.tracker-status-working { background: rgba(34, 197, 94, 0.18); color: #22c55e; }
+.tracker-status-pending { background: rgba(156, 163, 175, 0.18); color: #9ca3af; }
+.tracker-status-error   { background: rgba(239, 68, 68, 0.18); color: #ef4444; }
+.reannounce-form {
+  margin-top: 1rem;
+}
+.action-reannounce {
+  min-height: 44px;
+}
+
+/* Peers tab. */
+.peers-table abbr {
+  text-decoration: none;
+  font-family: var(--pico-font-family-monospace, monospace);
+  font-weight: 600;
+  margin-inline-end: 0.1rem;
+  cursor: help;
+}
+.peers-flag-legend {
+  margin-top: 1rem;
+  font-size: 0.85rem;
+}
+.peers-flag-legend summary {
+  color: var(--pico-muted-color, #888);
+  cursor: pointer;
+}
+.peers-flag-legend ul {
+  list-style: none;
+  padding: 0.5rem 0 0;
+  margin: 0;
+}
+.peers-flag-legend li {
+  padding-block: 0.15rem;
+}
+
+/* Skeleton shimmer — one 500ms animation cycle per repeat. */
+.skeleton-row {
+  height: 2rem;
+  margin-block: 0.35rem;
+  background: linear-gradient(
+    90deg,
+    var(--pico-muted-border-color, #222) 0%,
+    rgba(255, 255, 255, 0.08) 50%,
+    var(--pico-muted-border-color, #222) 100%
+  );
+  background-size: 200% 100%;
+  border-radius: var(--pico-border-radius, 0.25rem);
+  animation: shimmer 1.5s infinite;
+}
+@keyframes shimmer {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+.htmx-indicator {
+  display: none;
+  color: var(--pico-muted-color, #888);
+  font-size: 0.8rem;
+}
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+  display: inline-block;
+}
+
+/* Removed banner — swapped in by swapRemovedBanner() on 404. */
+.removed-banner {
+  max-width: 40rem;
+  margin: 4rem auto;
+  padding: 2rem;
+  text-align: center;
+  background: rgba(156, 163, 175, 0.08);
+  border: 1px solid var(--pico-muted-border-color, #333);
+  border-radius: var(--pico-border-radius, 0.25rem);
+}
+.removed-banner h2 {
+  margin-top: 0;
+  color: var(--pico-muted-color, #888);
+}
+.removed-banner .back-link {
+  color: var(--pico-primary, #92b4f4);
+  font-weight: 600;
+  text-decoration: none;
+}
+.removed-banner .back-link:hover,
+.removed-banner .back-link:focus-visible {
+  text-decoration: underline;
+}
+
+/* Screen-reader-only text for the ARIA live region. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ─── M167 Responsive breakpoints ─────────────────────────────── */
+
+/* Tablet: 2-column header, full Peers/Trackers rows. */
+@media (max-width: 768px) {
+  .detail-header .torrent-name {
+    font-size: 1.25rem;
+  }
+  .detail-status-row {
+    flex-wrap: wrap;
+  }
+}
+
+/* Small phones (≤iPhone SE): stack header, hide non-essential columns. */
+@media (max-width: 375px) {
+  .detail-status-row,
+  .detail-summary {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+  /* Peers tab: drop Client + Flags columns, keep addr / rates / pieces. */
+  .peers-table .col-client,
+  .peers-table .col-flags {
+    display: none;
+  }
+  /* Trackers tab: drop status label (colour chip still conveys state). */
+  .trackers-table .tracker-status {
+    font-size: 0;      /* hide text but keep the coloured dot */
+    padding: 0.25rem;
+    min-width: 0.5rem;
+    min-height: 0.5rem;
+    border-radius: 50%;
+  }
+}
+
