@@ -16,10 +16,11 @@
 
 use askama::Template;
 use askama_web::WebTemplateExt;
-use axum::extract::{Path, Request, State};
+use axum::extract::{Path, Query, Request, State};
 use axum::http::{StatusCode, header};
 use axum::response::{Html, IntoResponse, Response};
 use irontide::session::TorrentState;
+use serde::Deserialize;
 
 use super::AppState;
 use crate::error::ApiError;
@@ -254,6 +255,32 @@ pub async fn delete_action(
         Err(e) => return api_error_fragment(e),
     };
     match session.remove_torrent(id).await {
+        Ok(_) => refresh_response(),
+        Err(e) => api_error_fragment(e.into()),
+    }
+}
+
+/// Query parameters for [`seed_mode_action`]. The button sends
+/// `?enabled=true` or `?enabled=false` depending on the current flag.
+#[derive(Deserialize)]
+pub struct SeedModeQuery {
+    pub enabled: bool,
+}
+
+/// `POST /webui/torrents/{hash}/seed-mode?enabled=<bool>`
+///
+/// Flip the torrent's `user_seed_mode` flag. Emits `HX-Trigger: refreshList`
+/// on success so the button's label and class swap between the two states.
+pub async fn seed_mode_action(
+    State(session): State<AppState>,
+    Path(hash): Path<String>,
+    Query(q): Query<SeedModeQuery>,
+) -> Response {
+    let id = match crate::extractors::parse_info_hash(&hash) {
+        Ok(id) => id,
+        Err(e) => return api_error_fragment(e),
+    };
+    match session.set_seed_mode(id, q.enabled).await {
         Ok(_) => refresh_response(),
         Err(e) => api_error_fragment(e.into()),
     }

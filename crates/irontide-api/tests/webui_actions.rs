@@ -276,3 +276,124 @@ async fn delete_nonexistent_returns_error_fragment() {
         "delete 404 should emit HTML fragment, got {text}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Seed-mode toggle
+// ---------------------------------------------------------------------------
+
+async fn fetch_fragment(router: &axum::Router) -> String {
+    let req = Request::get("/webui/fragments/torrent-list")
+        .body(Body::empty())
+        .expect("build list request");
+    let response = router.clone().oneshot(req).await.expect("list");
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("collect body")
+        .to_bytes();
+    String::from_utf8_lossy(&body).to_string()
+}
+
+#[tokio::test]
+async fn seed_mode_enable_flips_flag_and_emits_trigger() {
+    let (router, _tempdir) = test_router_isolated().await;
+    let hash = seed_magnet(&router).await;
+
+    // Precondition: fragment shows the "Enable seed" button (action-seed class).
+    let fragment = fetch_fragment(&router).await;
+    assert!(
+        fragment.contains("action-seed"),
+        "precondition: default user_seed_mode=false, got {fragment}"
+    );
+
+    // POST with enabled=true.
+    let req = Request::post(format!("/webui/torrents/{hash}/seed-mode?enabled=true"))
+        .body(Body::empty())
+        .expect("build seed-mode request");
+    let response = router.clone().oneshot(req).await.expect("seed-mode");
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get("HX-Trigger")
+            .and_then(|v| v.to_str().ok()),
+        Some("refreshList"),
+    );
+
+    // Fragment should now show the "Disable seed" button (action-unseed class).
+    let fragment = fetch_fragment(&router).await;
+    assert!(
+        fragment.contains("action-unseed"),
+        "user_seed_mode should be true after enable, got {fragment}"
+    );
+}
+
+#[tokio::test]
+async fn seed_mode_disable_flips_flag_back() {
+    let (router, _tempdir) = test_router_isolated().await;
+    let hash = seed_magnet(&router).await;
+
+    // Enable first.
+    let req = Request::post(format!("/webui/torrents/{hash}/seed-mode?enabled=true"))
+        .body(Body::empty())
+        .expect("build seed-mode request");
+    let _ = router.clone().oneshot(req).await.expect("enable seed");
+
+    // Now disable.
+    let req = Request::post(format!("/webui/torrents/{hash}/seed-mode?enabled=false"))
+        .body(Body::empty())
+        .expect("build seed-mode request");
+    let response = router.clone().oneshot(req).await.expect("disable seed");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let fragment = fetch_fragment(&router).await;
+    assert!(
+        fragment.contains("action-seed") && !fragment.contains("action-unseed"),
+        "user_seed_mode should be false after disable, got {fragment}"
+    );
+}
+
+#[tokio::test]
+async fn seed_mode_nonexistent_returns_error_fragment() {
+    let (router, _tempdir) = test_router_isolated().await;
+
+    let req = Request::post(format!(
+        "/webui/torrents/{NONEXISTENT_HASH}/seed-mode?enabled=true"
+    ))
+    .body(Body::empty())
+    .expect("build seed-mode request");
+    let response = router.clone().oneshot(req).await.expect("seed-mode");
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    assert!(response.headers().get("HX-Trigger").is_none());
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("collect body")
+        .to_bytes();
+    let text = String::from_utf8_lossy(&body);
+    assert!(
+        text.contains("error-message"),
+        "seed-mode 404 should emit HTML fragment, got {text}"
+    );
+}
+
+#[tokio::test]
+async fn seed_mode_missing_query_returns_bad_request() {
+    let (router, _tempdir) = test_router_isolated().await;
+    let hash = seed_magnet(&router).await;
+
+    // No ?enabled=... query parameter.
+    let req = Request::post(format!("/webui/torrents/{hash}/seed-mode"))
+        .body(Body::empty())
+        .expect("build seed-mode request");
+    let response = router.clone().oneshot(req).await.expect("seed-mode");
+
+    assert!(
+        response.status().is_client_error(),
+        "missing query should 4xx, got {}",
+        response.status()
+    );
+}

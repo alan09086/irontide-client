@@ -100,6 +100,10 @@ pub fn build_router(session: SessionHandle) -> Router {
                 "/webui/torrents/{hash}",
                 delete(webui::delete_action),
             )
+            .route(
+                "/webui/torrents/{hash}/seed-mode",
+                post(webui::seed_mode_action),
+            )
             .fallback(webui::serve_static);
     }
 
