@@ -80,4 +80,36 @@ mod tests {
             "index.html must load js/ws-live.js"
         );
     }
+
+    /// These assertions verify key behaviours by content substring — they
+    /// will NOT catch a JavaScript syntax error. The authoritative check is
+    /// the manual dogfooding smoke test (Task 9.5).
+    #[test]
+    fn test_ws_live_js_has_full_client() {
+        let (_mime, bytes) = get("js/ws-live.js").expect("ws-live.js embedded");
+        let content = String::from_utf8_lossy(&bytes);
+        assert!(
+            content.contains("new WebSocket"),
+            "ws-live.js must open a WebSocket connection"
+        );
+        assert!(
+            content.contains("/api/v1/events"),
+            "ws-live.js must target the /api/v1/events endpoint"
+        );
+        // C3 fix: filter to alerts to avoid refresh-on-every-heartbeat.
+        assert!(
+            content.contains("'alert'") || content.contains("\"alert\""),
+            "ws-live.js must gate refreshList on alert messages, not stats"
+        );
+        // Trailing debounce to cap refresh rate at 1 Hz.
+        assert!(
+            content.contains("setTimeout") && content.contains("scheduleRefresh"),
+            "ws-live.js must trailing-debounce refreshList dispatch"
+        );
+        // Exponential-backoff reconnect.
+        assert!(
+            content.contains("Math.min"),
+            "ws-live.js must cap reconnect backoff (Math.min)"
+        );
+    }
 }
