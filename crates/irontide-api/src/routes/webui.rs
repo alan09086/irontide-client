@@ -11,6 +11,7 @@ use askama_web::WebTemplateExt;
 use axum::extract::{Request, State};
 use axum::http::{StatusCode, header};
 use axum::response::{Html, IntoResponse, Response};
+use irontide::session::TorrentState;
 
 use super::AppState;
 
@@ -31,6 +32,14 @@ pub(crate) struct TorrentRow {
     pub peers: usize,
     pub state: String,
     pub state_class: String,
+    /// Hex-encoded SHA-1 info hash; the action-button endpoints key off this.
+    pub info_hash: String,
+    /// True when the torrent is in `TorrentState::Paused` — drives
+    /// pause-vs-resume button selection in the template.
+    pub is_paused: bool,
+    /// Current user seed-mode flag; flips the seed-mode toggle label between
+    /// "Seed" and "Unseed".
+    pub user_seed_mode: bool,
 }
 
 /// Askama template that renders the torrent list as an HTML `<table>` fragment.
@@ -105,6 +114,9 @@ pub async fn torrent_list_fragment(State(session): State<AppState>) -> impl Into
             let state_label =
                 irontide_format::format_state(&t.state, t.user_seed_mode).to_owned();
             let css_class = state_css_class(&state_label).to_owned();
+            let is_paused = matches!(t.state, TorrentState::Paused);
+            let user_seed_mode = t.user_seed_mode;
+            let info_hash = t.info_hash.clone();
             TorrentRow {
                 name: t.name,
                 size: irontide_format::format_size(t.total_size),
@@ -116,6 +128,9 @@ pub async fn torrent_list_fragment(State(session): State<AppState>) -> impl Into
                 peers: t.num_peers,
                 state: state_label,
                 state_class: css_class,
+                info_hash,
+                is_paused,
+                user_seed_mode,
             }
         })
         .collect();
@@ -176,5 +191,35 @@ pub async fn serve_static(req: Request) -> impl IntoResponse {
             .body(axum::body::Body::from(data))
             .unwrap(),
         None => (StatusCode::NOT_FOUND, "not found").into_response(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn torrent_row_carries_info_hash_and_state_flags() {
+        // M166: per-row action buttons require the info hash (button target),
+        // the paused flag (pause vs resume button selection), and the
+        // user_seed_mode flag (seed-mode toggle label).
+        let row = TorrentRow {
+            name: "test.iso".to_string(),
+            size: "1 GB".to_string(),
+            progress: 0.0,
+            progress_pct: "0.0%".to_string(),
+            down_rate: "0 B/s".to_string(),
+            up_rate: "0 B/s".to_string(),
+            seeds: 0,
+            peers: 0,
+            state: "paused".to_string(),
+            state_class: "paused".to_string(),
+            info_hash: "aa".repeat(20),
+            is_paused: true,
+            user_seed_mode: false,
+        };
+        assert_eq!(row.info_hash.len(), 40);
+        assert!(row.is_paused);
+        assert!(!row.user_seed_mode);
     }
 }

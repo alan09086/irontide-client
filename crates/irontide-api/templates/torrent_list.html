@@ -14,6 +14,7 @@
       <th class="col-seeds">Seeds</th>
       <th class="col-peers">Peers</th>
       <th>State</th>
+      <th class="col-actions">Actions</th>
     </tr>
   </thead>
   <tbody>
@@ -27,6 +28,35 @@
       <td class="col-seeds">{{ t.seeds }}</td>
       <td class="col-peers">{{ t.peers }}</td>
       <td><span class="state-{{ t.state_class }}">{{ t.state }}</span></td>
+      <td class="col-actions">
+        {% if t.is_paused %}
+        <button class="action-button action-resume"
+                hx-post="/webui/torrents/{{ t.info_hash }}/resume"
+                hx-swap="none"
+                title="Resume">&#9658;</button>
+        {% else %}
+        <button class="action-button action-pause"
+                hx-post="/webui/torrents/{{ t.info_hash }}/pause"
+                hx-swap="none"
+                title="Pause">&#10073;&#10073;</button>
+        {% endif %}
+        {% if t.user_seed_mode %}
+        <button class="action-button action-unseed"
+                hx-post="/webui/torrents/{{ t.info_hash }}/seed-mode?enabled=false"
+                hx-swap="none"
+                title="Disable seed-only mode">&#9650;</button>
+        {% else %}
+        <button class="action-button action-seed"
+                hx-post="/webui/torrents/{{ t.info_hash }}/seed-mode?enabled=true"
+                hx-swap="none"
+                title="Enable seed-only mode">&#9652;</button>
+        {% endif %}
+        <button class="action-button action-remove"
+                hx-delete="/webui/torrents/{{ t.info_hash }}"
+                hx-swap="none"
+                hx-confirm="Remove this torrent from the session?"
+                title="Remove">&#10006;</button>
+      </td>
     </tr>
     {% endfor %}
   </tbody>
