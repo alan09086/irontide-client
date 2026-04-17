@@ -3,6 +3,7 @@
 //! Each test creates its own isolated session (no TCP server needed) and
 //! exercises the full request-response cycle via `Router::oneshot()`.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use axum::body::Body;
@@ -13,21 +14,42 @@ use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message as TungsteniteMessage;
 use tower::ServiceExt; // for oneshot()
 
+use irontide::session::Settings;
 use irontide_api::routes::build_router;
 
 // ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
 
-/// Create a minimal session with no network activity.
+/// Monotonic counter so each session gets a unique resume directory within
+/// this test binary's process (see MEMORY.md
+/// feedback_irontide_resume_test_isolation.md).
+static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+/// Create a minimal session with no network activity and an isolated resume
+/// directory so parallel tests cannot collide in the shared XDG state dir.
 async fn test_session() -> irontide::session::SessionHandle {
-    irontide::ClientBuilder::new()
-        .listen_port(0)
-        .download_dir("/tmp")
-        .enable_dht(false)
-        .enable_lsd(false)
-        .enable_upnp(false)
-        .enable_natpmp(false)
+    let n = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let resume_dir = std::env::temp_dir().join(format!(
+        "irontide-api-test-{}-{}",
+        std::process::id(),
+        n
+    ));
+    // Ensure the directory is empty so earlier runs cannot contaminate us.
+    let _ = std::fs::remove_dir_all(&resume_dir);
+
+    let settings = Settings {
+        listen_port: 0,
+        download_dir: std::path::PathBuf::from("/tmp"),
+        enable_dht: false,
+        enable_lsd: false,
+        enable_upnp: false,
+        enable_natpmp: false,
+        resume_data_dir: Some(resume_dir),
+        save_resume_interval_secs: 0,
+        ..Settings::default()
+    };
+    irontide::ClientBuilder::from_settings(settings)
         .start()
         .await
         .expect("failed to start test session")
