@@ -234,6 +234,53 @@ async fn info_fragment_bad_hex_returns_400() {
 }
 
 // ---------------------------------------------------------------------------
+// Trackers fragment (Task 6)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn trackers_fragment_renders_force_reannounce_button_even_when_empty() {
+    // A magnet carries no trackers in its announce list by default, so the
+    // table renders empty — but the Force Reannounce button must still be
+    // present so the user can trigger a DHT reannounce if they want.
+    let (router, _tempdir) = test_router_isolated().await;
+    let hash = seed_magnet(&router).await;
+    let req = Request::get(format!("/webui/fragments/torrent/{hash}/trackers"))
+        .body(Body::empty())
+        .expect("build request");
+    let response = router
+        .clone()
+        .oneshot(req)
+        .await
+        .expect("trackers fragment");
+    assert_eq!(response.status(), StatusCode::OK);
+    let text = body_text(response).await;
+    assert!(
+        text.contains("Force Reannounce"),
+        "Force Reannounce button must be present: {text}"
+    );
+    assert!(
+        text.contains(&format!(
+            r#"hx-post="/webui/torrents/{hash}/reannounce""#
+        )),
+        "Force Reannounce form must target the reannounce endpoint: {text}"
+    );
+}
+
+#[tokio::test]
+async fn trackers_fragment_unknown_hash_returns_404() {
+    let (router, _tempdir) = test_router_isolated().await;
+    let req = Request::get(format!("/webui/fragments/torrent/{NONEXISTENT_HASH}/trackers"))
+        .body(Body::empty())
+        .expect("build request");
+    let response = router
+        .clone()
+        .oneshot(req)
+        .await
+        .expect("trackers fragment");
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+// ---------------------------------------------------------------------------
 // Files fragment (Task 4)
 // ---------------------------------------------------------------------------
 

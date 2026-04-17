@@ -1,0 +1,39 @@
+{% if trackers.is_empty() %}
+<p class="muted">No trackers configured for this torrent.</p>
+{% else %}
+<table role="grid" class="trackers-table">
+  <thead>
+    <tr>
+      <th>URL</th>
+      <th class="col-tier">Tier</th>
+      <th class="col-status">Status</th>
+      <th class="col-seeders">Seeders</th>
+      <th class="col-leechers">Leechers</th>
+      <th class="col-next-announce">Next announce</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for t in trackers %}
+    <tr>
+      <td class="col-url">
+        <a href="{{ t.url|e }}" rel="nofollow noopener">{{ t.url }}</a>
+      </td>
+      <td class="col-tier">{{ t.tier }}</td>
+      <td class="col-status">
+        <span class="tracker-status tracker-status-{{ t.status_class }}"
+              title="{{ t.status_title }}">{{ t.status_label }}</span>
+      </td>
+      <td class="col-seeders">{{ t.seeders }}</td>
+      <td class="col-leechers">{{ t.leechers }}</td>
+      <td class="col-next-announce">{{ t.next_announce_text }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<form hx-post="/webui/torrents/{{ hash }}/reannounce"
+      hx-swap="none"
+      class="reannounce-form">
+  <button type="submit" class="action-reannounce">Force Reannounce</button>
+</form>

@@ -103,6 +103,14 @@ pub fn build_router(session: SessionHandle) -> Router {
                 patch(webui::patch_file_priority),
             )
             .route(
+                "/webui/fragments/torrent/{hash}/trackers",
+                get(webui::trackers_fragment),
+            )
+            .route(
+                "/webui/torrents/{hash}/reannounce",
+                post(webui::reannounce_action),
+            )
+            .route(
                 "/webui/fragments/settings",
                 get(webui::settings_fragment),
             )

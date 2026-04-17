@@ -120,6 +120,28 @@ pub(crate) struct FilesTabTemplate {
     pub files: Vec<FileRow>,
 }
 
+/// A single row in the Trackers tab.
+pub(crate) struct TrackerRow {
+    pub url: String,
+    pub tier: usize,
+    pub status_class: &'static str,
+    pub status_label: &'static str,
+    pub status_title: String,
+    /// Seeders count rendered as a string ("—" when unknown).
+    pub seeders: String,
+    pub leechers: String,
+    /// Coarse relative-time phrase: "now" / "in 30s" / "in 2m" / "in 1h 15m".
+    pub next_announce_text: String,
+}
+
+/// Askama template for the Trackers tab.
+#[derive(Template)]
+#[template(path = "trackers_tab.html")]
+pub(crate) struct TrackersTabTemplate {
+    pub hash: String,
+    pub trackers: Vec<TrackerRow>,
+}
+
 /// Askama template that renders ONLY the Info tab, as a standalone fragment.
 /// Used by `GET /webui/fragments/torrent/{hash}/info` (Task 3).
 #[derive(Template)]
@@ -622,6 +644,33 @@ fn priority_slug(p: irontide::core::FilePriority) -> &'static str {
     }
 }
 
+/// Format a `u64` seconds count as a short human phrase: `"now"` if the
+/// announce is effectively imminent, or a sparse duration if further out.
+/// Minutes and hours ladder at 60s and 3600s respectively; fractional
+/// larger units round down.
+///
+/// The Web UI uses this for the "Next announce" column because tracker
+/// timers are not ticked on the client — a live JS countdown would add
+/// noise without value. Users refresh the tab when they care.
+fn format_relative_secs(s: u64) -> String {
+    if s == 0 {
+        return "now".to_string();
+    }
+    if s < 60 {
+        return format!("in {s}s");
+    }
+    if s < 3600 {
+        return format!("in {}m", s / 60);
+    }
+    let hours = s / 3600;
+    let minutes = (s % 3600) / 60;
+    if minutes == 0 {
+        format!("in {hours}h")
+    } else {
+        format!("in {hours}h {minutes}m")
+    }
+}
+
 /// Parse a priority slug from the PATCH form body. Strict match only — any
 /// value other than the four known slugs returns `None` so the caller can
 /// produce a 422 without touching the engine.
@@ -772,6 +821,95 @@ pub async fn files_fragment(
     tmpl.into_web_template().into_response()
 }
 
+/// Map a [`TrackerStatus`](irontide::session::TrackerStatus) to a CSS
+/// class + user-facing label + long-form title.
+fn tracker_status_bits(
+    status: irontide::session::TrackerStatus,
+    consecutive_failures: u32,
+) -> (&'static str, &'static str, String) {
+    match status {
+        irontide::session::TrackerStatus::NotContacted => (
+            "pending",
+            "Pending",
+            "Has not been contacted yet".to_string(),
+        ),
+        irontide::session::TrackerStatus::Working => (
+            "working",
+            "OK",
+            "Last announce succeeded".to_string(),
+        ),
+        irontide::session::TrackerStatus::Error => (
+            "error",
+            "Error",
+            format!("Last announce failed ({consecutive_failures} consecutive)"),
+        ),
+    }
+}
+
+/// `GET /webui/fragments/torrent/{hash}/trackers`
+///
+/// Render the Trackers tab as an HTML fragment. Below the table is a
+/// [Force Reannounce] button that POSTs to the sibling endpoint.
+pub async fn trackers_fragment(
+    State(session): State<AppState>,
+    Path(hash): Path<String>,
+) -> Response {
+    let id = match crate::extractors::parse_info_hash(&hash) {
+        Ok(id) => id,
+        Err(e) => return api_error_fragment(e),
+    };
+
+    let trackers = match session.tracker_list(id).await {
+        Ok(t) => t,
+        Err(e) => return api_error_fragment(e.into()),
+    };
+
+    let rows: Vec<TrackerRow> = trackers
+        .into_iter()
+        .map(|t| {
+            let (status_class, status_label, status_title) =
+                tracker_status_bits(t.status, t.consecutive_failures);
+            TrackerRow {
+                url: t.url,
+                tier: t.tier,
+                status_class,
+                status_label,
+                status_title,
+                seeders: t.seeders.map(|n| n.to_string()).unwrap_or_else(|| "—".into()),
+                leechers: t.leechers.map(|n| n.to_string()).unwrap_or_else(|| "—".into()),
+                next_announce_text: format_relative_secs(t.next_announce_secs),
+            }
+        })
+        .collect();
+
+    let tmpl = TrackersTabTemplate {
+        hash: id.to_hex(),
+        trackers: rows,
+    };
+    tmpl.into_web_template().into_response()
+}
+
+/// `POST /webui/torrents/{hash}/reannounce`
+///
+/// Force every tracker to reannounce immediately. Returns
+/// `HX-Trigger: refreshDetail` so the Trackers tab refreshes in place.
+///
+/// NOTE: unauthenticated — M168 adds CSRF. Do not add new unauthenticated
+/// mutations without flagging them this way.
+pub async fn reannounce_action(
+    State(session): State<AppState>,
+    Path(hash): Path<String>,
+) -> Response {
+    let id = match crate::extractors::parse_info_hash(&hash) {
+        Ok(id) => id,
+        Err(e) => return api_error_fragment(e),
+    };
+    if let Err(e) = session.force_reannounce(id).await {
+        return api_error_fragment(e.into());
+    }
+    refresh_detail_response(&id.to_hex())
+}
+
 /// `GET /webui/fragments/torrent/{hash}/info`
 ///
 /// Renders ONLY the Info tab as a standalone fragment. Shares its template
@@ -852,6 +990,22 @@ pub async fn serve_static(req: Request) -> impl IntoResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn format_relative_secs_uses_coarse_units() {
+        assert_eq!(format_relative_secs(0), "now");
+        assert_eq!(format_relative_secs(1), "in 1s");
+        assert_eq!(format_relative_secs(59), "in 59s");
+        assert_eq!(format_relative_secs(60), "in 1m");
+        assert_eq!(format_relative_secs(61), "in 1m");
+        assert_eq!(format_relative_secs(3599), "in 59m");
+        assert_eq!(format_relative_secs(3600), "in 1h");
+        assert_eq!(format_relative_secs(3660), "in 1h 1m");
+        assert_eq!(format_relative_secs(7200), "in 2h");
+        // Huge values (days) still format cleanly as hours; users who care
+        // about day-precision will hit refresh.
+        assert_eq!(format_relative_secs(86400), "in 24h");
+    }
 
     #[test]
     fn refresh_detail_response_emits_scoped_hx_trigger() {

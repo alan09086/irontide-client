@@ -122,6 +122,60 @@ async fn patch_file_priority_magnet_without_metadata_returns_404() {
     assert!(response.headers().get("HX-Trigger").is_none());
 }
 
+// ---------------------------------------------------------------------------
+// Force reannounce (Task 6)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn reannounce_succeeds_and_emits_scoped_hx_trigger() {
+    // A magnet has no HTTP trackers to contact — force_reannounce short-
+    // circuits through the tracker_manager but still reports success. The
+    // outgoing HX-Trigger must be JSON, scoped by hash.
+    let (router, _tempdir) = test_router_isolated().await;
+    let hash = seed_magnet(&router).await;
+    let req = Request::post(format!("/webui/torrents/{hash}/reannounce"))
+        .body(Body::empty())
+        .expect("build request");
+    let response = router.clone().oneshot(req).await.expect("reannounce");
+    assert_eq!(response.status(), StatusCode::OK);
+    let hv = response
+        .headers()
+        .get("HX-Trigger")
+        .and_then(|v| v.to_str().ok())
+        .expect("HX-Trigger set");
+    let parsed: serde_json::Value =
+        serde_json::from_str(hv).expect("HX-Trigger must be JSON");
+    assert_eq!(
+        parsed["refreshDetail"]["hash"],
+        serde_json::Value::String(hash.clone()),
+        "HX-Trigger must scope to this torrent's lowercase hash: {hv}"
+    );
+}
+
+#[tokio::test]
+async fn reannounce_unknown_hash_returns_404_without_trigger() {
+    let (router, _tempdir) = test_router_isolated().await;
+    let req = Request::post(format!("/webui/torrents/{NONEXISTENT_HASH}/reannounce"))
+        .body(Body::empty())
+        .expect("build request");
+    let response = router.clone().oneshot(req).await.expect("reannounce");
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    assert!(
+        response.headers().get("HX-Trigger").is_none(),
+        "error path must not leak HX-Trigger"
+    );
+}
+
+#[tokio::test]
+async fn reannounce_bad_hash_returns_400() {
+    let (router, _tempdir) = test_router_isolated().await;
+    let req = Request::post("/webui/torrents/not-a-hash/reannounce")
+        .body(Body::empty())
+        .expect("build request");
+    let response = router.clone().oneshot(req).await.expect("reannounce");
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
 // HX-Trigger JSON shape — the exact payload used by the refreshDetail
 // mechanism. Validated on a test route rather than a live mutation because
 // we can't force-succeed a priority change on a magnet without metadata.
