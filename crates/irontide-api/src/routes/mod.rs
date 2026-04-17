@@ -111,6 +111,10 @@ pub fn build_router(session: SessionHandle) -> Router {
                 post(webui::reannounce_action),
             )
             .route(
+                "/webui/fragments/torrent/{hash}/peers",
+                get(webui::peers_fragment),
+            )
+            .route(
                 "/webui/fragments/settings",
                 get(webui::settings_fragment),
             )

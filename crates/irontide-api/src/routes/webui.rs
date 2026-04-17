@@ -120,6 +120,26 @@ pub(crate) struct FilesTabTemplate {
     pub files: Vec<FileRow>,
 }
 
+/// A single row in the Peers tab table.
+pub(crate) struct PeerRow {
+    pub addr: String,
+    /// Client identifier string, possibly empty. Escaped on render by askama.
+    pub client: String,
+    /// `(glyph, tooltip)` pairs — the template iterates this vector and
+    /// wraps each in `<abbr title="tooltip">glyph</abbr>`.
+    pub flags: Vec<(char, &'static str)>,
+    pub down_rate: String,
+    pub up_rate: String,
+    pub num_pieces: u32,
+}
+
+/// Askama template for the Peers tab.
+#[derive(Template)]
+#[template(path = "peers_tab.html")]
+pub(crate) struct PeersTabTemplate {
+    pub peers: Vec<PeerRow>,
+}
+
 /// A single row in the Trackers tab.
 pub(crate) struct TrackerRow {
     pub url: String,
@@ -846,6 +866,75 @@ fn tracker_status_bits(
     }
 }
 
+/// Build the per-peer flag vector shown in the Peers tab. Each entry is
+/// `(glyph, tooltip)` so the template can render `<abbr title="…">X</abbr>`
+/// without repeating the mapping logic.
+///
+/// Precise conditions (matches the M167 plan):
+/// - `D` download from peer      — !peer_choking && num_pieces > 0 && am_interested
+/// - `U` upload to peer          — !am_choking && peer_interested
+/// - `K` we are choking          — am_choking
+/// - `?` we are interested       — am_interested
+/// - `I` peer is interested      — peer_interested
+/// - `S` snubbed                 — snubbed
+fn peer_flags(p: &irontide::session::PeerInfo) -> Vec<(char, &'static str)> {
+    let mut flags = Vec::with_capacity(4);
+    if !p.peer_choking && p.num_pieces > 0 && p.am_interested {
+        flags.push(('D', "Downloading from peer"));
+    }
+    if !p.am_choking && p.peer_interested {
+        flags.push(('U', "Uploading to peer"));
+    }
+    if p.am_choking {
+        flags.push(('K', "We are choking the peer"));
+    }
+    if p.am_interested {
+        flags.push(('?', "We are interested in the peer"));
+    }
+    if p.peer_interested {
+        flags.push(('I', "Peer is interested in us"));
+    }
+    if p.snubbed {
+        flags.push(('S', "Peer is snubbed"));
+    }
+    flags
+}
+
+/// `GET /webui/fragments/torrent/{hash}/peers`
+///
+/// Render the Peers tab as an HTML fragment. The flag column uses
+/// `<abbr>` tooltips; the footer has a `<details>` legend so users can
+/// expand the symbol→meaning mapping without needing a hover device.
+pub async fn peers_fragment(
+    State(session): State<AppState>,
+    Path(hash): Path<String>,
+) -> Response {
+    let id = match crate::extractors::parse_info_hash(&hash) {
+        Ok(id) => id,
+        Err(e) => return api_error_fragment(e),
+    };
+
+    let peers = match session.get_peer_info(id).await {
+        Ok(p) => p,
+        Err(e) => return api_error_fragment(e.into()),
+    };
+
+    let rows: Vec<PeerRow> = peers
+        .into_iter()
+        .map(|p| PeerRow {
+            addr: p.addr.to_string(),
+            client: p.client.clone(),
+            flags: peer_flags(&p),
+            down_rate: irontide_format::format_rate(p.download_rate),
+            up_rate: irontide_format::format_rate(p.upload_rate),
+            num_pieces: p.num_pieces,
+        })
+        .collect();
+
+    let tmpl = PeersTabTemplate { peers: rows };
+    tmpl.into_web_template().into_response()
+}
+
 /// `GET /webui/fragments/torrent/{hash}/trackers`
 ///
 /// Render the Trackers tab as an HTML fragment. Below the table is a
@@ -990,6 +1079,63 @@ pub async fn serve_static(req: Request) -> impl IntoResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn make_peer(
+        am_choking: bool,
+        am_interested: bool,
+        peer_choking: bool,
+        peer_interested: bool,
+        snubbed: bool,
+        num_pieces: u32,
+    ) -> irontide::session::PeerInfo {
+        use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+        irontide::session::PeerInfo {
+            addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 6881),
+            client: "test".to_string(),
+            peer_choking,
+            peer_interested,
+            am_choking,
+            am_interested,
+            download_rate: 0,
+            upload_rate: 0,
+            num_pieces,
+            source: irontide::session::PeerSource::Tracker,
+            supports_fast: false,
+            upload_only: false,
+            snubbed,
+            connected_duration_secs: 0,
+            num_pending_requests: 0,
+            num_incoming_requests: 0,
+        }
+    }
+
+    #[test]
+    fn peer_flags_cover_all_documented_cases() {
+        // Happy path: downloading + we're interested + peer has pieces.
+        let p = make_peer(false, true, false, false, false, 10);
+        let glyphs: Vec<char> = peer_flags(&p).iter().map(|(c, _)| *c).collect();
+        assert!(glyphs.contains(&'D'), "D missing: {glyphs:?}");
+        assert!(glyphs.contains(&'?'), "? missing: {glyphs:?}");
+        assert!(!glyphs.contains(&'K'), "K must not appear: {glyphs:?}");
+
+        // Uploading to a peer that's interested.
+        let p = make_peer(false, false, false, true, false, 0);
+        let glyphs: Vec<char> = peer_flags(&p).iter().map(|(c, _)| *c).collect();
+        assert!(glyphs.contains(&'U'));
+        assert!(glyphs.contains(&'I'));
+
+        // Snubbed (no data in snub-window) + we're choking them.
+        let p = make_peer(true, false, false, false, true, 0);
+        let glyphs: Vec<char> = peer_flags(&p).iter().map(|(c, _)| *c).collect();
+        assert!(glyphs.contains(&'K'));
+        assert!(glyphs.contains(&'S'));
+        assert!(!glyphs.contains(&'U'), "U must not appear when choking: {glyphs:?}");
+
+        // Totally idle peer — no flags at all.
+        let p = make_peer(false, false, false, false, false, 0);
+        let glyphs: Vec<char> = peer_flags(&p).iter().map(|(c, _)| *c).collect();
+        assert!(glyphs.is_empty(), "idle peer should have no flags: {glyphs:?}");
+    }
 
     #[test]
     fn format_relative_secs_uses_coarse_units() {

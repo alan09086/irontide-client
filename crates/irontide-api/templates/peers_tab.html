@@ -1,0 +1,42 @@
+{% if peers.is_empty() %}
+<p class="muted">No peers yet</p>
+{% else %}
+<table role="grid" class="peers-table">
+  <thead>
+    <tr>
+      <th>Address</th>
+      <th class="col-client">Client</th>
+      <th class="col-flags">Flags</th>
+      <th class="col-down-rate">↓</th>
+      <th class="col-up-rate">↑</th>
+      <th class="col-pieces">Pieces</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in peers %}
+    <tr>
+      <td class="col-addr">{{ p.addr }}</td>
+      <td class="col-client">{{ p.client }}</td>
+      <td class="col-flags">
+        {% for flag in p.flags %}<abbr title="{{ flag.1 }}">{{ flag.0 }}</abbr>{% endfor %}
+      </td>
+      <td class="col-down-rate">{{ p.down_rate }}</td>
+      <td class="col-up-rate">{{ p.up_rate }}</td>
+      <td class="col-pieces">{{ p.num_pieces }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<details class="peers-flag-legend">
+  <summary>Flag legend</summary>
+  <ul>
+    <li><strong>D</strong> — Downloading from peer</li>
+    <li><strong>U</strong> — Uploading to peer</li>
+    <li><strong>K</strong> — We are choking the peer</li>
+    <li><strong>?</strong> — We are interested in the peer</li>
+    <li><strong>I</strong> — Peer is interested in us</li>
+    <li><strong>S</strong> — Peer is snubbed</li>
+  </ul>
+</details>

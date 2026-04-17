@@ -234,6 +234,59 @@ async fn info_fragment_bad_hex_returns_400() {
 }
 
 // ---------------------------------------------------------------------------
+// Peers fragment (Task 7)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn peers_fragment_renders_empty_state_for_fresh_magnet() {
+    // A just-added magnet has no connected peers yet, so the fragment
+    // renders "No peers yet" + the flag-legend <details>.
+    let (router, _tempdir) = test_router_isolated().await;
+    let hash = seed_magnet(&router).await;
+    let req = Request::get(format!("/webui/fragments/torrent/{hash}/peers"))
+        .body(Body::empty())
+        .expect("build request");
+    let response = router.clone().oneshot(req).await.expect("peers fragment");
+    assert_eq!(response.status(), StatusCode::OK);
+    let text = body_text(response).await;
+    assert!(
+        text.contains("No peers yet"),
+        "empty peers fragment must render the placeholder: {text}"
+    );
+    // The legend is a permanent affordance so users can look up symbol meanings.
+    assert!(
+        text.contains("Flag legend"),
+        "flag legend must be present regardless of peer count: {text}"
+    );
+    for glyph in ['D', 'U', 'K', '?', 'I', 'S'] {
+        assert!(
+            text.contains(&format!("<strong>{glyph}</strong>")),
+            "legend missing entry for {glyph}: {text}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn peers_fragment_unknown_hash_returns_404() {
+    let (router, _tempdir) = test_router_isolated().await;
+    let req = Request::get(format!("/webui/fragments/torrent/{NONEXISTENT_HASH}/peers"))
+        .body(Body::empty())
+        .expect("build request");
+    let response = router.clone().oneshot(req).await.expect("peers fragment");
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn peers_fragment_bad_hex_returns_400() {
+    let (router, _tempdir) = test_router_isolated().await;
+    let req = Request::get("/webui/fragments/torrent/not-a-hash/peers")
+        .body(Body::empty())
+        .expect("build request");
+    let response = router.clone().oneshot(req).await.expect("peers fragment");
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+// ---------------------------------------------------------------------------
 // Trackers fragment (Task 6)
 // ---------------------------------------------------------------------------
 
