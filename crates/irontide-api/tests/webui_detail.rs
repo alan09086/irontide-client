@@ -380,6 +380,38 @@ async fn files_fragment_bad_hex_returns_400() {
 }
 
 #[tokio::test]
+async fn detail_page_wires_removed_banner_on_404() {
+    // The page-level response-error listener catches 404s from any
+    // fragment and swaps in the banner. Verify the JS hook is present
+    // — the actual DOM swap is client-side behaviour we'd dogfood.
+    let (router, _tempdir) = test_router_isolated().await;
+    let hash = seed_magnet(&router).await;
+    let req = Request::get(format!("/webui/torrents/{hash}"))
+        .body(Body::empty())
+        .expect("build request");
+    let response = router.clone().oneshot(req).await.expect("detail");
+    let text = body_text(response).await;
+
+    assert!(
+        text.contains("function swapRemovedBanner"),
+        "detail page must define swapRemovedBanner: {text}"
+    );
+    assert!(
+        text.contains("htmx:responseError"),
+        "detail page must listen for htmx:responseError: {text}"
+    );
+    assert!(
+        text.contains(r#"data-detail-hash="#),
+        "body must carry data-detail-hash for ws-live suppression: {text}"
+    );
+    // The banner strips data-detail-hash so ws-live.js stops dispatching.
+    assert!(
+        text.contains("removeAttribute('data-detail-hash')"),
+        "swapRemovedBanner must clear data-detail-hash: {text}"
+    );
+}
+
+#[tokio::test]
 async fn detail_page_lazy_panels_hx_get_urls_are_lowercase_hex() {
     // HTMX bracket-filter matches on hash equality — `refreshDetail[detail.hash=='<lower>']`.
     // The panel divs must embed the same lowercase form so the WS dispatcher

@@ -101,6 +101,28 @@
   <script src="/webui/static/js/htmx.min.js"></script>
   <script src="/webui/static/js/ws-live.js"></script>
   <script>
+    // Torrent-removed banner — swapped in when any fragment returns 404.
+    // Drops the data-detail-hash attribute so ws-live.js stops dispatching
+    // refreshDetail events for the removed torrent.
+    function swapRemovedBanner() {
+      var root = document.getElementById('torrent-detail-root');
+      if (!root) return;
+      root.innerHTML = '<section class="removed-banner">' +
+        '<h2>This torrent was removed.</h2>' +
+        '<a href="/" class="back-link">&larr; Back to torrents</a>' +
+        '</section>';
+      document.body.removeAttribute('data-detail-hash');
+      var status = document.getElementById('detail-status');
+      if (status) status.textContent = 'This torrent was removed';
+      var link = root.querySelector('.back-link');
+      if (link) link.focus();
+    }
+
+    document.body.addEventListener('htmx:responseError', function (e) {
+      var status = e.detail && e.detail.xhr && e.detail.xhr.status;
+      if (status === 404) swapRemovedBanner();
+    });
+
     (function () {
       'use strict';
       var tablist = document.querySelector('[role="tablist"]');
