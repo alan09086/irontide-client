@@ -1,0 +1,32 @@
+<dl class="info-grid">
+  <dt>Name</dt>
+  <dd>{{ name }}</dd>
+
+  <dt>Info hash (v1)</dt>
+  <dd><code>{{ info_hash }}</code></dd>
+
+  {% if let Some(v2) = info_hash_v2 %}
+  <dt>Info hash (v2)</dt>
+  <dd><code>{{ v2 }}</code></dd>
+  {% endif %}
+
+  {% if metadata_pending %}
+  <dt>Status</dt>
+  <dd><em>Metadata pending — waiting on peers</em></dd>
+  {% else %}
+  <dt>Total size</dt>
+  <dd>{{ total_size }}</dd>
+
+  <dt>Piece length</dt>
+  <dd>{{ piece_length }}</dd>
+
+  <dt>Number of pieces</dt>
+  <dd>{{ num_pieces }}</dd>
+
+  <dt>Private</dt>
+  <dd>{% if private %}Yes{% else %}No{% endif %}</dd>
+  {% endif %}
+
+  <dt>Download path</dt>
+  <dd><code>{{ download_path }}</code></dd>
+</dl>

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ name }} — IronTide</title>
+  <link rel="stylesheet" href="/webui/static/css/pico.min.css">
+  <link rel="stylesheet" href="/webui/static/css/app.css">
+</head>
+<body data-detail-hash="{{ info_hash }}">
+  <header class="container-fluid">
+    <h1><a href="/" class="nav-brand">IronTide</a></h1>
+    <nav>
+      <a href="/" class="nav-link">Torrents</a>
+      <a href="/settings" class="nav-link">Settings</a>
+    </nav>
+  </header>
+
+  <main class="container-fluid detail-container" id="torrent-detail-root">
+    <nav aria-label="Breadcrumb" class="breadcrumb">
+      <a href="/" class="back-link">&larr; Back to torrents</a>
+    </nav>
+
+    <section class="detail-header">
+      <h1 class="torrent-name">{{ name }}</h1>
+      <div class="detail-status-row">
+        <span class="state-chip state-{{ state_class }}">{{ state }}</span>
+        <progress value="{{ progress }}" max="1" data-state="{{ state_class }}"></progress>
+        <span class="progress-pct">{{ progress_pct }}</span>
+      </div>
+      <div class="detail-summary">
+        <span>&darr; {{ down_rate }}</span>
+        <span>&uarr; {{ up_rate }}</span>
+        <span>ETA {{ eta }}</span>
+        <span>Ratio {{ ratio }}</span>
+      </div>
+    </section>
+
+    <div role="tablist" aria-label="Torrent detail tabs" class="detail-tablist">
+      <button type="button" role="tab" id="tab-info"
+              aria-selected="true" aria-controls="panel-info"
+              tabindex="0" data-target="panel-info">Info</button>
+      <button type="button" role="tab" id="tab-files"
+              aria-selected="false" aria-controls="panel-files"
+              tabindex="-1" data-target="panel-files">Files</button>
+      <button type="button" role="tab" id="tab-trackers"
+              aria-selected="false" aria-controls="panel-trackers"
+              tabindex="-1" data-target="panel-trackers">Trackers</button>
+      <button type="button" role="tab" id="tab-peers"
+              aria-selected="false" aria-controls="panel-peers"
+              tabindex="-1" data-target="panel-peers">Peers</button>
+    </div>
+
+    <div role="tabpanel" id="panel-info" aria-labelledby="tab-info" tabindex="0"
+         data-detail-poll
+         hx-get="/webui/fragments/torrent/{{ info_hash }}/info"
+         hx-trigger="refreshDetail[detail.hash=='{{ info_hash }}'] from:body, every 30s"
+         hx-swap="innerHTML"
+         hx-indicator="#tab-spinner">
+      {% include "info_tab.html" %}
+    </div>
+
+    <div role="tabpanel" id="panel-files" aria-labelledby="tab-files" tabindex="0"
+         data-detail-poll hidden
+         hx-get="/webui/fragments/torrent/{{ info_hash }}/files"
+         hx-trigger="load, refreshDetail[detail.hash=='{{ info_hash }}'] from:body, every 30s"
+         hx-swap="innerHTML"
+         hx-indicator="#tab-spinner">
+      <div class="skeleton-row"></div>
+      <div class="skeleton-row"></div>
+      <div class="skeleton-row"></div>
+    </div>
+
+    <div role="tabpanel" id="panel-trackers" aria-labelledby="tab-trackers" tabindex="0"
+         data-detail-poll hidden
+         hx-get="/webui/fragments/torrent/{{ info_hash }}/trackers"
+         hx-trigger="load, refreshDetail[detail.hash=='{{ info_hash }}'] from:body, every 30s"
+         hx-swap="innerHTML"
+         hx-indicator="#tab-spinner">
+      <div class="skeleton-row"></div>
+      <div class="skeleton-row"></div>
+    </div>
+
+    <div role="tabpanel" id="panel-peers" aria-labelledby="tab-peers" tabindex="0"
+         data-detail-poll hidden
+         hx-get="/webui/fragments/torrent/{{ info_hash }}/peers"
+         hx-trigger="load, refreshDetail[detail.hash=='{{ info_hash }}'] from:body, every 30s"
+         hx-swap="innerHTML"
+         hx-indicator="#tab-spinner">
+      <div class="skeleton-row"></div>
+      <div class="skeleton-row"></div>
+      <div class="skeleton-row"></div>
+      <div class="skeleton-row"></div>
+      <div class="skeleton-row"></div>
+    </div>
+
+    <span id="tab-spinner" class="htmx-indicator" aria-hidden="true">Loading...</span>
+    <div aria-live="polite" aria-atomic="true" class="sr-only" id="detail-status"></div>
+  </main>
+
+  <script src="/webui/static/js/htmx.min.js"></script>
+  <script src="/webui/static/js/ws-live.js"></script>
+  <script>
+    (function () {
+      'use strict';
+      var tablist = document.querySelector('[role="tablist"]');
+      if (!tablist) return;
+      var tabs = Array.prototype.slice.call(tablist.querySelectorAll('[role="tab"]'));
+
+      function activate(tab) {
+        tabs.forEach(function (t) {
+          t.setAttribute('aria-selected', 'false');
+          t.setAttribute('tabindex', '-1');
+          var p = document.getElementById(t.getAttribute('aria-controls'));
+          if (p) p.hidden = true;
+        });
+        tab.setAttribute('aria-selected', 'true');
+        tab.setAttribute('tabindex', '0');
+        var panel = document.getElementById(tab.getAttribute('aria-controls'));
+        if (!panel) return;
+        panel.hidden = false;
+        // Lazy tabs re-fetch their fragment on every activation — idempotent.
+        if (panel.hasAttribute('hx-get') && window.htmx && typeof window.htmx.ajax === 'function') {
+          window.htmx.ajax('GET', panel.getAttribute('hx-get'), { target: panel, swap: 'innerHTML' });
+        }
+        panel.focus({ preventScroll: true });
+      }
+
+      tablist.addEventListener('keydown', function (e) {
+        var idx = tabs.indexOf(document.activeElement);
+        if (idx < 0) return;
+        var next = -1;
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (idx + 1) % tabs.length;
+        else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (idx - 1 + tabs.length) % tabs.length;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = tabs.length - 1;
+        else if (e.key === 'Enter' || e.key === ' ') {
+          activate(document.activeElement);
+          e.preventDefault();
+          return;
+        }
+        if (next >= 0) {
+          tabs[next].focus();
+          activate(tabs[next]);
+          e.preventDefault();
+        }
+      });
+
+      tabs.forEach(function (tab) {
+        tab.addEventListener('click', function () { activate(tab); });
+      });
+    })();
+  </script>
+</body>
+</html>

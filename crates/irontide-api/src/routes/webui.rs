@@ -59,6 +59,61 @@ pub(crate) struct TorrentListTemplate {
     pub torrents: Vec<TorrentRow>,
 }
 
+/// Askama template that renders the full detail page for a single torrent.
+///
+/// The Info panel is rendered server-side via `{% include "info_tab.html" %}`
+/// so the first paint shows content without a round-trip, while the Files,
+/// Trackers, and Peers panels are lazy-loaded via HTMX.
+#[derive(Template)]
+#[template(path = "torrent_detail.html")]
+pub(crate) struct TorrentDetailTemplate {
+    // ── Identity (shared with Info tab via include) ──
+    /// Lowercase hex SHA-1 info hash. Used in every route/fragment URL.
+    pub info_hash: String,
+    /// Lowercase hex SHA-256 info hash, if the torrent is v2 or hybrid.
+    pub info_hash_v2: Option<String>,
+    /// Torrent display name (already HTML-safe through askama's default escaper).
+    pub name: String,
+
+    // ── Header (top of page) ──
+    pub state: String,
+    pub state_class: String,
+    pub progress: f64,
+    pub progress_pct: String,
+
+    // ── Summary row ──
+    pub down_rate: String,
+    pub up_rate: String,
+    pub eta: String,
+    pub ratio: String,
+
+    // ── Info-tab fields (included server-side) ──
+    /// True when metadata has not been received yet — the Info tab renders a
+    /// pending indicator and the size/pieces/private fields are hidden.
+    pub metadata_pending: bool,
+    pub total_size: String,
+    pub piece_length: String,
+    pub num_pieces: String,
+    pub private: bool,
+    pub download_path: String,
+}
+
+/// Askama template that renders ONLY the Info tab, as a standalone fragment.
+/// Used by `GET /webui/fragments/torrent/{hash}/info` (Task 3).
+#[derive(Template)]
+#[template(path = "info_tab.html")]
+pub(crate) struct InfoTabTemplate {
+    pub info_hash: String,
+    pub info_hash_v2: Option<String>,
+    pub name: String,
+    pub metadata_pending: bool,
+    pub total_size: String,
+    pub piece_length: String,
+    pub num_pieces: String,
+    pub private: bool,
+    pub download_path: String,
+}
+
 /// Askama template that renders the settings form fragment, pre-populated
 /// with the current session's values.
 #[derive(Template)]
@@ -426,6 +481,94 @@ pub async fn seed_mode_action(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Detail-view handlers (M167)
+// ---------------------------------------------------------------------------
+
+/// `GET /webui/torrents/{hash}`
+///
+/// Render the full detail page for a single torrent. The Info tab is rendered
+/// inline; Files / Trackers / Peers lazy-load via HTMX `hx-get` on their
+/// tabpanel divs.
+///
+/// Returns 400 for malformed hashes, 404 when no torrent matches, and 200
+/// with `text/html` otherwise. When metadata has not yet arrived
+/// (`MetadataNotReady`), the page still renders with `metadata_pending=true`
+/// so the user at least sees a state chip, a breadcrumb, and the info hash.
+pub async fn torrent_detail(
+    State(session): State<AppState>,
+    Path(hash): Path<String>,
+) -> Response {
+    let id = match crate::extractors::parse_info_hash(&hash) {
+        Ok(id) => id,
+        Err(e) => return api_error_fragment(e),
+    };
+
+    // Stats tell us the torrent exists + its live state/rates. If this 404s
+    // the torrent was never present (or was just removed); we surface that
+    // unchanged so the client-side removed-banner handler can take over.
+    let stats = match session.torrent_stats(id).await {
+        Ok(s) => s,
+        Err(e) => return api_error_fragment(e.into()),
+    };
+
+    let state_label = irontide_format::format_state(&stats.state, stats.user_seed_mode).to_owned();
+    let state_class = state_css_class(&state_label).to_owned();
+    let progress = stats.progress as f64;
+    let progress_pct = format!("{:.1}%", progress * 100.0);
+
+    let remaining = stats.total.saturating_sub(stats.total_done);
+    let eta = irontide_format::format_eta(remaining, stats.download_rate).to_string();
+    let ratio = irontide_format::format_ratio(stats.uploaded, stats.downloaded).to_string();
+
+    let info_hash = id.to_hex();
+    let info_hash_v2 = stats.info_hashes.v2.map(|v| v.to_hex());
+    let name = stats.name.clone();
+
+    // Info-tab fields come from torrent_info(). Degrade gracefully when
+    // metadata has not arrived — the page still paints with the info hash
+    // as the anchor identifier.
+    let (metadata_pending, total_size, piece_length, num_pieces, private) =
+        match session.torrent_info(id).await {
+            Ok(info) => (
+                false,
+                irontide_format::format_size(info.total_length),
+                irontide_format::format_size(info.piece_length),
+                info.num_pieces.to_string(),
+                info.private,
+            ),
+            Err(_) => (true, String::new(), String::new(), String::new(), false),
+        };
+
+    // Session-level default download dir — per-torrent dirs aren't exposed
+    // on TorrentInfo in M167; good enough for the display.
+    let download_path = match session.settings().await {
+        Ok(s) => s.download_dir.to_string_lossy().into_owned(),
+        Err(_) => String::from("(unknown)"),
+    };
+
+    let tmpl = TorrentDetailTemplate {
+        info_hash,
+        info_hash_v2,
+        name,
+        state: state_label,
+        state_class,
+        progress,
+        progress_pct,
+        down_rate: irontide_format::format_rate(stats.download_rate),
+        up_rate: irontide_format::format_rate(stats.upload_rate),
+        eta,
+        ratio,
+        metadata_pending,
+        total_size,
+        piece_length,
+        num_pieces,
+        private,
+        download_path,
+    };
+    tmpl.into_web_template().into_response()
+}
+
 /// Fallback handler that serves static assets from the embedded
 /// `irontide-webui-assets` crate.
 ///
@@ -452,6 +595,46 @@ pub async fn serve_static(req: Request) -> impl IntoResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn detail_template_escapes_hostile_name() {
+        // Askama's default escaper protects every attacker-controlled field
+        // rendered in HTML context. A regression here (e.g. a `|safe` slip)
+        // would be silent without this test.
+        let tmpl = TorrentDetailTemplate {
+            info_hash: "aa".repeat(20),
+            info_hash_v2: None,
+            name: "<script>oops</script>".to_string(),
+            state: "downloading".to_string(),
+            state_class: "downloading".to_string(),
+            progress: 0.5,
+            progress_pct: "50.0%".to_string(),
+            down_rate: "0 B/s".to_string(),
+            up_rate: "0 B/s".to_string(),
+            eta: "∞".to_string(),
+            ratio: "0.00".to_string(),
+            metadata_pending: false,
+            total_size: "1 GB".to_string(),
+            piece_length: "256 KB".to_string(),
+            num_pieces: "4096".to_string(),
+            private: false,
+            download_path: "/tmp".to_string(),
+        };
+        let rendered = tmpl.render().expect("render detail template");
+        assert!(
+            !rendered.contains("<script>oops</script>"),
+            "hostile name must be escaped: {rendered}"
+        );
+        // Askama 0.15's default HTML escaper uses numeric character references
+        // (&#60; / &#62;) rather than named entities (&lt; / &gt;). Both are
+        // valid HTML; the test asserts either form is present.
+        let escaped_lt = rendered.contains("&lt;") || rendered.contains("&#60;");
+        let escaped_gt = rendered.contains("&gt;") || rendered.contains("&#62;");
+        assert!(
+            escaped_lt && escaped_gt,
+            "expected &lt;/&gt; or &#60;/&#62; in escaped output: {rendered}"
+        );
+    }
 
     #[test]
     fn torrent_row_carries_info_hash_and_state_flags() {

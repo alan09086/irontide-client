@@ -82,6 +82,9 @@ pub fn build_router(session: SessionHandle) -> Router {
     // -- Web UI routes (feature-gated) --
     #[cfg(feature = "webui")]
     {
+        // IMPORTANT: register all /webui/* routes BEFORE the serve_static
+        // fallback. serve_static catches "/anything" — any new route must
+        // be declared first (M167 plan note).
         router = router
             .route(
                 "/webui/fragments/torrent-list",
@@ -106,7 +109,7 @@ pub fn build_router(session: SessionHandle) -> Router {
             )
             .route(
                 "/webui/torrents/{hash}",
-                delete(webui::delete_action),
+                get(webui::torrent_detail).delete(webui::delete_action),
             )
             .route(
                 "/webui/torrents/{hash}/seed-mode",
