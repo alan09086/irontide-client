@@ -169,6 +169,25 @@ fn refresh_response() -> Response {
     (StatusCode::OK, headers, String::new()).into_response()
 }
 
+/// Build an empty `200 OK` response carrying `HX-Trigger:
+/// {"refreshDetail":{"hash":"<lower-hex>"}}` so HTMX refreshes every
+/// detail-tab panel listening for that hash.
+///
+/// JSON is built with `serde_json::json!` rather than `format!` so there is
+/// no way for a hash (or any future payload field) to accidentally produce
+/// an invalid header value.
+fn refresh_detail_response(hash: &str) -> Response {
+    let payload = serde_json::json!({ "refreshDetail": { "hash": hash } });
+    // `serde_json::Value::to_string()` produces strictly ASCII output (no
+    // control chars), so `HeaderValue::from_str` cannot fail — but we
+    // fall back gracefully if that guarantee ever regresses.
+    let hv = axum::http::HeaderValue::from_str(&payload.to_string())
+        .unwrap_or_else(|_| axum::http::HeaderValue::from_static("refreshDetail"));
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert("HX-Trigger", hv);
+    (StatusCode::OK, headers, String::new()).into_response()
+}
+
 /// Render an HTML error fragment that HTMX can swap into an error-display
 /// target. The status code is applied to the response so clients can
 /// distinguish between validation and not-found cases.
@@ -603,6 +622,77 @@ fn priority_slug(p: irontide::core::FilePriority) -> &'static str {
     }
 }
 
+/// Parse a priority slug from the PATCH form body. Strict match only — any
+/// value other than the four known slugs returns `None` so the caller can
+/// produce a 422 without touching the engine.
+fn parse_priority_form_value(value: &str) -> Option<irontide::core::FilePriority> {
+    match value {
+        "skip" => Some(irontide::core::FilePriority::Skip),
+        "low" => Some(irontide::core::FilePriority::Low),
+        "normal" => Some(irontide::core::FilePriority::Normal),
+        "high" => Some(irontide::core::FilePriority::High),
+        _ => None,
+    }
+}
+
+/// Form body for [`patch_file_priority`].
+#[derive(Deserialize)]
+pub struct FilePriorityForm {
+    priority: String,
+}
+
+/// `PATCH /webui/torrents/{hash}/files/{idx}`
+///
+/// Set the download priority of a single file. Body is form-urlencoded
+/// `priority=skip|low|normal|high`. Emits `HX-Trigger: refreshDetail`
+/// scoped to this hash so every open detail tab re-fetches.
+///
+/// Returns:
+/// - 400 for malformed hash
+/// - 404 when the torrent is unknown OR the file index is out of range
+/// - 422 when the priority slug is not one of the four valid values
+/// - 200 + `HX-Trigger` on success
+///
+/// NOTE: unauthenticated — M168 adds CSRF. Do not add new unauthenticated
+/// mutations without flagging them this way.
+pub async fn patch_file_priority(
+    State(session): State<AppState>,
+    Path((hash, idx)): Path<(String, usize)>,
+    axum::Form(form): axum::Form<FilePriorityForm>,
+) -> Response {
+    let id = match crate::extractors::parse_info_hash(&hash) {
+        Ok(id) => id,
+        Err(e) => return api_error_fragment(e),
+    };
+    let priority = match parse_priority_form_value(&form.priority) {
+        Some(p) => p,
+        None => {
+            return error_fragment(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "priority must be one of: skip, low, normal, high",
+            );
+        }
+    };
+
+    // Bounds-check idx before hitting the engine — engine errors on
+    // out-of-range may be generic, whereas the UI wants a clean 404.
+    let priorities = match session.file_priorities(id).await {
+        Ok(p) => p,
+        Err(e) => return api_error_fragment(e.into()),
+    };
+    if idx >= priorities.len() {
+        return error_fragment(
+            StatusCode::NOT_FOUND,
+            &format!("file index {idx} out of range ({} files)", priorities.len()),
+        );
+    }
+
+    if let Err(e) = session.set_file_priority(id, idx, priority).await {
+        return api_error_fragment(e.into());
+    }
+    refresh_detail_response(&id.to_hex())
+}
+
 /// `GET /webui/fragments/torrent/{hash}/files`
 ///
 /// Render the Files tab as an HTML fragment. Uses `info.files` × `file_progress`
@@ -762,6 +852,42 @@ pub async fn serve_static(req: Request) -> impl IntoResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn refresh_detail_response_emits_scoped_hx_trigger() {
+        // The JS detail dispatcher filters with `refreshDetail[detail.hash==...]`
+        // — any change to the payload shape breaks that filter, so the
+        // exact nesting is a contract locked in here.
+        let resp = refresh_detail_response("abcdef0123456789");
+        let hv = resp
+            .headers()
+            .get("HX-Trigger")
+            .expect("HX-Trigger set");
+        let value = hv.to_str().expect("ascii header");
+        let parsed: serde_json::Value =
+            serde_json::from_str(value).expect("header must be valid JSON");
+        assert_eq!(
+            parsed["refreshDetail"]["hash"],
+            serde_json::Value::String("abcdef0123456789".into()),
+            "HX-Trigger payload must be {{\"refreshDetail\":{{\"hash\":\"...\"}}}}: {value}"
+        );
+    }
+
+    #[test]
+    fn parse_priority_form_value_accepts_four_slugs_only() {
+        use irontide::core::FilePriority;
+        assert_eq!(parse_priority_form_value("skip"), Some(FilePriority::Skip));
+        assert_eq!(parse_priority_form_value("low"), Some(FilePriority::Low));
+        assert_eq!(
+            parse_priority_form_value("normal"),
+            Some(FilePriority::Normal)
+        );
+        assert_eq!(parse_priority_form_value("high"), Some(FilePriority::High));
+        // Hostile inputs that a careless `.parse::<u8>` fallback would swallow.
+        assert_eq!(parse_priority_form_value(""), None);
+        assert_eq!(parse_priority_form_value("SKIP"), None);
+        assert_eq!(parse_priority_form_value("critical"), None);
+    }
 
     #[test]
     fn files_template_renders_rows_with_priority_selected() {
