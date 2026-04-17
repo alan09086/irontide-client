@@ -59,6 +59,24 @@ pub(crate) struct TorrentListTemplate {
     pub torrents: Vec<TorrentRow>,
 }
 
+/// Askama template that renders the settings form fragment, pre-populated
+/// with the current session's values.
+#[derive(Template)]
+#[template(path = "settings_form.html")]
+pub(crate) struct SettingsFormTemplate {
+    pub listen_port: u16,
+    pub download_dir: String,
+    pub max_torrents: usize,
+    pub max_peers_per_torrent: usize,
+    pub download_rate_limit: u64,
+    pub upload_rate_limit: u64,
+    pub active_downloads: i32,
+    pub active_seeds: i32,
+    pub enable_dht: bool,
+    pub enable_pex: bool,
+    pub enable_lsd: bool,
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -258,6 +276,37 @@ pub async fn delete_action(
         Ok(_) => refresh_response(),
         Err(e) => api_error_fragment(e.into()),
     }
+}
+
+/// `GET /webui/fragments/settings`
+///
+/// Render the settings form fragment pre-populated with the current
+/// session's values. The form PATCHes `/webui/settings` on submit
+/// (handler in Task 7).
+pub async fn settings_fragment(State(session): State<AppState>) -> Response {
+    let s = match session.settings().await {
+        Ok(s) => s,
+        Err(e) => {
+            return error_fragment(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &e.to_string(),
+            );
+        }
+    };
+    let tmpl = SettingsFormTemplate {
+        listen_port: s.listen_port,
+        download_dir: s.download_dir.to_string_lossy().into_owned(),
+        max_torrents: s.max_torrents,
+        max_peers_per_torrent: s.max_peers_per_torrent,
+        download_rate_limit: s.download_rate_limit,
+        upload_rate_limit: s.upload_rate_limit,
+        active_downloads: s.active_downloads,
+        active_seeds: s.active_seeds,
+        enable_dht: s.enable_dht,
+        enable_pex: s.enable_pex,
+        enable_lsd: s.enable_lsd,
+    };
+    tmpl.into_web_template().into_response()
 }
 
 /// Query parameters for [`seed_mode_action`]. The button sends

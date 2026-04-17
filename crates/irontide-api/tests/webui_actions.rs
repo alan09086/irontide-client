@@ -399,6 +399,56 @@ async fn seed_mode_missing_query_returns_bad_request() {
 }
 
 // ---------------------------------------------------------------------------
+// Settings fragment (GET)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn settings_fragment_renders_current_values() {
+    let (router, _tempdir) = test_router_isolated().await;
+
+    let req = Request::get("/webui/fragments/settings")
+        .body(Body::empty())
+        .expect("build settings fragment request");
+    let response = router.clone().oneshot(req).await.expect("settings fragment");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("collect body")
+        .to_bytes();
+    let text = String::from_utf8_lossy(&body);
+
+    assert!(
+        text.contains("<form"),
+        "settings fragment must render a form, got {text}"
+    );
+    assert!(
+        text.contains("hx-patch=\"/webui/settings\""),
+        "form must PATCH /webui/settings, got {text}"
+    );
+    for field in [
+        "listen_port",
+        "download_dir",
+        "max_torrents",
+        "max_peers_per_torrent",
+        "download_rate_limit",
+        "upload_rate_limit",
+        "active_downloads",
+        "active_seeds",
+        "enable_dht",
+        "enable_pex",
+        "enable_lsd",
+    ] {
+        assert!(
+            text.contains(&format!("name=\"{field}\"")),
+            "settings form must expose field {field}, got {text}"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Settings page routing
 // ---------------------------------------------------------------------------
 

@@ -87,6 +87,10 @@ pub fn build_router(session: SessionHandle) -> Router {
                 "/webui/fragments/torrent-list",
                 get(webui::torrent_list_fragment),
             )
+            .route(
+                "/webui/fragments/settings",
+                get(webui::settings_fragment),
+            )
             .route("/webui/add-magnet", post(webui::add_magnet_redirect))
             .route(
                 "/webui/torrents/{hash}/pause",
