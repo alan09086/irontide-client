@@ -240,6 +240,25 @@ pub async fn resume_action(
     }
 }
 
+/// `DELETE /webui/torrents/{hash}`
+///
+/// Remove a torrent from the session. Matches the v1 REST API's
+/// `DELETE /api/v1/torrents/{hash}` semantics, but returns the HTMX
+/// refresh header and an HTML error fragment on failure.
+pub async fn delete_action(
+    State(session): State<AppState>,
+    Path(hash): Path<String>,
+) -> Response {
+    let id = match crate::extractors::parse_info_hash(&hash) {
+        Ok(id) => id,
+        Err(e) => return api_error_fragment(e),
+    };
+    match session.remove_torrent(id).await {
+        Ok(_) => refresh_response(),
+        Err(e) => api_error_fragment(e.into()),
+    }
+}
+
 /// Fallback handler that serves static assets from the embedded
 /// `irontide-webui-assets` crate.
 ///

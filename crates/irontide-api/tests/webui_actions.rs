@@ -190,3 +190,89 @@ async fn invalid_hash_returns_bad_request_fragment() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     assert!(response.headers().get("HX-Trigger").is_none());
 }
+
+// ---------------------------------------------------------------------------
+// Delete
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn delete_existing_torrent_removes_row_and_emits_trigger() {
+    let (router, _tempdir) = test_router_isolated().await;
+    let hash = seed_magnet(&router).await;
+
+    // Sanity: the fragment should show the torrent before delete.
+    let req = Request::get("/webui/fragments/torrent-list")
+        .body(Body::empty())
+        .expect("build list request");
+    let response = router.clone().oneshot(req).await.expect("list");
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("collect body")
+        .to_bytes();
+    let text = String::from_utf8_lossy(&body);
+    assert!(
+        !text.contains("No torrents yet"),
+        "precondition: list should contain the seeded torrent, got {text}"
+    );
+
+    // DELETE should emit refreshList.
+    let req = Request::builder()
+        .method("DELETE")
+        .uri(format!("/webui/torrents/{hash}"))
+        .body(Body::empty())
+        .expect("build delete request");
+    let response = router.clone().oneshot(req).await.expect("delete");
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get("HX-Trigger")
+            .and_then(|v| v.to_str().ok()),
+        Some("refreshList"),
+    );
+
+    // The list fragment should now render the empty-state markup.
+    let req = Request::get("/webui/fragments/torrent-list")
+        .body(Body::empty())
+        .expect("build list request");
+    let response = router.clone().oneshot(req).await.expect("list");
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("collect body")
+        .to_bytes();
+    let text = String::from_utf8_lossy(&body);
+    assert!(
+        text.contains("No torrents yet"),
+        "list should render empty state after delete, got {text}"
+    );
+}
+
+#[tokio::test]
+async fn delete_nonexistent_returns_error_fragment() {
+    let (router, _tempdir) = test_router_isolated().await;
+
+    let req = Request::builder()
+        .method("DELETE")
+        .uri(format!("/webui/torrents/{NONEXISTENT_HASH}"))
+        .body(Body::empty())
+        .expect("build delete request");
+    let response = router.clone().oneshot(req).await.expect("delete");
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    assert!(response.headers().get("HX-Trigger").is_none());
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("collect body")
+        .to_bytes();
+    let text = String::from_utf8_lossy(&body);
+    assert!(
+        text.contains("error-message"),
+        "delete 404 should emit HTML fragment, got {text}"
+    );
+}

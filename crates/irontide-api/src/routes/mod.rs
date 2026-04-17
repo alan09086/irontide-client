@@ -96,6 +96,10 @@ pub fn build_router(session: SessionHandle) -> Router {
                 "/webui/torrents/{hash}/resume",
                 post(webui::resume_action),
             )
+            .route(
+                "/webui/torrents/{hash}",
+                delete(webui::delete_action),
+            )
             .fallback(webui::serve_static);
     }
 
