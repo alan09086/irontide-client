@@ -379,6 +379,28 @@ async fn files_fragment_bad_hex_returns_400() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
+// ---------------------------------------------------------------------------
+// Row-click navigation on the list (Task 10)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn torrent_list_name_is_link_to_detail_page() {
+    let (router, _tempdir) = test_router_isolated().await;
+    let hash = seed_magnet(&router).await;
+    let req = Request::get("/webui/fragments/torrent-list")
+        .body(Body::empty())
+        .expect("build request");
+    let response = router.clone().oneshot(req).await.expect("list fragment");
+    assert_eq!(response.status(), StatusCode::OK);
+    let text = body_text(response).await;
+    assert!(
+        text.contains(&format!(
+            r#"<a href="/webui/torrents/{hash}" class="torrent-name-link">"#
+        )),
+        "torrent name must be wrapped in a link to the detail page: {text}"
+    );
+}
+
 #[tokio::test]
 async fn detail_page_wires_removed_banner_on_404() {
     // The page-level response-error listener catches 404s from any

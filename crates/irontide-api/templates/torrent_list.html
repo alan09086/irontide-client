@@ -20,7 +20,7 @@
   <tbody>
     {% for t in torrents %}
     <tr>
-      <td>{{ t.name }}</td>
+      <td><a href="/webui/torrents/{{ t.info_hash }}" class="torrent-name-link">{{ t.name }}</a></td>
       <td>{{ t.size }}</td>
       <td><progress value="{{ t.progress }}" max="1" data-state="{{ t.state_class }}"></progress> {{ t.progress_pct }}</td>
       <td class="col-down">{{ t.down_rate }}</td>
