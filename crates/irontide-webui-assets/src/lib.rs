@@ -113,6 +113,51 @@ mod tests {
         );
     }
 
+    /// M167 additions: ws-live.js must export scheduleDetailRefresh,
+    /// extractInfoHash, and setDetailPollCadence. Substring-check only —
+    /// syntax errors are caught by manual dogfooding (Task 12).
+    #[test]
+    fn test_ws_live_js_has_detail_refresh_machinery() {
+        let (_mime, bytes) = get("js/ws-live.js").expect("ws-live.js embedded");
+        let content = String::from_utf8_lossy(&bytes);
+        assert!(
+            content.contains("function scheduleDetailRefresh"),
+            "ws-live.js must define scheduleDetailRefresh"
+        );
+        assert!(
+            content.contains("function extractInfoHash"),
+            "ws-live.js must define extractInfoHash"
+        );
+        assert!(
+            content.contains("function setDetailPollCadence"),
+            "ws-live.js must define setDetailPollCadence"
+        );
+        assert!(
+            content.contains("refreshDetail"),
+            "ws-live.js must reference the refreshDetail event name"
+        );
+        // setDetailPollCadence must call htmx.process on each panel so new
+        // interval timers take effect — a silent regression here would
+        // mean WS-down cadence never kicks in on the detail view.
+        let start = content
+            .find("function setDetailPollCadence")
+            .expect("setDetailPollCadence present");
+        // Look at the following ~800 chars; the function body is shorter.
+        let window = &content[start..(start + 800).min(content.len())];
+        assert!(
+            window.contains("htmx.process"),
+            "setDetailPollCadence must call htmx.process, got: {window}"
+        );
+        assert!(
+            content.contains("toLowerCase"),
+            "extractInfoHash must lowercase-normalize the hash"
+        );
+        assert!(
+            content.contains("data-detail-hash"),
+            "ws-live.js must consult body.data-detail-hash before dispatching"
+        );
+    }
+
     #[test]
     fn test_ws_live_js_toggles_polling_cadence() {
         let (_mime, bytes) = get("js/ws-live.js").expect("ws-live.js embedded");

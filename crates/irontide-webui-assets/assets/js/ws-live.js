@@ -37,8 +37,20 @@
   var FAST_TRIGGER = 'load, every 2s, refreshList from:body';
   var SLOW_TRIGGER = 'load, every 30s, refreshList from:body';
 
+  // Detail-panel cadences mirror the list-view trade-off: fast poll (2s) as
+  // a fallback when WS is down, slow poll (30s) as a sanity backstop when
+  // push-updates handle the heavy lifting. The `load` trigger is omitted
+  // here because panels already fire hx-get on page load from their
+  // static `hx-trigger` attribute.
+  var DETAIL_FAST_TRIGGER =
+    "load, every 2s, refreshDetail[detail.hash=='HASH'] from:body";
+  var DETAIL_SLOW_TRIGGER =
+    "load, every 30s, refreshDetail[detail.hash=='HASH'] from:body";
+
   var backoff = INITIAL_BACKOFF_MS;
   var refreshTimer = null;
+  var detailRefreshTimer = null;
+  var pendingDetailHashes = [];
 
   function setPollCadence(triggerValue) {
     var el = document.getElementById('torrent-list');
@@ -51,12 +63,69 @@
     }
   }
 
+  /** Swap every `[data-detail-poll]` panel's hx-trigger between the fast
+   *  (WS-down) and slow (WS-up) cadences. Each panel's bracket-filter
+   *  embeds its own hash, so we call htmx.process(el) explicitly after
+   *  mutating the attribute to force interval timers to reset. */
+  function setDetailPollCadence(fast) {
+    var hash = document.body.getAttribute('data-detail-hash') || '';
+    if (!hash) return;
+    var template = fast ? DETAIL_FAST_TRIGGER : DETAIL_SLOW_TRIGGER;
+    var trigger = template.replace('HASH', hash);
+    var panels = document.querySelectorAll('[data-detail-poll]');
+    for (var i = 0; i < panels.length; i += 1) {
+      var p = panels[i];
+      if (p.getAttribute('hx-trigger') === trigger) continue;
+      p.setAttribute('hx-trigger', trigger);
+      if (window.htmx && typeof window.htmx.process === 'function') {
+        window.htmx.process(p);
+      }
+    }
+  }
+
   function scheduleRefresh() {
     if (refreshTimer) return;
     refreshTimer = setTimeout(function () {
       refreshTimer = null;
       document.body.dispatchEvent(new CustomEvent('refreshList'));
     }, REFRESH_DEBOUNCE_MS);
+  }
+
+  /** Detail dispatch: coalesce a burst of alerts into one refreshDetail
+   *  per affected hash. Suppressed when the detail root has been marked
+   *  as removed (see swapRemovedBanner in Task 9). */
+  function scheduleDetailRefresh(hash) {
+    if (!hash) return;
+    // Only the hash tagged on document.body is currently being viewed;
+    // dispatching for other torrents would churn invisible state.
+    var current = document.body.getAttribute('data-detail-hash');
+    if (!current || current !== hash) return;
+    if (pendingDetailHashes.indexOf(hash) < 0) pendingDetailHashes.push(hash);
+    if (detailRefreshTimer) return;
+    detailRefreshTimer = setTimeout(function () {
+      detailRefreshTimer = null;
+      var queued = pendingDetailHashes;
+      pendingDetailHashes = [];
+      for (var i = 0; i < queued.length; i += 1) {
+        document.body.dispatchEvent(
+          new CustomEvent('refreshDetail', { detail: { hash: queued[i] } })
+        );
+      }
+    }, REFRESH_DEBOUNCE_MS);
+  }
+
+  /** Extract a lowercase info hash from the Alert.kind tagged enum variant.
+   *  Returns null when the variant has no info_hash field (session-scoped
+   *  alerts like DhtBootstrapComplete). */
+  function extractInfoHash(alertKind) {
+    if (!alertKind || typeof alertKind !== 'object') return null;
+    var keys = Object.keys(alertKind);
+    if (keys.length === 0) return null;
+    var variant = alertKind[keys[0]];
+    if (!variant || typeof variant !== 'object') return null;
+    var hash = variant.info_hash;
+    if (typeof hash !== 'string' || hash.length === 0) return null;
+    return hash.toLowerCase();
   }
 
   function buildUrl() {
@@ -83,6 +152,7 @@
       document.body.setAttribute('data-ws-live', 'true');
       // Slow polling — push updates are driving refreshes now.
       setPollCadence(SLOW_TRIGGER);
+      setDetailPollCadence(false);
     });
 
     ws.addEventListener('message', function (event) {
@@ -96,6 +166,8 @@
       // are used purely to detect liveness (see 'close'/'error' handlers).
       if (msg && msg.type === 'alert') {
         scheduleRefresh();
+        var hash = extractInfoHash(msg.alert && msg.alert.kind);
+        if (hash) scheduleDetailRefresh(hash);
       }
     });
 
@@ -104,6 +176,7 @@
       // Back to fast polling so state changes are still visible within
       // seconds while we wait for the WS to come back up.
       setPollCadence(FAST_TRIGGER);
+      setDetailPollCadence(true);
       scheduleReconnect();
     });
 
