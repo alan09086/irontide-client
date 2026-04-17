@@ -397,3 +397,38 @@ async fn seed_mode_missing_query_returns_bad_request() {
         response.status()
     );
 }
+
+// ---------------------------------------------------------------------------
+// Settings page routing
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn settings_page_served_at_slash_settings() {
+    let (router, _tempdir) = test_router_isolated().await;
+
+    let req = Request::get("/settings")
+        .body(Body::empty())
+        .expect("build settings request");
+    let response = router.clone().oneshot(req).await.expect("settings");
+    assert_eq!(response.status(), StatusCode::OK);
+    let ct = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
+    assert!(ct.starts_with("text/html"), "expected text/html, got {ct}");
+
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("collect body")
+        .to_bytes();
+    let text = String::from_utf8_lossy(&body);
+    assert!(
+        text.contains("IronTide — Settings"),
+        "settings page should contain the title, got: {}",
+        &text[..text.len().min(200)]
+    );
+}

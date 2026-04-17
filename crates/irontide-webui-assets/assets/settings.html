@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IronTide — Settings</title>
+  <link rel="stylesheet" href="/webui/static/css/pico.min.css">
+  <link rel="stylesheet" href="/webui/static/css/app.css">
+</head>
+<body>
+  <header class="container-fluid">
+    <h1><a href="/" class="nav-brand">IronTide</a></h1>
+    <nav>
+      <a href="/" class="nav-link">Torrents</a>
+      <a href="/settings" class="nav-link nav-link-active">Settings</a>
+    </nav>
+  </header>
+
+  <main class="container-fluid">
+    <section id="settings-form"
+             hx-get="/webui/fragments/settings"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+      <p>Loading settings...</p>
+    </section>
+  </main>
+
+  <footer class="container-fluid">
+    <p class="footer-note">
+      Changes are applied to the running session via RFC 7396 JSON Merge
+      Patch. Restart-only fields are noted inline.
+    </p>
+  </footer>
+
+  <div id="toast" aria-live="polite"></div>
+
+  <script src="/webui/static/js/htmx.min.js"></script>
+  <script src="/webui/static/js/ws-live.js"></script>
+  <script>
+    function showToast(message, durationMs) {
+      var duration = durationMs || 3000;
+      var toast = document.getElementById('toast');
+      var msg = document.createElement('div');
+      msg.className = 'toast-message';
+      msg.textContent = message;
+      toast.appendChild(msg);
+      setTimeout(function () {
+        msg.classList.add('fade-out');
+        setTimeout(function () { msg.remove(); }, 500);
+      }, duration);
+    }
+
+    document.body.addEventListener('settingsSaved', function () {
+      showToast('Settings saved.');
+    });
+  </script>
+</body>
+</html>

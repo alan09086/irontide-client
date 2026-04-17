@@ -289,10 +289,16 @@ pub async fn seed_mode_action(
 /// Fallback handler that serves static assets from the embedded
 /// `irontide-webui-assets` crate.
 ///
-/// Maps `/` to `index.html`. Unknown paths return 404.
+/// Extension-less paths are mapped to their HTML equivalents:
+/// `/` → `index.html`, `/settings` → `settings.html`. Unknown paths
+/// return 404.
 pub async fn serve_static(req: Request) -> impl IntoResponse {
-    let path = req.uri().path().trim_start_matches('/');
-    let path = if path.is_empty() { "index.html" } else { path };
+    let raw = req.uri().path().trim_start_matches('/');
+    let path = match raw {
+        "" => "index.html",
+        "settings" => "settings.html",
+        other => other,
+    };
 
     match irontide_webui_assets::get(path) {
         Some((content_type, data)) => Response::builder()

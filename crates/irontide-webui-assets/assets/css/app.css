@@ -148,3 +148,125 @@ body > footer {
   border-top: 1px solid var(--pico-muted-border-color, #333);
   padding-block: 0.75rem;
 }
+
+.footer-note {
+  font-size: 0.8125rem;
+  color: var(--pico-muted-color, #888);
+  margin: 0;
+}
+
+/* ─── Navigation ──────────────────────────────────────────────── */
+body > header h1 a.nav-brand {
+  color: inherit;
+  text-decoration: none;
+}
+
+body > header nav {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.nav-link {
+  color: var(--pico-muted-color, #888);
+  text-decoration: none;
+  font-size: 0.875rem;
+  padding-inline: 0.25rem;
+}
+
+.nav-link:hover {
+  color: var(--pico-primary, #92b4f4);
+}
+
+.nav-link-active {
+  color: var(--pico-primary, #92b4f4);
+  font-weight: 600;
+}
+
+/* ─── Action-button column ────────────────────────────────────── */
+#torrent-list .col-actions {
+  width: 9rem;
+  text-align: right;
+}
+
+.action-button {
+  background: transparent;
+  border: 1px solid var(--pico-muted-border-color, #444);
+  color: var(--pico-color, #cdd);
+  border-radius: var(--pico-border-radius, 0.25rem);
+  padding: 0.15rem 0.45rem;
+  font-size: 0.85rem;
+  line-height: 1;
+  margin-inline: 0.1rem;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.action-button:hover {
+  background-color: var(--pico-primary-background, #1a1a2e);
+  border-color: var(--pico-primary, #92b4f4);
+}
+
+.action-button.action-pause:hover,
+.action-button.action-resume:hover {
+  color: var(--pico-primary, #92b4f4);
+}
+
+.action-button.action-seed:hover,
+.action-button.action-unseed:hover {
+  color: #2ecc40;
+}
+
+.action-button.action-remove:hover {
+  color: var(--pico-del-color, #c0392b);
+  border-color: var(--pico-del-color, #c0392b);
+}
+
+@media (max-width: 768px) {
+  #torrent-list .col-actions {
+    width: auto;
+  }
+}
+
+/* ─── Settings form ───────────────────────────────────────────── */
+#settings-form {
+  max-width: 640px;
+}
+
+#settings-form fieldset {
+  border: 1px solid var(--pico-muted-border-color, #333);
+  border-radius: var(--pico-border-radius, 0.25rem);
+  padding: 1rem 1.25rem;
+  margin-block: 1rem;
+}
+
+#settings-form fieldset legend {
+  padding-inline: 0.5rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+#settings-form label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-block: 0.35rem;
+  font-size: 0.875rem;
+}
+
+#settings-form input[type="number"],
+#settings-form input[type="text"] {
+  max-width: 10rem;
+  text-align: right;
+}
+
+#settings-form button[type="submit"] {
+  margin-top: 0.75rem;
+}
+
+.settings-saved-message {
+  color: #2ecc40;
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+}

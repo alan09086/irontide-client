@@ -53,11 +53,31 @@ mod tests {
 
     #[test]
     fn test_static_assets_present() {
-        for path in ["js/htmx.min.js", "css/pico.min.css", "css/app.css"] {
+        for path in [
+            "js/htmx.min.js",
+            "js/ws-live.js",
+            "css/pico.min.css",
+            "css/app.css",
+            "settings.html",
+        ] {
             assert!(
                 get(path).is_some(),
                 "expected embedded asset at {path} but it was not found"
             );
         }
+    }
+
+    #[test]
+    fn test_index_links_settings_and_ws_live() {
+        let (_mime, bytes) = get("index.html").expect("index.html embedded");
+        let content = String::from_utf8_lossy(&bytes);
+        assert!(
+            content.contains("href=\"/settings\""),
+            "index.html must expose a nav link to /settings"
+        );
+        assert!(
+            content.contains("js/ws-live.js"),
+            "index.html must load js/ws-live.js"
+        );
     }
 }
