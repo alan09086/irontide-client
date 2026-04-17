@@ -88,6 +88,14 @@ pub fn build_router(session: SessionHandle) -> Router {
                 get(webui::torrent_list_fragment),
             )
             .route("/webui/add-magnet", post(webui::add_magnet_redirect))
+            .route(
+                "/webui/torrents/{hash}/pause",
+                post(webui::pause_action),
+            )
+            .route(
+                "/webui/torrents/{hash}/resume",
+                post(webui::resume_action),
+            )
             .fallback(webui::serve_static);
     }
 
