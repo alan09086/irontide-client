@@ -114,7 +114,10 @@ pub async fn shutdown(State(session): State<AppState>) -> ApiResult<impl IntoRes
 ///   coerced to an object if it is not already one).
 /// - Null values in `patch` remove the corresponding key from `target`.
 /// - Non-object patches replace `target` wholesale.
-fn json_merge_patch(target: &mut serde_json::Value, patch: &serde_json::Value) {
+///
+/// Exposed as `pub(super)` so the Web UI settings handler can reuse the
+/// same merge semantics as `PATCH /api/v1/session/settings`.
+pub(super) fn json_merge_patch(target: &mut serde_json::Value, patch: &serde_json::Value) {
     if let serde_json::Value::Object(patch_obj) = patch {
         if !target.is_object() {
             *target = serde_json::Value::Object(serde_json::Map::new());

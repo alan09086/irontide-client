@@ -93,6 +93,10 @@ pub fn build_router(session: SessionHandle) -> Router {
             )
             .route("/webui/add-magnet", post(webui::add_magnet_redirect))
             .route(
+                "/webui/settings",
+                patch(webui::patch_settings_webui),
+            )
+            .route(
                 "/webui/torrents/{hash}/pause",
                 post(webui::pause_action),
             )

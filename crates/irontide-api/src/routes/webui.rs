@@ -316,6 +316,97 @@ pub struct SeedModeQuery {
     pub enabled: bool,
 }
 
+/// Form body for [`patch_settings_webui`].
+///
+/// HTML checkbox inputs send their value only when checked — an unchecked
+/// box is absent from the body entirely. We therefore receive checkboxes
+/// as `Option<String>` and map presence to `true`.
+#[derive(Deserialize)]
+pub struct SettingsForm {
+    pub listen_port: u16,
+    pub download_dir: String,
+    pub max_torrents: usize,
+    pub max_peers_per_torrent: usize,
+    pub download_rate_limit: u64,
+    pub upload_rate_limit: u64,
+    pub active_downloads: i32,
+    pub active_seeds: i32,
+    #[serde(default)]
+    pub enable_dht: Option<String>,
+    #[serde(default)]
+    pub enable_pex: Option<String>,
+    #[serde(default)]
+    pub enable_lsd: Option<String>,
+}
+
+impl SettingsForm {
+    fn into_patch(self) -> serde_json::Value {
+        serde_json::json!({
+            "listen_port": self.listen_port,
+            "download_dir": self.download_dir,
+            "max_torrents": self.max_torrents,
+            "max_peers_per_torrent": self.max_peers_per_torrent,
+            "download_rate_limit": self.download_rate_limit,
+            "upload_rate_limit": self.upload_rate_limit,
+            "active_downloads": self.active_downloads,
+            "active_seeds": self.active_seeds,
+            "enable_dht": self.enable_dht.is_some(),
+            "enable_pex": self.enable_pex.is_some(),
+            "enable_lsd": self.enable_lsd.is_some(),
+        })
+    }
+}
+
+/// `PATCH /webui/settings`
+///
+/// Apply a subset of the session's settings from the Web UI form using RFC
+/// 7396 JSON Merge Patch. Emits `HX-Trigger: settingsSaved` on success so
+/// the settings page can show a toast.
+///
+/// SECURITY: unauthenticated. Auth/CSRF deferred to M168 (qBt v2 auth
+/// milestone) per the M166 engineering review.
+pub async fn patch_settings_webui(
+    State(session): State<AppState>,
+    axum::Form(form): axum::Form<SettingsForm>,
+) -> Response {
+    let current = match session.settings().await {
+        Ok(s) => s,
+        Err(e) => return api_error_fragment(e.into()),
+    };
+
+    // Pipeline: current settings → JSON → merge with form patch → new JSON →
+    // deserialize back to Settings → validate → apply.
+    let mut target = match serde_json::to_value(&current) {
+        Ok(v) => v,
+        Err(e) => {
+            return error_fragment(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("failed to serialize current settings: {e}"),
+            );
+        }
+    };
+    let patch = form.into_patch();
+    super::session::json_merge_patch(&mut target, &patch);
+
+    let new_settings: irontide::session::Settings = match serde_json::from_value(target) {
+        Ok(s) => s,
+        Err(e) => return error_fragment(StatusCode::BAD_REQUEST, &e.to_string()),
+    };
+    if let Err(e) = new_settings.validate() {
+        return error_fragment(StatusCode::BAD_REQUEST, &e.to_string());
+    }
+    if let Err(e) = session.apply_settings(new_settings).await {
+        return api_error_fragment(e.into());
+    }
+
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert(
+        "HX-Trigger",
+        axum::http::HeaderValue::from_static("settingsSaved"),
+    );
+    (StatusCode::OK, headers, String::new()).into_response()
+}
+
 /// `POST /webui/torrents/{hash}/seed-mode?enabled=<bool>`
 ///
 /// Flip the torrent's `user_seed_mode` flag. Emits `HX-Trigger: refreshList`
