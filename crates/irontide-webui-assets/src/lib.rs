@@ -112,4 +112,29 @@ mod tests {
             "ws-live.js must cap reconnect backoff (Math.min)"
         );
     }
+
+    #[test]
+    fn test_ws_live_js_toggles_polling_cadence() {
+        let (_mime, bytes) = get("js/ws-live.js").expect("ws-live.js embedded");
+        let content = String::from_utf8_lossy(&bytes);
+        // Fast cadence (WS down) and slow cadence (WS up) must both appear.
+        assert!(
+            content.contains("every 2s"),
+            "ws-live.js must reference the fast (2s) polling cadence"
+        );
+        assert!(
+            content.contains("every 30s"),
+            "ws-live.js must reference the slow (30s) polling cadence"
+        );
+        // The swap is done through hx-trigger on the torrent-list element,
+        // and the element must be re-processed by HTMX afterwards.
+        assert!(
+            content.contains("torrent-list"),
+            "ws-live.js must target the torrent-list element"
+        );
+        assert!(
+            content.contains("htmx.process") || content.contains("hxProcess"),
+            "ws-live.js must re-run htmx.process after swapping hx-trigger"
+        );
+    }
 }

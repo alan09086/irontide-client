@@ -30,8 +30,26 @@
   var MAX_BACKOFF_MS = 30000;
   var REFRESH_DEBOUNCE_MS = 1000;
 
+  // Polling cadences for the #torrent-list HTMX poller. While WS is live
+  // we push refreshes, so the poll interval is slowed to a once-in-a-while
+  // sanity check. When WS is down, polling reverts to a sub-second cadence
+  // so users still see fresh data within one heartbeat.
+  var FAST_TRIGGER = 'load, every 2s, refreshList from:body';
+  var SLOW_TRIGGER = 'load, every 30s, refreshList from:body';
+
   var backoff = INITIAL_BACKOFF_MS;
   var refreshTimer = null;
+
+  function setPollCadence(triggerValue) {
+    var el = document.getElementById('torrent-list');
+    if (!el) return;
+    var current = el.getAttribute('hx-trigger');
+    if (current === triggerValue) return;
+    el.setAttribute('hx-trigger', triggerValue);
+    if (window.htmx && typeof window.htmx.process === 'function') {
+      window.htmx.process(el);
+    }
+  }
 
   function scheduleRefresh() {
     if (refreshTimer) return;
@@ -62,9 +80,9 @@
     ws.addEventListener('open', function () {
       // Reset backoff so the next disconnect starts at 500 ms.
       backoff = INITIAL_BACKOFF_MS;
-      // Mark that WS is live so the polling div can slow to the idle
-      // cadence (Task 9 wires this up via hx-trigger swap).
       document.body.setAttribute('data-ws-live', 'true');
+      // Slow polling — push updates are driving refreshes now.
+      setPollCadence(SLOW_TRIGGER);
     });
 
     ws.addEventListener('message', function (event) {
@@ -83,6 +101,9 @@
 
     ws.addEventListener('close', function () {
       document.body.removeAttribute('data-ws-live');
+      // Back to fast polling so state changes are still visible within
+      // seconds while we wait for the WS to come back up.
+      setPollCadence(FAST_TRIGGER);
       scheduleReconnect();
     });
 
