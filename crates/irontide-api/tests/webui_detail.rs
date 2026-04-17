@@ -181,6 +181,58 @@ async fn detail_page_tabs_have_aria_roles_and_tabindex() {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Info fragment (Task 3)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn info_fragment_renders_metadata_pending_for_magnet() {
+    // A magnet add starts with no metadata, so the fragment renders the
+    // info hash (always known) and a "Metadata pending" indicator.
+    let (router, _tempdir) = test_router_isolated().await;
+    let hash = seed_magnet(&router).await;
+
+    let req = Request::get(format!("/webui/fragments/torrent/{hash}/info"))
+        .body(Body::empty())
+        .expect("build request");
+    let response = router.clone().oneshot(req).await.expect("info fragment");
+    assert_eq!(response.status(), StatusCode::OK);
+    let text = body_text(response).await;
+
+    assert!(
+        text.contains("Info hash (v1)"),
+        "missing info-hash label: {text}"
+    );
+    assert!(
+        text.contains(&hash),
+        "info fragment must render the info hash {hash}: {text}"
+    );
+    assert!(
+        text.contains("Metadata pending"),
+        "magnet without peers must show pending indicator: {text}"
+    );
+}
+
+#[tokio::test]
+async fn info_fragment_unknown_hash_returns_404() {
+    let (router, _tempdir) = test_router_isolated().await;
+    let req = Request::get(format!("/webui/fragments/torrent/{NONEXISTENT_HASH}/info"))
+        .body(Body::empty())
+        .expect("build request");
+    let response = router.clone().oneshot(req).await.expect("info fragment");
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn info_fragment_bad_hex_returns_400() {
+    let (router, _tempdir) = test_router_isolated().await;
+    let req = Request::get("/webui/fragments/torrent/not-a-hash/info")
+        .body(Body::empty())
+        .expect("build request");
+    let response = router.clone().oneshot(req).await.expect("info fragment");
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
 #[tokio::test]
 async fn detail_page_lazy_panels_hx_get_urls_are_lowercase_hex() {
     // HTMX bracket-filter matches on hash equality — `refreshDetail[detail.hash=='<lower>']`.

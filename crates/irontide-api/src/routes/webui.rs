@@ -569,6 +569,60 @@ pub async fn torrent_detail(
     tmpl.into_web_template().into_response()
 }
 
+/// `GET /webui/fragments/torrent/{hash}/info`
+///
+/// Renders ONLY the Info tab as a standalone fragment. Shares its template
+/// (`info_tab.html`) with the inline include on the detail page so the
+/// layout is identical regardless of code path.
+pub async fn info_fragment(
+    State(session): State<AppState>,
+    Path(hash): Path<String>,
+) -> Response {
+    let id = match crate::extractors::parse_info_hash(&hash) {
+        Ok(id) => id,
+        Err(e) => return api_error_fragment(e),
+    };
+
+    let stats = match session.torrent_stats(id).await {
+        Ok(s) => s,
+        Err(e) => return api_error_fragment(e.into()),
+    };
+
+    let info_hash = id.to_hex();
+    let info_hash_v2 = stats.info_hashes.v2.map(|v| v.to_hex());
+    let name = stats.name.clone();
+
+    let (metadata_pending, total_size, piece_length, num_pieces, private) =
+        match session.torrent_info(id).await {
+            Ok(info) => (
+                false,
+                irontide_format::format_size(info.total_length),
+                irontide_format::format_size(info.piece_length),
+                info.num_pieces.to_string(),
+                info.private,
+            ),
+            Err(_) => (true, String::new(), String::new(), String::new(), false),
+        };
+
+    let download_path = match session.settings().await {
+        Ok(s) => s.download_dir.to_string_lossy().into_owned(),
+        Err(_) => String::from("(unknown)"),
+    };
+
+    let tmpl = InfoTabTemplate {
+        info_hash,
+        info_hash_v2,
+        name,
+        metadata_pending,
+        total_size,
+        piece_length,
+        num_pieces,
+        private,
+        download_path,
+    };
+    tmpl.into_web_template().into_response()
+}
+
 /// Fallback handler that serves static assets from the embedded
 /// `irontide-webui-assets` crate.
 ///

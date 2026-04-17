@@ -91,6 +91,10 @@ pub fn build_router(session: SessionHandle) -> Router {
                 get(webui::torrent_list_fragment),
             )
             .route(
+                "/webui/fragments/torrent/{hash}/info",
+                get(webui::info_fragment),
+            )
+            .route(
                 "/webui/fragments/settings",
                 get(webui::settings_fragment),
             )
