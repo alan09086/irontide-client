@@ -372,3 +372,159 @@ async fn qbt_gate_disabled_returns_404_not_403() {
     let resp = send(&router, login_request("admin", "adminadmin")).await;
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
+
+// ── Task 18: disabled-gate + middleware edge cases ────────────────────
+
+#[tokio::test]
+async fn qbt_routes_404_when_disabled_across_all_endpoints() {
+    let router = disabled_router().await;
+    // Every v2 endpoint must 404 when the gate is closed.
+    let getters = [
+        "/api/v2/app/version",
+        "/api/v2/app/webapiVersion",
+        "/api/v2/app/buildInfo",
+        "/api/v2/app/preferences",
+        "/api/v2/torrents/info",
+        "/api/v2/torrents/properties?hash=0000000000000000000000000000000000000000",
+        "/api/v2/torrents/categories",
+        "/api/v2/transferInfo",
+    ];
+    for uri in getters {
+        let req = Request::builder()
+            .method("GET")
+            .uri(uri)
+            .body(Body::empty())
+            .unwrap();
+        let resp = send(&router, req).await;
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND, "uri: {uri}");
+    }
+    let posters = [
+        "/api/v2/auth/logout",
+        "/api/v2/torrents/pause?hashes=all",
+        "/api/v2/torrents/resume?hashes=all",
+        "/api/v2/torrents/delete?hashes=all",
+        "/api/v2/torrents/recheck?hashes=all",
+        "/api/v2/torrents/reannounce?hashes=all",
+        "/api/v2/torrents/add",
+    ];
+    for uri in posters {
+        let req = Request::builder()
+            .method("POST")
+            .uri(uri)
+            .body(Body::empty())
+            .unwrap();
+        let resp = send(&router, req).await;
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND, "POST uri: {uri}");
+    }
+}
+
+#[tokio::test]
+async fn runtime_toggle_enabled_to_disabled_via_patch_settings() {
+    // Start enabled → confirm 200 on a probe.
+    let router = enabled_router().await;
+    let resp = send(&router, login_request("admin", "adminadmin")).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let cookie = resp
+        .headers()
+        .get(header::SET_COOKIE)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_owned();
+    let _ = resp.into_body().collect().await.unwrap();
+    let sid = cookie.split(';').next().unwrap();
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v2/app/version")
+        .header(header::COOKIE, sid)
+        .body(Body::empty())
+        .unwrap();
+    let resp = send(&router, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Flip qbt_compat.enabled via PATCH /api/v1/session/settings.
+    let patch = serde_json::json!({ "qbt_compat": { "enabled": false } });
+    let req = Request::builder()
+        .method("PATCH")
+        .uri("/api/v1/session/settings")
+        .header(header::CONTENT_TYPE, "application/merge-patch+json")
+        .body(Body::from(patch.to_string()))
+        .unwrap();
+    let resp = send(&router, req).await;
+    // The merge-patch endpoint may return 200 or 204 depending on status
+    // conventions; accept any 2xx here.
+    assert!(
+        resp.status().is_success(),
+        "patch settings failed: {}",
+        resp.status()
+    );
+    let _ = resp.into_body().collect().await.unwrap();
+
+    // After the flip, the gate must 404 everything — even with a cookie that
+    // was valid a moment ago.
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v2/app/version")
+        .header(header::COOKIE, sid)
+        .body(Body::empty())
+        .unwrap();
+    let resp = send(&router, req).await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn empty_cookie_header_returns_403() {
+    let router = enabled_router().await;
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v2/app/version")
+        .header(header::COOKIE, "")
+        .body(Body::empty())
+        .unwrap();
+    let resp = send(&router, req).await;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn cookie_with_similar_named_attribute_mysid_is_ignored() {
+    // A cookie called MYSID (not SID) must NOT be mistaken for the real one.
+    let router = enabled_router().await;
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v2/app/version")
+        .header(header::COOKIE, "MYSID=not-a-real-token")
+        .body(Body::empty())
+        .unwrap();
+    let resp = send(&router, req).await;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn multiple_cookies_extracts_correct_sid() {
+    // Browsers often send multiple cookies in one Cookie header. Make sure
+    // the CookieJar extractor picks SID out of the middle of the list.
+    let router = enabled_router().await;
+    let resp = send(&router, login_request("admin", "adminadmin")).await;
+    let sid_value = resp
+        .headers()
+        .get(header::SET_COOKIE)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .trim_start_matches("SID=")
+        .to_owned();
+    let _ = resp.into_body().collect().await.unwrap();
+
+    let combined = format!("foo=bar; SID={sid_value}; tracking=xyz");
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v2/app/version")
+        .header(header::COOKIE, combined)
+        .body(Body::empty())
+        .unwrap();
+    let resp = send(&router, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+}
