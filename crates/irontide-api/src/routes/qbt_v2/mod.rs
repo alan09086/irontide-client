@@ -21,6 +21,7 @@ pub mod response;
 pub mod session_store;
 pub mod state;
 pub mod torrent_dto;
+pub mod torrents;
 
 use std::sync::Arc;
 
@@ -63,6 +64,15 @@ pub fn build_router(session: Arc<SessionHandle>) -> Router {
         .route("/api/v2/app/buildInfo", get(app::build_info))
         .route("/api/v2/app/preferences", get(app::preferences))
         .route("/api/v2/torrents/categories", get(categories::list))
+        .route("/api/v2/torrents/info", get(torrents::info))
+        .route("/api/v2/torrents/properties", get(torrents::properties))
+        .route("/api/v2/torrents/add", post(torrents::add))
+        .route("/api/v2/torrents/pause", post(torrents::pause))
+        .route("/api/v2/torrents/resume", post(torrents::resume))
+        .route("/api/v2/torrents/delete", post(torrents::delete))
+        .route("/api/v2/torrents/recheck", post(torrents::recheck))
+        .route("/api/v2/torrents/reannounce", post(torrents::reannounce))
+        .route("/api/v2/transferInfo", get(torrents::transfer_info))
         .route_layer(from_fn_with_state(state.clone(), auth::require_sid))
         .with_state(state.clone());
 
