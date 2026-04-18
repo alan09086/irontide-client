@@ -501,8 +501,9 @@ impl SettingsForm {
 /// 7396 JSON Merge Patch. Emits `HX-Trigger: settingsSaved` on success so
 /// the settings page can show a toast.
 ///
-/// SECURITY: unauthenticated. Auth/CSRF deferred to M168 (qBt v2 auth
-/// milestone) per the M166 engineering review.
+/// SECURITY: unauthenticated. Auth/CSRF deferred to M171 — the M168 qBt
+/// v2 auth covers /api/v2/* only; the /webui/* surface is a separate
+/// decision and lands with argon2 hashing + Referer/Origin checks in M171.
 pub async fn patch_settings_webui(
     State(session): State<AppState>,
     axum::Form(form): axum::Form<SettingsForm>,
@@ -722,8 +723,8 @@ pub struct FilePriorityForm {
 /// - 422 when the priority slug is not one of the four valid values
 /// - 200 + `HX-Trigger` on success
 ///
-/// NOTE: unauthenticated — M168 adds CSRF. Do not add new unauthenticated
-/// mutations without flagging them this way.
+/// NOTE: unauthenticated — M171 adds CSRF for the /webui/* surface. Do not
+/// add new unauthenticated mutations without flagging them this way.
 pub async fn patch_file_priority(
     State(session): State<AppState>,
     Path((hash, idx)): Path<(String, usize)>,
@@ -983,8 +984,8 @@ pub async fn trackers_fragment(
 /// Force every tracker to reannounce immediately. Returns
 /// `HX-Trigger: refreshDetail` so the Trackers tab refreshes in place.
 ///
-/// NOTE: unauthenticated — M168 adds CSRF. Do not add new unauthenticated
-/// mutations without flagging them this way.
+/// NOTE: unauthenticated — M171 adds CSRF for the /webui/* surface. Do not
+/// add new unauthenticated mutations without flagging them this way.
 pub async fn reannounce_action(
     State(session): State<AppState>,
     Path(hash): Path<String>,
