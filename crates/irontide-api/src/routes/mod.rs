@@ -80,6 +80,13 @@ pub fn build_router(session: SessionHandle) -> Router {
         // -- WebSocket event stream --
         .route("/api/v1/events", any(events::ws_events));
 
+    // -- qBt WebUI v2 compatibility surface (M168) --
+    // Registered BEFORE webui so the /api/v2/* routes are matched by the
+    // qBt sub-router even when the generic webui fallback would otherwise
+    // catch them. Disabled-by-default behaviour is enforced by qbt_gate
+    // middleware (returns 404 when qbt_compat.enabled == false).
+    let qbt_router = qbt_v2::build_router(Arc::clone(&state));
+
     // -- Web UI routes (feature-gated) --
     #[cfg(feature = "webui")]
     {
@@ -143,5 +150,5 @@ pub fn build_router(session: SessionHandle) -> Router {
             .fallback(webui::serve_static);
     }
 
-    router.with_state(state)
+    router.with_state(state).merge(qbt_router)
 }
