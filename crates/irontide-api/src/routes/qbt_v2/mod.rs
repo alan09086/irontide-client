@@ -20,6 +20,7 @@ pub mod preferences;
 pub mod response;
 pub mod session_store;
 pub mod state;
+pub mod torrent_dto;
 
 use std::sync::Arc;
 
