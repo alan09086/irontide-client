@@ -15,6 +15,7 @@
 
 pub mod app;
 pub mod auth;
+pub mod categories;
 pub mod preferences;
 pub mod response;
 pub mod session_store;
@@ -60,6 +61,7 @@ pub fn build_router(session: Arc<SessionHandle>) -> Router {
         .route("/api/v2/app/webapiVersion", get(app::webapi_version))
         .route("/api/v2/app/buildInfo", get(app::build_info))
         .route("/api/v2/app/preferences", get(app::preferences))
+        .route("/api/v2/torrents/categories", get(categories::list))
         .route_layer(from_fn_with_state(state.clone(), auth::require_sid))
         .with_state(state.clone());
 

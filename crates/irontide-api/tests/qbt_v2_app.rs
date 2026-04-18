@@ -271,6 +271,28 @@ async fn preferences_requires_sid() {
     assert_eq!(status, StatusCode::FORBIDDEN);
 }
 
+// ── Task 8: torrents/categories shim ──────────────────────────────────
+
+#[tokio::test]
+async fn categories_returns_empty_object_with_json_ctype() {
+    let (router, sid) = enabled_router_with(|_| {}).await;
+    let (status, body, headers) = get(&router, "/api/v2/torrents/categories", Some(&sid)).await;
+    assert_eq!(status, StatusCode::OK);
+    let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(v.is_object(), "expected JSON object, got: {v:?}");
+    let obj = v.as_object().unwrap();
+    assert!(obj.is_empty(), "expected empty map, got: {v:?}");
+    let ct = headers.get(header::CONTENT_TYPE).unwrap().to_str().unwrap();
+    assert!(ct.contains("application/json"), "got: {ct}");
+}
+
+#[tokio::test]
+async fn categories_requires_sid() {
+    let (router, _) = enabled_router_with(|_| {}).await;
+    let (status, _, _) = get(&router, "/api/v2/torrents/categories", None).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
 #[tokio::test]
 async fn preferences_web_ui_username_echoes_config() {
     let (router, sid) = enabled_router_with(|s| {
