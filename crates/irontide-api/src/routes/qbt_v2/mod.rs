@@ -23,5 +23,7 @@
 //! in M170. argon2 hashing + CSRF land in M171.
 
 pub mod response;
+pub mod session_store;
 
 pub use response::{QbtError, QbtResponse};
+pub use session_store::SessionStore;

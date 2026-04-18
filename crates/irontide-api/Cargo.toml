@@ -26,6 +26,7 @@ dev-webui = ["tower-http/fs"]
 
 [dependencies]
 irontide = { path = "../irontide", version = "0.168.0", default-features = false }
+aws-lc-rs = "1.16"
 axum = { version = "0.8", features = ["ws", "multipart"] }
 axum-extra = { version = "0.10", features = ["cookie"] }
 base64 = "0.22"
