@@ -84,7 +84,7 @@ impl From<&Settings> for QbtPreferences {
         };
 
         let (max_ratio, max_ratio_enabled) = match s.seed_ratio_limit {
-            Some(r) => (r as f64, true),
+            Some(r) => (r, true),
             None => (-1.0, false),
         };
 

@@ -56,10 +56,10 @@ impl IntoResponse for QbtResponse {
                     header::CONTENT_TYPE,
                     HeaderValue::from_static("text/plain; charset=utf-8"),
                 );
-                if let Some(cookie) = set_cookie {
-                    if let Ok(val) = HeaderValue::from_str(&cookie) {
-                        headers.insert(header::SET_COOKIE, val);
-                    }
+                if let Some(cookie) = set_cookie
+                    && let Ok(val) = HeaderValue::from_str(&cookie)
+                {
+                    headers.insert(header::SET_COOKIE, val);
                 }
                 (StatusCode::OK, headers, "Ok.").into_response()
             }

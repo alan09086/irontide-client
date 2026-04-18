@@ -4,7 +4,7 @@
 //! - `POST /api/v2/auth/logout` — idempotent; invalidates the cookie.
 //! - `qbt_gate` — returns 404 when `qbt_compat.enabled == false`.
 //! - `require_sid` — returns 403 `Fails.` when the SID cookie is missing,
-//!    malformed, or expired.
+//!   malformed, or expired.
 //!
 //! # Threat model
 //! Plaintext-password compare is intentional for M168 — argon2 lands in M171
