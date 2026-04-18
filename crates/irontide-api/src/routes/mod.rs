@@ -2,6 +2,7 @@
 
 pub mod events;
 pub mod extended;
+pub mod qbt_v2;
 pub mod session;
 pub mod torrents;
 #[cfg(feature = "webui")]
