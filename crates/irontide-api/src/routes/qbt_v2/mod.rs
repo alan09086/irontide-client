@@ -16,6 +16,7 @@
 pub mod app;
 pub mod auth;
 pub mod categories;
+pub mod files;
 pub mod preferences;
 pub mod response;
 pub mod session_store;
@@ -64,6 +65,7 @@ pub fn build_router(session: Arc<SessionHandle>) -> Router {
         .route("/api/v2/app/buildInfo", get(app::build_info))
         .route("/api/v2/app/preferences", get(app::preferences))
         .route("/api/v2/torrents/categories", get(categories::list))
+        .route("/api/v2/torrents/files", get(files::list))
         .route("/api/v2/torrents/info", get(torrents::info))
         .route("/api/v2/torrents/properties", get(torrents::properties))
         .route("/api/v2/torrents/add", post(torrents::add))
