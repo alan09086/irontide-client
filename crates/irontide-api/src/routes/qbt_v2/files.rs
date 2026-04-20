@@ -62,8 +62,8 @@ pub async fn list(
     State(state): State<QbtState>,
     Query(q): Query<HashQuery>,
 ) -> Result<QbtResponse, QbtError> {
-    let id = Id20::from_hex(&q.hash)
-        .map_err(|e| QbtError::BadRequest(format!("invalid hash: {e}")))?;
+    let id =
+        Id20::from_hex(&q.hash).map_err(|e| QbtError::BadRequest(format!("invalid hash: {e}")))?;
 
     // Gate on metadata. `torrent_stats` also distinguishes "unknown hash"
     // (Err) from "known but still resolving" (Ok with has_metadata=false).
@@ -127,12 +127,8 @@ pub async fn list(
         }
 
         let start = offsets.get(raw_idx).copied().unwrap_or(0);
-        let (first_piece, last_piece) = piece_range_for(
-            start,
-            file.length,
-            piece_length,
-            max_piece,
-        );
+        let (first_piece, last_piece) =
+            piece_range_for(start, file.length, piece_length, max_piece);
 
         let downloaded = progress_bytes.get(raw_idx).copied().unwrap_or(0);
         let progress = if file.length == 0 {
@@ -177,9 +173,7 @@ fn piece_range_for(start: u64, len: u64, piece_length: u64, max_piece: u32) -> (
         return (0, 0);
     }
     let first_u64 = start / piece_length;
-    let first = u32::try_from(first_u64)
-        .unwrap_or(max_piece)
-        .min(max_piece);
+    let first = u32::try_from(first_u64).unwrap_or(max_piece).min(max_piece);
     if len == 0 {
         return (first, first);
     }
