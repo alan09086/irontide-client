@@ -1,18 +1,26 @@
-//! qBt v2 `/api/v2/torrents/*` + `/api/v2/transferInfo` (M168 Tasks 10-14).
+//! qBt v2 `/api/v2/torrents/*` + `/api/v2/transferInfo` (M168 Tasks 10-14, M170 wiring).
 //!
 //! Implemented:
 //! - `GET /torrents/info` — list with filter/sort/hashes/limit/offset
-//! - `GET /torrents/properties?hash=X` — single-torrent detail
+//!   (M170: `category=` filter over `TorrentStats::category`).
+//! - `GET /torrents/properties?hash=X` — single-torrent detail.
 //! - `POST /torrents/add` — magnet (form `urls=`) + `.torrent` (multipart)
+//!   (M170: `category` / `savepath` / `paused` plumbed through
+//!   [`SessionAddTorrentParams`](irontide::session::SessionAddTorrentParams)).
 //! - `POST /torrents/pause|resume|delete|recheck|reannounce` — actions
-//! - `GET /transferInfo` — session-wide counters
+//!   (M170: `/delete` honours `deleteFiles=true` via
+//!   [`remove_torrent_with_files`](irontide::session::SessionHandle::remove_torrent_with_files)).
+//! - `GET /transferInfo` — session-wide counters.
 //!
-//! Deferred to M170: files, trackers, webseeds, pieceStates, pieceHashes,
-//! filePrio, category CRUD, tag CRUD, setPreferences, shutdown.
+//! Deferred to M171: trackers, webseeds, pieceStates, pieceHashes, filePrio,
+//! tag CRUD, setPreferences, shutdown. Files endpoint + category CRUD are
+//! sibling modules inside M170 (Lanes B + C).
+
+use std::path::PathBuf;
 
 use axum::extract::{FromRequest, Multipart, Query, State};
 use irontide::core::Id20;
-use irontide::session::TorrentStats;
+use irontide::session::{SessionAddTorrentParams, TorrentStats};
 use serde::Deserialize;
 
 use super::response::{QbtError, QbtResponse};
@@ -71,6 +79,12 @@ fn parse_hash_list(hashes: &str) -> Result<Option<Vec<Id20>>, QbtError> {
         out.push(id);
     }
     Ok(Some(out))
+}
+
+/// qBt "true"/"1" → `true`, anything else → `false` (case-insensitive).
+fn parse_bool_flag(raw: &str) -> bool {
+    let v = raw.trim().to_ascii_lowercase();
+    v == "true" || v == "1"
 }
 
 /// Apply a qBt-style `filter=` term to a TorrentStats.
@@ -133,6 +147,16 @@ pub async fn info(
                 .map(|h| allow.iter().any(|id| id == &h))
                 .unwrap_or(false)
         });
+    }
+
+    // category= filter (M170). qBt convention: empty string matches only
+    // uncategorised torrents; a named value matches exactly.
+    if let Some(cat) = &q.category {
+        if cat.is_empty() {
+            stats.retain(|s| s.category.is_none());
+        } else {
+            stats.retain(|s| s.category.as_deref() == Some(cat.as_str()));
+        }
     }
 
     // filter= free-text qBt enum; unknown values are permissive.
@@ -208,6 +232,32 @@ pub async fn properties(
 
 // ── POST /api/v2/torrents/add ─────────────────────────────────────────
 
+/// Staged form inputs for the M170 add path.
+///
+/// Multipart field order is not guaranteed by the client, so we drain
+/// every relevant field before dispatching any add — otherwise a `urls=`
+/// part that arrives before `category=` would be processed with the wrong
+/// category.
+#[derive(Default)]
+struct AddFormState {
+    /// Magnet URIs (one per non-blank line of every `urls=` part).
+    magnet_uris: Vec<String>,
+    /// Raw `.torrent` bodies (multipart `torrents=` repeats per file).
+    torrent_files: Vec<Vec<u8>>,
+    /// Optional category label (resolved against the session registry).
+    category: Option<String>,
+    /// Optional explicit save path — wins over a category's save_path.
+    savepath: Option<String>,
+    /// Whether the torrent should start paused.
+    paused: bool,
+}
+
+impl AddFormState {
+    fn has_source(&self) -> bool {
+        !self.magnet_uris.is_empty() || !self.torrent_files.is_empty()
+    }
+}
+
 pub async fn add(
     State(state): State<QbtState>,
     headers: axum::http::HeaderMap,
@@ -217,91 +267,174 @@ pub async fn add(
         .get(axum::http::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
-    if ct.starts_with("multipart/form-data") {
-        // Multipart: iterate parts for file uploads + magnet URLs.
-        let mut multipart = Multipart::from_request(req, &state)
-            .await
-            .map_err(|e| QbtError::BadRequest(format!("parse multipart: {e}")))?;
-        let mut added_anything = false;
-        while let Some(field) = multipart
-            .next_field()
-            .await
-            .map_err(|e| QbtError::BadRequest(format!("multipart field: {e}")))?
-        {
-            match field.name() {
-                Some("urls") => {
-                    let body = field
-                        .text()
-                        .await
-                        .map_err(|e| QbtError::BadRequest(format!("read urls: {e}")))?;
-                    for uri in body.lines().map(|l| l.trim()).filter(|l| !l.is_empty()) {
-                        add_magnet_or_ignore(&state, uri).await?;
-                        added_anything = true;
-                    }
-                }
-                Some("torrents") => {
-                    let bytes = field
-                        .bytes()
-                        .await
-                        .map_err(|e| QbtError::BadRequest(format!("read file: {e}")))?
-                        .to_vec();
-                    if !bytes.is_empty() {
-                        state
-                            .session
-                            .add_torrent_bytes(&bytes)
-                            .await
-                            .map_err(|e| QbtError::Internal(format!("add torrent: {e}")))?;
-                        added_anything = true;
-                    }
-                }
-                _ => {
-                    // Discard unknown fields (category, savepath, paused, etc.).
-                    let _ = field.bytes().await;
-                }
-            }
-        }
-        if !added_anything {
-            return Err(QbtError::BadRequest("no urls or torrent file provided".into()));
-        }
-        Ok(QbtResponse::ok())
+    let form = if ct.starts_with("multipart/form-data") {
+        parse_multipart_add(&state, req).await?
     } else {
-        // URL-encoded form body: `urls=magnet:...\nmagnet:...&paused=false`.
-        let bytes = axum::body::to_bytes(req.into_body(), 64 * 1024 * 1024)
-            .await
-            .map_err(|e| QbtError::BadRequest(format!("read body: {e}")))?;
-        let form: Vec<(String, String)> =
-            serde_urlencoded::from_bytes(&bytes).map_err(|e| {
-                QbtError::BadRequest(format!("parse urlencoded: {e}"))
-            })?;
-        let urls = form
-            .iter()
-            .find(|(k, _)| k == "urls")
-            .map(|(_, v)| v.clone())
-            .unwrap_or_default();
-        if urls.trim().is_empty() {
-            return Err(QbtError::BadRequest("urls field is required".into()));
-        }
-        for uri in urls.lines().map(|l| l.trim()).filter(|l| !l.is_empty()) {
-            add_magnet_or_ignore(&state, uri).await?;
-        }
-        Ok(QbtResponse::ok())
+        parse_urlencoded_add(req).await?
+    };
+
+    if !form.has_source() {
+        return Err(QbtError::BadRequest(
+            "urls or torrent file is required".into(),
+        ));
     }
+
+    for uri in &form.magnet_uris {
+        add_one(&state, build_params_magnet(uri, &form)).await?;
+    }
+    for bytes in &form.torrent_files {
+        add_one(&state, build_params_bytes(bytes.clone(), &form)).await?;
+    }
+    Ok(QbtResponse::ok())
 }
 
-async fn add_magnet_or_ignore(state: &QbtState, uri: &str) -> Result<(), QbtError> {
-    match state.session.add_magnet_uri(uri).await {
+/// Accumulate all multipart fields into an [`AddFormState`] before any
+/// torrent is added. Unknown field names are drained + discarded so the
+/// multipart stream doesn't stall waiting for a consumer.
+async fn parse_multipart_add(
+    state: &QbtState,
+    req: axum::extract::Request,
+) -> Result<AddFormState, QbtError> {
+    let mut multipart = Multipart::from_request(req, state)
+        .await
+        .map_err(|e| QbtError::BadRequest(format!("parse multipart: {e}")))?;
+    let mut out = AddFormState::default();
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| QbtError::BadRequest(format!("multipart field: {e}")))?
+    {
+        match field.name() {
+            Some("urls") => {
+                let body = field
+                    .text()
+                    .await
+                    .map_err(|e| QbtError::BadRequest(format!("read urls: {e}")))?;
+                for uri in body.lines().map(str::trim).filter(|l| !l.is_empty()) {
+                    out.magnet_uris.push(uri.to_owned());
+                }
+            }
+            Some("torrents") => {
+                let bytes = field
+                    .bytes()
+                    .await
+                    .map_err(|e| QbtError::BadRequest(format!("read file: {e}")))?
+                    .to_vec();
+                if !bytes.is_empty() {
+                    out.torrent_files.push(bytes);
+                }
+            }
+            Some("category") => {
+                let v = field
+                    .text()
+                    .await
+                    .map_err(|e| QbtError::BadRequest(format!("read category: {e}")))?;
+                if !v.is_empty() {
+                    out.category = Some(v);
+                }
+            }
+            Some("savepath") => {
+                let v = field
+                    .text()
+                    .await
+                    .map_err(|e| QbtError::BadRequest(format!("read savepath: {e}")))?;
+                if !v.is_empty() {
+                    out.savepath = Some(v);
+                }
+            }
+            Some("paused") => {
+                let v = field
+                    .text()
+                    .await
+                    .map_err(|e| QbtError::BadRequest(format!("read paused: {e}")))?;
+                out.paused = parse_bool_flag(&v);
+            }
+            _ => {
+                // Drain unknown fields so the parser can advance.
+                let _ = field.bytes().await;
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Drain a URL-encoded form body. Binary `.torrent` uploads cannot be
+/// encoded this way, so `torrent_files` is always empty here.
+async fn parse_urlencoded_add(req: axum::extract::Request) -> Result<AddFormState, QbtError> {
+    let bytes = axum::body::to_bytes(req.into_body(), 64 * 1024 * 1024)
+        .await
+        .map_err(|e| QbtError::BadRequest(format!("read body: {e}")))?;
+    let form: Vec<(String, String)> = serde_urlencoded::from_bytes(&bytes)
+        .map_err(|e| QbtError::BadRequest(format!("parse urlencoded: {e}")))?;
+    let mut out = AddFormState::default();
+    for (k, v) in form {
+        match k.as_str() {
+            "urls" => {
+                for uri in v.lines().map(str::trim).filter(|l| !l.is_empty()) {
+                    out.magnet_uris.push(uri.to_owned());
+                }
+            }
+            "category" => {
+                if !v.is_empty() {
+                    out.category = Some(v);
+                }
+            }
+            "savepath" => {
+                if !v.is_empty() {
+                    out.savepath = Some(v);
+                }
+            }
+            "paused" => out.paused = parse_bool_flag(&v),
+            _ => {}
+        }
+    }
+    Ok(out)
+}
+
+fn build_params_magnet(uri: &str, form: &AddFormState) -> SessionAddTorrentParams {
+    apply_form_knobs(SessionAddTorrentParams::magnet(uri), form)
+}
+
+fn build_params_bytes(bytes: Vec<u8>, form: &AddFormState) -> SessionAddTorrentParams {
+    apply_form_knobs(SessionAddTorrentParams::bytes(bytes), form)
+}
+
+/// `savepath` wins over `category` when both are present; both affect the
+/// download dir (category resolves via the registry inside the session).
+/// The category label is still recorded on the torrent even when an
+/// explicit savepath is used, matching qBt's behaviour.
+fn apply_form_knobs(
+    mut params: SessionAddTorrentParams,
+    form: &AddFormState,
+) -> SessionAddTorrentParams {
+    if let Some(path) = &form.savepath {
+        params = params.with_download_dir(PathBuf::from(path));
+    }
+    if let Some(name) = &form.category {
+        params = params.with_category(name.clone());
+    }
+    params.paused(form.paused)
+}
+
+/// Map a session error onto a qBt-shaped HTTP response. Category misses
+/// and deletion-race collisions both become 409 Conflict; duplicate adds
+/// match the M168 convention (409 with the session's own message).
+async fn add_one(state: &QbtState, params: SessionAddTorrentParams) -> Result<(), QbtError> {
+    match state.session.add_torrent(params).await {
         Ok(_) => Ok(()),
+        Err(irontide::session::Error::CategoryNotFound(name)) => Err(QbtError::Conflict(
+            format!("category '{name}' does not exist"),
+        )),
+        Err(irontide::session::Error::TorrentBeingRemoved(_)) => Err(QbtError::Conflict(
+            "torrent is being removed, try again".into(),
+        )),
         Err(e) => {
             let msg = format!("{e}");
-            // *arr treats duplicate adds as OK too; real qBt returns 200 with
-            // no error. We map both duplicate-*ish* and transient add errors
-            // to Conflict so logs are honest without failing the workflow.
-            if msg.to_ascii_lowercase().contains("duplicate")
-                || msg.to_ascii_lowercase().contains("already")
-            {
+            let low = msg.to_ascii_lowercase();
+            if low.contains("duplicate") || low.contains("already") {
                 Err(QbtError::Conflict(msg))
             } else {
-                Err(QbtError::Internal(format!("add magnet: {e}")))
+                Err(QbtError::Internal(format!("add torrent: {e}")))
             }
         }
     }
@@ -352,17 +485,21 @@ pub async fn delete(
     State(state): State<QbtState>,
     Query(q): Query<HashesQuery>,
 ) -> Result<QbtResponse, QbtError> {
-    // FIXME(M170): honour deleteFiles=true by wiring disk cleanup through
-    // SessionHandle::remove_torrent. Today the flag is parsed and logged but
-    // has no on-disk effect — IronTide always cleans up its own state.
-    let _delete_files = matches!(
-        q.delete_files.as_deref().map(|s| s.to_ascii_lowercase()),
-        Some(v) if v == "true" || v == "1"
-    );
+    // Missing flag → preserve files (qBt default + guards M168 behaviour).
+    let delete_files = q
+        .delete_files
+        .as_deref()
+        .map(parse_bool_flag)
+        .unwrap_or(false);
     let targets = resolve_hashes(&state, q.hashes.as_deref()).await?;
     for id in targets {
-        let _ = state.session.remove_torrent(id).await;
+        let _ = if delete_files {
+            state.session.remove_torrent_with_files(id).await
+        } else {
+            state.session.remove_torrent(id).await
+        };
     }
+    // Always 200 — qBt is lenient about per-torrent errors on bulk delete.
     Ok(QbtResponse::ok())
 }
 
@@ -412,7 +549,7 @@ pub async fn transfer_info(State(state): State<QbtState>) -> Result<QbtResponse,
         up_info_speed: up_rate,
         up_info_data: up_total,
         connection_status,
-        dht_nodes: 0, // FIXME(M170): expose DHT node count on SessionHandle
+        dht_nodes: 0, // FIXME(M171): expose DHT node count on SessionHandle
         dl_rate_limit: -1,
         up_rate_limit: -1,
     };

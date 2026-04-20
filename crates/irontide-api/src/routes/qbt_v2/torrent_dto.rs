@@ -145,7 +145,9 @@ impl From<&TorrentStats> for QbtTorrent {
             } else {
                 format!("magnet:?xt=urn:btih:{hash}")
             },
-            category: String::new(),
+            // M170: surface the resolved qBt-compat category label; empty
+            // string (not `null`) when absent matches qBt's JSON shape.
+            category: s.category.clone().unwrap_or_default(),
             tags: String::new(),
             auto_tmm: false,
             priority: 0,
@@ -212,8 +214,14 @@ impl From<&TorrentStats> for QbtTorrentProperties {
         };
         Self {
             save_path: s.save_path.clone(),
-            creation_date: 0,
-            piece_size: s.block_size as u64,
+            // qBt sentinel for "unknown/unset creation_date" is -1, not 0.
+            // Magnet-added torrents without resolved metadata surface as
+            // -1 so clients don't confuse "epoch 1970" with "unknown".
+            creation_date: s.creation_date.unwrap_or(-1),
+            // Lane A populates piece_size from Lengths::piece_length() once
+            // metadata is available. Pre-metadata it's 0, which matches
+            // qBt's own behaviour for still-resolving magnets.
+            piece_size: s.piece_size,
             comment: String::new(),
             total_wasted: s.total_failed_bytes,
             total_uploaded: s.all_time_upload,
@@ -229,7 +237,9 @@ impl From<&TorrentStats> for QbtTorrentProperties {
             share_ratio,
             addition_date: s.added_time,
             completion_date: s.completed_time,
-            created_by: String::new(),
+            // Empty string (not `null`) when absent — qBt serialises this
+            // way in its own "properties" response.
+            created_by: s.created_by.clone().unwrap_or_default(),
             dl_speed_avg: s.download_rate,
             dl_speed: s.download_rate,
             eta,
