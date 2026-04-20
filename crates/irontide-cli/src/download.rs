@@ -253,7 +253,7 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
             eprintln!("Adding: {name}");
         }
         let storage = make_filesystem_storage(&meta, output)?;
-        session.add_torrent(meta, Some(storage)).await?;
+        session.add_torrent_with_meta(meta, Some(storage)).await?;
         ih
     };
 
