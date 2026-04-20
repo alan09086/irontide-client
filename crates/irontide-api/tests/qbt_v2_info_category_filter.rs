@@ -113,10 +113,10 @@ async fn add_magnet_with_category(
     let hash = session.add_torrent(params).await.expect("add magnet");
     if let Some(name) = category {
         for _ in 0..50 {
-            if let Ok(stats) = session.torrent_stats(hash).await {
-                if stats.category.as_deref() == Some(name) {
-                    return;
-                }
+            if let Ok(stats) = session.torrent_stats(hash).await
+                && stats.category.as_deref() == Some(name)
+            {
+                return;
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
         }

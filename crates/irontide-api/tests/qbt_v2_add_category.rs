@@ -149,10 +149,10 @@ fn urlencode(s: &str) -> String {
 async fn await_info_row(router: &axum::Router, cookie: &str) -> Value {
     for _ in 0..50 {
         let v = get_json(router, "/api/v2/torrents/info", cookie).await;
-        if let Some(arr) = v.as_array() {
-            if !arr.is_empty() {
-                return v;
-            }
+        if let Some(arr) = v.as_array()
+            && !arr.is_empty()
+        {
+            return v;
         }
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
@@ -296,10 +296,10 @@ async fn add_with_category_records_label_on_stats() {
     // poll until it shows up on stats.
     for _ in 0..50 {
         let v = get_json(&router, "/api/v2/torrents/info", &sid).await;
-        if let Some(row) = v.as_array().and_then(|a| a.first()) {
-            if row.get("category").and_then(Value::as_str) == Some("sonarr") {
-                return;
-            }
+        if let Some(row) = v.as_array().and_then(|a| a.first())
+            && row.get("category").and_then(Value::as_str) == Some("sonarr")
+        {
+            return;
         }
         tokio::time::sleep(Duration::from_millis(20)).await;
     }

@@ -487,22 +487,20 @@ async fn rapid_re_add_during_in_flight_delete_returns_409() {
     //   (b) Ok if the delete finished first — we accept both paths, since
     //       the test only proves the 409 path is *reachable*, not that it
     //       fires every time.
-    let mut saw_guard = false;
-    for _ in 0..50 {
-        match session
-            .add_torrent(SessionAddTorrentParams::bytes(bytes.clone()))
-            .await
-        {
-            Err(irontide::session::Error::TorrentBeingRemoved(h)) => {
-                assert_eq!(h, info_hash);
-                saw_guard = true;
-                break;
-            }
-            Ok(_) => break, // delete completed first, race ran in reverse
-            Err(irontide::session::Error::DuplicateTorrent(_)) => break, // delete not yet dispatched
-            Err(e) => panic!("unexpected add error: {e}"),
+    let saw_guard = match session
+        .add_torrent(SessionAddTorrentParams::bytes(bytes.clone()))
+        .await
+    {
+        Err(irontide::session::Error::TorrentBeingRemoved(h)) => {
+            assert_eq!(h, info_hash);
+            true
         }
-    }
+        // Ok, DuplicateTorrent, or delete-already-completed are all
+        // acceptable race outcomes; we only fail on genuinely unexpected
+        // errors.
+        Ok(_) | Err(irontide::session::Error::DuplicateTorrent(_)) => false,
+        Err(e) => panic!("unexpected add error: {e}"),
+    };
     let _ = delete_task.await;
 
     // After the delete finishes the file tree must be gone.

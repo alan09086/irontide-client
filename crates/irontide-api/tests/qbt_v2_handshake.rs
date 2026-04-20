@@ -423,25 +423,23 @@ async fn end_to_end_m170_arr_workflow() {
     for _ in 0..50 {
         let (_, b) = get(&router, "/api/v2/torrents/info?category=sonarr", Some(&sid)).await;
         let v: serde_json::Value = serde_json::from_slice(&b).unwrap();
-        if let Some(arr) = v.as_array() {
-            if let Some(row) = arr.first() {
-                hash = row
-                    .get("hash")
-                    .and_then(|h| h.as_str())
-                    .unwrap_or("")
-                    .to_owned();
-                if !hash.is_empty() {
-                    // 3. Verify save_path inherits the category's path.
-                    let sp = row.get("save_path").and_then(|s| s.as_str()).unwrap_or("");
-                    assert_eq!(
-                        sp,
-                        category_save_path.to_string_lossy(),
-                        "save_path should match category registry entry"
-                    );
-                    // 4. The filter itself is already implicitly verified
-                    //    (arr came from ?category=sonarr).
-                    break;
-                }
+        if let Some(row) = v.as_array().and_then(|a| a.first()) {
+            hash = row
+                .get("hash")
+                .and_then(|h| h.as_str())
+                .unwrap_or("")
+                .to_owned();
+            if !hash.is_empty() {
+                // 3. Verify save_path inherits the category's path.
+                let sp = row.get("save_path").and_then(|s| s.as_str()).unwrap_or("");
+                assert_eq!(
+                    sp,
+                    category_save_path.to_string_lossy(),
+                    "save_path should match category registry entry"
+                );
+                // 4. The filter itself is already implicitly verified
+                //    (arr came from ?category=sonarr).
+                break;
             }
         }
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
