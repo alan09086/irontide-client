@@ -59,7 +59,7 @@ pub struct QbtPreferences {
     pub encryption: QbtEncryption,
     pub web_ui_username: String,
 
-    // Hardcoded safe defaults below. FIXME(M170): wire to real state.
+    // Hardcoded safe defaults below. FIXME(M171): wire to real state.
     pub max_ratio_act: String,
     pub max_seeding_time_enabled: bool,
     pub max_seeding_time: i64,
@@ -100,7 +100,7 @@ impl From<&Settings> for QbtPreferences {
             encryption,
             web_ui_username: s.qbt_compat.username.clone(),
 
-            // FIXME(M170): wire to real state.
+            // FIXME(M171): wire to real state.
             max_ratio_act: "pause".into(),
             max_seeding_time_enabled: false,
             max_seeding_time: -1,
