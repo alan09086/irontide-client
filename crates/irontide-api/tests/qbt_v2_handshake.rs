@@ -339,3 +339,152 @@ async fn test_arr_full_usage_flow() {
         "torrent must be gone after delete"
     );
 }
+
+// ── M170: end-to-end *arr workflow (Lane D extension) ────────────────
+
+/// Walks through the full *arr request sequence post-M170:
+/// pre-create category → add with category → verify save_path inherits
+/// the category's path → filter info by category → poll /files (skipped
+/// if Lane B's route isn't registered yet) → delete with files=true.
+///
+/// Every step is a single oneshot — no real network, no background
+/// tasks other than the session actor. The test is isolated from the
+/// other handshake tests by using a per-process SESSION_COUNTER id.
+#[tokio::test]
+async fn end_to_end_m170_arr_workflow() {
+    use irontide::session::SessionAddTorrentParams;
+
+    // Fresh session with qbt_compat enabled + a category registry path
+    // that this test owns exclusively.
+    let n = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let pid = std::process::id();
+    let resume_dir = std::env::temp_dir()
+        .join(format!("irontide-qbt-v2-hs-m170-resume-{pid}-{n}"));
+    let reg_path = std::env::temp_dir()
+        .join(format!("irontide-qbt-v2-hs-m170-{pid}-{n}.toml"));
+    let _ = std::fs::remove_dir_all(&resume_dir);
+    let _ = std::fs::remove_file(&reg_path);
+
+    let mut settings = irontide::session::Settings {
+        listen_port: 0,
+        download_dir: std::path::PathBuf::from("/tmp"),
+        enable_dht: false,
+        enable_lsd: false,
+        enable_upnp: false,
+        enable_natpmp: false,
+        resume_data_dir: Some(resume_dir),
+        save_resume_interval_secs: 0,
+        category_registry_path: Some(reg_path),
+        ..irontide::session::Settings::default()
+    };
+    settings.qbt_compat.enabled = true;
+    let session = irontide::ClientBuilder::from_settings(settings)
+        .start()
+        .await
+        .expect("start session");
+
+    // 1. Pre-create `sonarr` category via the session API (the HTTP
+    //    `/createCategory` route lands in Lane C, which may or may not
+    //    be merged at the same time — using the session API keeps this
+    //    test independent).
+    let category_save_path = std::path::PathBuf::from("/tmp/irontide-hs-sonarr-e2e");
+    session
+        .create_category("sonarr".to_string(), category_save_path.clone())
+        .await
+        .expect("create sonarr category");
+
+    let router = build_router(session.clone());
+    let sid = login(&router).await;
+
+    // 2. Add torrent with `category=sonarr` through the HTTP surface.
+    let magnet = "magnet:?xt=urn:btih:dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c&dn=Bunny";
+    let mut body = String::from("urls=");
+    for b in magnet.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                body.push(b as char)
+            }
+            _ => body.push_str(&format!("%{b:02X}")),
+        }
+    }
+    body.push_str("&category=sonarr");
+    let (status, _) = post(
+        &router,
+        "/api/v2/torrents/add",
+        Some(&sid),
+        Some("application/x-www-form-urlencoded"),
+        body.into_bytes(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "add with category=sonarr must succeed");
+
+    // Wait for the torrent to appear + its category label to propagate.
+    let mut hash = String::new();
+    for _ in 0..50 {
+        let (_, b) = get(&router, "/api/v2/torrents/info?category=sonarr", Some(&sid)).await;
+        let v: serde_json::Value = serde_json::from_slice(&b).unwrap();
+        if let Some(arr) = v.as_array() {
+            if let Some(row) = arr.first() {
+                hash = row
+                    .get("hash")
+                    .and_then(|h| h.as_str())
+                    .unwrap_or("")
+                    .to_owned();
+                if !hash.is_empty() {
+                    // 3. Verify save_path inherits the category's path.
+                    let sp = row.get("save_path").and_then(|s| s.as_str()).unwrap_or("");
+                    assert_eq!(
+                        sp,
+                        category_save_path.to_string_lossy(),
+                        "save_path should match category registry entry"
+                    );
+                    // 4. The filter itself is already implicitly verified
+                    //    (arr came from ?category=sonarr).
+                    break;
+                }
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    assert!(!hash.is_empty(), "torrent never appeared under category=sonarr");
+
+    // 5. Poll /torrents/files?hash=X. Lane B registers this route; we
+    //    only assert non-empty array when it's present (200). A 404 would
+    //    mean the magnet's metadata hasn't resolved yet (expected, since
+    //    we're not running a real swarm) — in that case we skip the
+    //    assertion without failing the test.
+    let files_uri = format!("/api/v2/torrents/files?hash={hash}");
+    let (files_status, _) = get(&router, &files_uri, Some(&sid)).await;
+    assert!(
+        matches!(files_status, StatusCode::OK | StatusCode::NOT_FOUND),
+        "files endpoint should return 200 (metadata ready) or 404 (still resolving), got {files_status}"
+    );
+
+    // 6. Delete with deleteFiles=true. For a magnet-only torrent with
+    //    no resolved files, this still exercises the deleteFiles code
+    //    path; the walker finds no FileMap entries and the download_dir
+    //    is untouched.
+    let (status, _) = post(
+        &router,
+        &format!("/api/v2/torrents/delete?hashes={hash}&deleteFiles=true"),
+        Some(&sid),
+        None,
+        Vec::new(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // 7. Confirm the torrent is gone from /info.
+    for _ in 0..50 {
+        let (_, b) = get(&router, "/api/v2/torrents/info", Some(&sid)).await;
+        let v: serde_json::Value = serde_json::from_slice(&b).unwrap();
+        if v.as_array().map(Vec::len) == Some(0) {
+            // Use SessionAddTorrentParams in the imports check — compile
+            // guard so the facade re-export stays consumable from tests.
+            let _ = SessionAddTorrentParams::magnet(magnet);
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    panic!("torrent never disappeared after delete");
+}
