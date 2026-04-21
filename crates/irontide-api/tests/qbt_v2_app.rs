@@ -15,9 +15,12 @@ static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 async fn enabled_router_with(
     customize: impl FnOnce(&mut Settings),
 ) -> (axum::Router, String) {
-    // Capture the final username/password from the customized Settings so the
-    // follow-up login uses the correct creds even if the caller changed them.
-    let creds: (String, String);
+    // Capture the username from the customized Settings. The plaintext
+    // "adminadmin" is hardcoded because M172a ships `password_hash` with the
+    // pre-hashed default — callers who rotate the password must rotate the
+    // hash (via `hash_qbt_password`) OR supply a legacy plaintext in the
+    // same Settings customize closure and we'd need a different helper.
+    let username: String;
     let session = {
         let n = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
         let resume_dir = std::env::temp_dir().join(format!(
@@ -40,17 +43,15 @@ async fn enabled_router_with(
         };
         settings.qbt_compat.enabled = true;
         customize(&mut settings);
-        creds = (
-            settings.qbt_compat.username.clone(),
-            settings.qbt_compat.password.clone(),
-        );
+        username = settings.qbt_compat.username.clone();
         irontide::ClientBuilder::from_settings(settings)
             .start()
             .await
             .expect("failed to start test session")
     };
     let router = build_router(session);
-    let form = format!("username={}&password={}", creds.0, creds.1);
+    // M172a: default `password_hash` matches "adminadmin".
+    let form = format!("username={username}&password=adminadmin");
     let req = Request::builder()
         .method("POST")
         .uri("/api/v2/auth/login")

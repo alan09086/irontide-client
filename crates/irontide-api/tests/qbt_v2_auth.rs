@@ -3,10 +3,18 @@
 //! Covers `QbtResponse`, `QbtError`, `SessionStore`, cookie parsing, and the
 //! `auth/login` / `auth/logout` endpoints plus the `qbt_gate` / `require_sid`
 //! middleware chain.
+//!
+//! M172a C3: the qBt login handler now requires `ConnectInfo<SocketAddr>`.
+//! The oneshot test fixtures here attach a `MockConnectInfo` layer that
+//! injects a synthetic peer address so the existing tower::ServiceExt path
+//! keeps working; `test_session_with_qbt_tcp` below is the real-TcpListener
+//! sibling used by the M172a argon2 integration tests.
 
+use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use axum::body::Body;
+use axum::extract::connect_info::MockConnectInfo;
 use axum::http::{Request, StatusCode, header};
 use http_body_util::BodyExt;
 use tower::ServiceExt;
@@ -15,6 +23,15 @@ use irontide::session::Settings;
 use irontide_api::routes::build_router;
 
 static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+/// Synthetic peer address for oneshot-style tests (M172a C3).
+///
+/// Any routable address works — the handler only checks that ConnectInfo
+/// extraction *succeeds*, not the specific value. Lanes B and C (trust-hop
+/// CIDR + brute-force ban) tests override this via their own helpers.
+const MOCK_PEER: SocketAddr = SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::new(
+    127, 0, 0, 1,
+)), 12345);
 
 /// Build an enabled-qbt_compat session with the given overrides applied.
 async fn test_session_with_qbt(
@@ -48,9 +65,34 @@ async fn test_session_with_qbt(
         .expect("failed to start test session")
 }
 
+/// TCP-based fixture (M172a C3 sibling) — spins up a real `TcpListener`,
+/// starts the router via `into_make_service_with_connect_info`, and returns
+/// `(url_base, JoinHandle)` so tests can drive HTTP requests through the
+/// full middleware stack. Required for any test that wants a real peer
+/// address (argon2 semaphore, brute-force ban, trust-hop).
+#[allow(dead_code)]
+async fn test_session_with_qbt_tcp(
+    customize: impl FnOnce(&mut Settings),
+) -> (
+    String,
+    tokio::task::JoinHandle<std::io::Result<()>>,
+    irontide::session::SessionHandle,
+) {
+    let session = test_session_with_qbt(customize).await;
+    let server = irontide_api::ApiServer::bind(
+        "127.0.0.1:0".parse().expect("valid addr"),
+        session.clone(),
+    )
+    .await
+    .expect("bind");
+    let base = format!("http://{}", server.local_addr());
+    let handle = tokio::spawn(server.run());
+    (base, handle, session)
+}
+
 async fn enabled_router() -> axum::Router {
     let session = test_session_with_qbt(|_| {}).await;
-    build_router(session)
+    build_router(session).layer(MockConnectInfo(MOCK_PEER))
 }
 
 async fn disabled_router() -> axum::Router {
@@ -77,7 +119,7 @@ async fn disabled_router() -> axum::Router {
         .start()
         .await
         .expect("failed to start test session");
-    build_router(session)
+    build_router(session).layer(MockConnectInfo(MOCK_PEER))
 }
 
 async fn send(router: &axum::Router, req: Request<Body>) -> axum::http::Response<Body> {
