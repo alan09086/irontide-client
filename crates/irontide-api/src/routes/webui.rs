@@ -872,19 +872,41 @@ fn tracker_status_bits(
 /// without repeating the mapping logic.
 ///
 /// Precise conditions (matches the M167 plan):
-/// - `D` download from peer      — !peer_choking && num_pieces > 0 && am_interested
-/// - `U` upload to peer          — !am_choking && peer_interested
-/// - `K` we are choking          — am_choking
-/// - `?` we are interested       — am_interested
-/// - `I` peer is interested      — peer_interested
-/// - `S` snubbed                 — snubbed
+/// M171 D5: qBt-parity peer-flag glyph superset (15 glyphs).
+///
+/// - `D` downloading from peer          — !peer_choking && num_pieces > 0 && am_interested
+/// - `d` we want data, peer chokes us   — am_interested && peer_choking
+/// - `U` uploading to peer              — !am_choking && peer_interested
+/// - `u` peer wants data, we choke them — peer_interested && am_choking
+/// - `K` we are choking the peer        — am_choking
+/// - `?` we are interested              — am_interested
+/// - `S` peer is snubbed                — snubbed
+/// - `O` optimistic unchoke slot        — is_optimistic
+/// - `I` incoming connection            — source == Incoming (REDEFINED in M171)
+/// - `H` discovered via DHT             — source == Dht
+/// - `X` discovered via PeX             — source == Pex
+/// - `L` discovered via LSD             — source == Lsd
+/// - `E` encrypted connection (MSE/PE)  — is_encrypted
+/// - `P` using uTP (BEP 29)             — uses_utp
+/// - `F` supports fast extension (BEP 6)— supports_fast
+///
+/// `I` was "peer is interested in us" in M167-M170; M171 remaps it to
+/// qBt's "incoming connection" semantic. Peer-interested state is still
+/// implicit via the `U`/`u` glyphs.
 fn peer_flags(p: &irontide::session::PeerInfo) -> Vec<(char, &'static str)> {
-    let mut flags = Vec::with_capacity(4);
+    use irontide::session::PeerSource;
+    let mut flags = Vec::with_capacity(8);
     if !p.peer_choking && p.num_pieces > 0 && p.am_interested {
         flags.push(('D', "Downloading from peer"));
     }
+    if p.am_interested && p.peer_choking {
+        flags.push(('d', "We want data but peer is choking us"));
+    }
     if !p.am_choking && p.peer_interested {
         flags.push(('U', "Uploading to peer"));
+    }
+    if p.peer_interested && p.am_choking {
+        flags.push(('u', "Peer wants data, we are choking them"));
     }
     if p.am_choking {
         flags.push(('K', "We are choking the peer"));
@@ -892,11 +914,32 @@ fn peer_flags(p: &irontide::session::PeerInfo) -> Vec<(char, &'static str)> {
     if p.am_interested {
         flags.push(('?', "We are interested in the peer"));
     }
-    if p.peer_interested {
-        flags.push(('I', "Peer is interested in us"));
-    }
     if p.snubbed {
         flags.push(('S', "Peer is snubbed"));
+    }
+    if p.is_optimistic {
+        flags.push(('O', "Optimistic unchoke slot"));
+    }
+    if p.source == PeerSource::Incoming {
+        flags.push(('I', "Incoming connection"));
+    }
+    if p.source == PeerSource::Dht {
+        flags.push(('H', "Discovered via DHT"));
+    }
+    if p.source == PeerSource::Pex {
+        flags.push(('X', "Discovered via PeX (BEP 11)"));
+    }
+    if p.source == PeerSource::Lsd {
+        flags.push(('L', "Discovered via LSD (BEP 14)"));
+    }
+    if p.is_encrypted {
+        flags.push(('E', "Encrypted connection (MSE/PE)"));
+    }
+    if p.uses_utp {
+        flags.push(('P', "Using uTP (BEP 29)"));
+    }
+    if p.supports_fast {
+        flags.push(('F', "Supports fast extension (BEP 6)"));
     }
     flags
 }
@@ -1107,6 +1150,10 @@ mod tests {
             connected_duration_secs: 0,
             num_pending_requests: 0,
             num_incoming_requests: 0,
+            is_optimistic: false,
+            is_encrypted: false,
+            uses_utp: false,
+            uses_holepunch: false,
         }
     }
 
@@ -1119,11 +1166,13 @@ mod tests {
         assert!(glyphs.contains(&'?'), "? missing: {glyphs:?}");
         assert!(!glyphs.contains(&'K'), "K must not appear: {glyphs:?}");
 
-        // Uploading to a peer that's interested.
+        // Uploading to a peer that's interested. M171 D5: the `I` glyph no
+        // longer means "peer is interested in us" — that state is implied
+        // by `U` / `u` now. `I` only lights up on incoming connections.
         let p = make_peer(false, false, false, true, false, 0);
         let glyphs: Vec<char> = peer_flags(&p).iter().map(|(c, _)| *c).collect();
         assert!(glyphs.contains(&'U'));
-        assert!(glyphs.contains(&'I'));
+        assert!(!glyphs.contains(&'I'), "I must NOT fire for interested; it's incoming-only now");
 
         // Snubbed (no data in snub-window) + we're choking them.
         let p = make_peer(true, false, false, false, true, 0);
@@ -1136,6 +1185,87 @@ mod tests {
         let p = make_peer(false, false, false, false, false, 0);
         let glyphs: Vec<char> = peer_flags(&p).iter().map(|(c, _)| *c).collect();
         assert!(glyphs.is_empty(), "idle peer should have no flags: {glyphs:?}");
+    }
+
+    /// M171 D5 / E0.11: every new glyph in the 15-flag superset fires when
+    /// (and only when) its trigger state is set. Parametric over the 9
+    /// glyphs that land new in M171 — leaves the existing 6 covered by
+    /// [`peer_flags_cover_all_documented_cases`].
+    #[test]
+    fn peer_flag_glyph_superset_renders() {
+        use irontide::session::PeerSource;
+
+        // `d` — interested + peer choking.
+        let mut p = make_peer(false, true, true, false, false, 0);
+        let glyphs: Vec<char> = peer_flags(&p).iter().map(|(c, _)| *c).collect();
+        assert!(glyphs.contains(&'d'), "d missing for interested+peer_choking: {glyphs:?}");
+
+        // `u` — peer interested + we choke.
+        p = make_peer(true, false, false, true, false, 0);
+        let glyphs: Vec<char> = peer_flags(&p).iter().map(|(c, _)| *c).collect();
+        assert!(glyphs.contains(&'u'), "u missing for peer_interested+am_choking: {glyphs:?}");
+
+        // `O` — optimistic unchoke.
+        p = make_peer(false, false, false, false, false, 0);
+        p.is_optimistic = true;
+        let glyphs: Vec<char> = peer_flags(&p).iter().map(|(c, _)| *c).collect();
+        assert!(glyphs.contains(&'O'), "O missing for is_optimistic: {glyphs:?}");
+
+        // `I` — incoming connection (source == Incoming).
+        p = make_peer(false, false, false, false, false, 0);
+        p.source = PeerSource::Incoming;
+        let glyphs: Vec<char> = peer_flags(&p).iter().map(|(c, _)| *c).collect();
+        assert!(glyphs.contains(&'I'), "I missing for incoming: {glyphs:?}");
+
+        // `H` — discovered via DHT.
+        p = make_peer(false, false, false, false, false, 0);
+        p.source = PeerSource::Dht;
+        let glyphs: Vec<char> = peer_flags(&p).iter().map(|(c, _)| *c).collect();
+        assert!(glyphs.contains(&'H'), "H missing for DHT source: {glyphs:?}");
+
+        // `X` — discovered via PeX.
+        p = make_peer(false, false, false, false, false, 0);
+        p.source = PeerSource::Pex;
+        let glyphs: Vec<char> = peer_flags(&p).iter().map(|(c, _)| *c).collect();
+        assert!(glyphs.contains(&'X'), "X missing for PeX source: {glyphs:?}");
+
+        // `L` — discovered via LSD.
+        p = make_peer(false, false, false, false, false, 0);
+        p.source = PeerSource::Lsd;
+        let glyphs: Vec<char> = peer_flags(&p).iter().map(|(c, _)| *c).collect();
+        assert!(glyphs.contains(&'L'), "L missing for LSD source: {glyphs:?}");
+
+        // `E` — encrypted MSE/PE.
+        p = make_peer(false, false, false, false, false, 0);
+        p.is_encrypted = true;
+        let glyphs: Vec<char> = peer_flags(&p).iter().map(|(c, _)| *c).collect();
+        assert!(glyphs.contains(&'E'), "E missing for is_encrypted: {glyphs:?}");
+
+        // `P` — using uTP.
+        p = make_peer(false, false, false, false, false, 0);
+        p.uses_utp = true;
+        let glyphs: Vec<char> = peer_flags(&p).iter().map(|(c, _)| *c).collect();
+        assert!(glyphs.contains(&'P'), "P missing for uses_utp: {glyphs:?}");
+
+        // `F` — supports fast extension (BEP 6).
+        p = make_peer(false, false, false, false, false, 0);
+        p.supports_fast = true;
+        let glyphs: Vec<char> = peer_flags(&p).iter().map(|(c, _)| *c).collect();
+        assert!(glyphs.contains(&'F'), "F missing for supports_fast: {glyphs:?}");
+    }
+
+    /// M171 D5: PeerInfo's new fields must round-trip through serde so old
+    /// resume/snapshot payloads that predate the superset still
+    /// deserialize (fields default to `false` via `#[serde(default)]`).
+    #[test]
+    fn peer_info_serde_round_trip_new_fields() {
+        let p = make_peer(false, false, false, false, false, 0);
+        let json = serde_json::to_string(&p).expect("serialize");
+        let back: irontide::session::PeerInfo = serde_json::from_str(&json).expect("round-trip");
+        assert!(!back.is_optimistic);
+        assert!(!back.is_encrypted);
+        assert!(!back.uses_utp);
+        assert!(!back.uses_holepunch);
     }
 
     #[test]
