@@ -23,12 +23,13 @@ pub mod app;
 pub mod auth;
 pub mod categories;
 pub mod files;
+pub mod pieces;
 pub mod preferences;
 pub mod response;
 pub mod session_store;
 pub mod state;
+pub mod tags;
 pub mod torrent_dto;
-pub mod pieces;
 pub mod torrents;
 pub mod trackers;
 pub mod webseeds;
@@ -93,7 +94,10 @@ pub fn build_router(session: Arc<SessionHandle>) -> Router {
         .route("/api/v2/torrents/categories", get(categories::list))
         .route("/api/v2/torrents/createCategory", post(categories::create))
         .route("/api/v2/torrents/editCategory", post(categories::edit))
-        .route("/api/v2/torrents/removeCategories", post(categories::remove));
+        .route(
+            "/api/v2/torrents/removeCategories",
+            post(categories::remove),
+        );
 
     let torrent_details = Router::new()
         .route("/api/v2/torrents/trackers", get(trackers::list))
@@ -101,14 +105,23 @@ pub fn build_router(session: Arc<SessionHandle>) -> Router {
         .route("/api/v2/torrents/pieceStates", get(pieces::states))
         .route("/api/v2/torrents/pieceHashes", get(pieces::hashes));
 
-    // Lane C (M171) inserts here: `let torrent_tags    = Router::new().route("/api/v2/torrents/tags",     ...)...;`
+    let torrent_tags = Router::new()
+        .route("/api/v2/torrents/tags", get(tags::list))
+        .route("/api/v2/torrents/createTags", post(tags::create))
+        .route("/api/v2/torrents/deleteTags", post(tags::delete))
+        .route("/api/v2/torrents/addTags", post(tags::add_to_torrents))
+        .route(
+            "/api/v2/torrents/removeTags",
+            post(tags::remove_from_torrents),
+        );
+
     // Lane D (M171) inserts here: `let app_write       = Router::new().route("/api/v2/app/setPreferences", ...);`
 
     let protected = app_read
         .merge(torrent_core)
         .merge(category_routes)
         .merge(torrent_details)
-        // Lane C (M171): .merge(torrent_tags)
+        .merge(torrent_tags)
         // Lane D (M171): .merge(app_write)
         .route_layer(from_fn_with_state(state.clone(), auth::require_sid))
         .with_state(state.clone());
