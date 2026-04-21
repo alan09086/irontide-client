@@ -299,10 +299,11 @@ impl BruteForceRegistry {
         }
     }
 
-    /// Test-only: eagerly prune every expired entry (not limited to the
-    /// PRUNE_BATCH tail) so test #11 can assert the registry actually
-    /// frees memory after a ban elapses.
-    #[cfg(test)]
+    /// Eagerly prune every expired entry — not limited to the
+    /// [`PRUNE_BATCH`] tail so callers can reclaim memory deterministically
+    /// (test #11, future admin-tool). The hot path uses the batched
+    /// [`prune_expired_tail`] helper inside `record_failure` for amortised
+    /// O(1) cost.
     pub fn prune_expired(&self, ban_secs: u64) {
         let now = Instant::now();
         let mut map = self.inner.write();
@@ -330,20 +331,30 @@ impl BruteForceRegistry {
         }
     }
 
-    /// Test-only: current number of tracked entries.
-    #[cfg(test)]
+    /// Current number of tracked entries. Primarily used by integration
+    /// tests to assert eviction + prune behaviour; production code should
+    /// treat this as a diagnostic window only.
+    #[must_use]
     pub fn len(&self) -> usize {
         self.inner.read().len()
     }
 
-    /// Test-only: capacity of the registry.
-    #[cfg(test)]
+    /// `true` when the registry is empty — wraps `len() == 0` so clippy's
+    /// `len_without_is_empty` lint stays happy when we expose `len`.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.inner.read().is_empty()
+    }
+
+    /// Registry LRU cap. Fixed at construction time.
+    #[must_use]
     pub fn capacity(&self) -> usize {
         self.capacity
     }
 
-    /// Test-only: inspect the attempt count for an IP.
-    #[cfg(test)]
+    /// Current attempt count for the given IP. Returns 0 when the IP has
+    /// no entry. Test + diagnostic use only.
+    #[must_use]
     pub fn attempts_for(&self, ip: IpAddr) -> u32 {
         self.inner
             .read()
@@ -351,8 +362,9 @@ impl BruteForceRegistry {
             .map_or(0, |state| state.attempts)
     }
 
-    /// Test-only: inspect the pending count for an IP.
-    #[cfg(test)]
+    /// Current in-flight (pending) count for the given IP. Test +
+    /// diagnostic use only.
+    #[must_use]
     pub fn pending_for(&self, ip: IpAddr) -> u32 {
         self.inner
             .read()
@@ -360,8 +372,8 @@ impl BruteForceRegistry {
             .map_or(0, |state| state.pending)
     }
 
-    /// Test-only: `true` when the IP is currently banned.
-    #[cfg(test)]
+    /// `true` when the IP is currently banned.
+    #[must_use]
     pub fn is_banned(&self, ip: IpAddr) -> bool {
         self.inner
             .read()
