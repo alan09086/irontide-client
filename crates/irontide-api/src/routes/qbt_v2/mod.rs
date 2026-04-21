@@ -21,6 +21,7 @@
 
 pub mod app;
 pub mod auth;
+pub mod brute_force;
 pub mod categories;
 pub mod files;
 pub mod pieces;
@@ -43,6 +44,7 @@ use axum::middleware::from_fn_with_state;
 use axum::routing::{get, post};
 use irontide::session::SessionHandle;
 
+pub use brute_force::{AdmissionDenied, AdmitGuard, BruteForceRegistry};
 pub use response::{QbtError, QbtResponse};
 pub use session_store::SessionStore;
 pub use state::{QbtState, default_argon2_permits, resolve_client_ip};
@@ -79,7 +81,37 @@ pub fn build_router(session: Arc<SessionHandle>) -> Router {
     // *once* here to honour any override, and leave live-reconfig to a
     // future milestone (requires rebuilding the Semaphore — design work).
     let argon2_permits = default_argon2_permits(None);
-    let state = QbtState::new(session, store, argon2_permits);
+    // M172a Lane C: brute-force-ban registry. Capacity is fixed at router
+    // construction — same caveat as the argon2 semaphore. Runtime changes
+    // to `qbt_compat.brute_force_registry_capacity` only affect NEW
+    // daemon instances, not live-reconfig (documented in
+    // `classify_immediate`).
+    let brute_force_capacity = brute_force::DEFAULT_REGISTRY_CAPACITY;
+    let state = QbtState::new(session, store, argon2_permits, brute_force_capacity);
+
+    // M172a Lane C: best-effort one-shot hydrator for the CIDR bypass
+    // whitelist. `build_router` is sync (100+ call sites), so we spawn a
+    // tokio task to fetch settings and seed `state.bypass_auth_subnet_whitelist`
+    // from the operator's current configuration. Malformed CIDRs are
+    // dropped silently — `Settings::validate` would have rejected them at
+    // startup, so this path is only exercised under a hand-edited config
+    // that bypassed validation. Subsequent `setPreferences` applies
+    // refresh the whitelist via the shared `RwLock` so this is purely
+    // "seed at boot".
+    {
+        let seed_state = state.clone();
+        tokio::spawn(async move {
+            if let Ok(settings) = seed_state.session.settings().await {
+                let parsed: Vec<ipnet::IpNet> = settings
+                    .qbt_compat
+                    .bypass_auth_subnet_whitelist
+                    .iter()
+                    .filter_map(|s| s.parse().ok())
+                    .collect();
+                *seed_state.bypass_auth_subnet_whitelist.write() = parsed;
+            }
+        });
+    }
 
     let app_read = Router::new()
         .route("/api/v2/app/version", get(app::version))

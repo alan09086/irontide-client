@@ -56,7 +56,10 @@ http-body-util = "0.1"
 serde_bytes = { workspace = true }
 serde_json = "1"
 tempfile = "3"
-tokio = { workspace = true }
+# M172a Lane C: `test-util` gates `tokio::time::{advance, pause}` — the
+# clock-pausing primitive used by the brute-force ban suite to test ban
+# expiry without sleeping wall-clock seconds.
+tokio = { workspace = true, features = ["test-util"] }
 tokio-tungstenite = "0.28"
 tower = { version = "0.5", features = ["util"] }
 # M172a Lane A: integration tests exercise the on-disk migration helper.

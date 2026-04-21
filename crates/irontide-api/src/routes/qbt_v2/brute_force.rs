@@ -1,0 +1,629 @@
+//! Brute-force-ban registry for qBt v2 `auth/login` (M172a Lane C).
+//!
+//! Tracks failed authentication attempts per source IP with an in-flight
+//! counter that prevents a thundering-herd flood from bypassing the cap:
+//! every call to [`BruteForceRegistry::check_and_admit`] returns an
+//! [`AdmitGuard`] RAII token that holds the `pending` slot until dropped.
+//! That way a burst of 100 concurrent wrong-password attempts can only
+//! occupy `max_failed_auth_count` argon2-verify slots at once; the other
+//! 95+ requesters get an immediate 403 without ever entering the verify
+//! pipeline.
+//!
+//! # LRU cap (G4)
+//! Entries are stored in a `HashMap<IpAddr, FailedAuthState>` alongside a
+//! `VecDeque<IpAddr>` shadow index ordered newest-front/oldest-back. When
+//! a NEW IP is admitted into a full registry the oldest tail entry is
+//! evicted — standard LRU. Each record_* path touches the entry to the
+//! front. 10k entries × ~80 bytes ≈ 800 KiB worst case.
+//!
+//! # Lazy prune (P2)
+//! Every call to [`BruteForceRegistry::record_failure`] scans up to 10
+//! tail entries and drops any whose `banned_until` elapsed over
+//! `ban_secs` ago — amortised O(1) per call, bounded by the ban window.
+//!
+//! # No custom Clock trait (S0b)
+//! Tests rely on `#[tokio::test(flavor = "current_thread", start_paused
+//! = true)]` plus `tokio::time::advance` rather than a mockable clock
+//! abstraction. Production uses `tokio::time::Instant::now()` directly.
+
+use std::collections::{HashMap, VecDeque};
+use std::net::IpAddr;
+use std::sync::Arc;
+use std::time::Duration;
+
+use parking_lot::RwLock;
+use tokio::time::Instant;
+
+/// Default LRU cap when the operator does not override via
+/// [`crate::routes::qbt_v2::state::QbtState`] construction.
+pub(crate) const DEFAULT_REGISTRY_CAPACITY: usize = 10_000;
+
+/// Maximum number of LRU-tail entries scanned on each
+/// [`BruteForceRegistry::record_failure`] call for lazy pruning (P2).
+const PRUNE_BATCH: usize = 10;
+
+/// Per-IP counter state inside the registry.
+///
+/// `attempts` is the authoritative failure count used for ban decisions.
+/// `pending` is a transient in-flight counter decremented on
+/// [`AdmitGuard::drop`]. `first_failure_at` anchors a potential future
+/// sliding window (unused today). `last_touch` is the LRU ordering key.
+#[derive(Debug)]
+struct FailedAuthState {
+    /// Count of recorded failures since the last reset (success or
+    /// ban-expiry). When `attempts >= max_failed_auth_count` the IP is
+    /// banned for `ban_duration_secs`.
+    attempts: u32,
+    /// Number of in-flight admissions currently holding an [`AdmitGuard`]
+    /// for this IP. Decremented on `AdmitGuard::drop`, including the panic
+    /// path. Admission is denied when `attempts + pending >= max` so a
+    /// concurrent flood cannot saturate argon2 beyond the per-IP cap.
+    pending: u32,
+    /// Wall-clock moment of the first failure in the current counting
+    /// window. Retained for future sliding-window extensions; not
+    /// currently consulted by any decision path.
+    #[allow(dead_code)]
+    first_failure_at: Instant,
+    /// Last time this entry was written or admitted. Used as the LRU
+    /// ordering key — entries with a recent `last_touch` move to the
+    /// VecDeque front.
+    last_touch: Instant,
+    /// When set, the IP is banned until this instant. `None` = not banned.
+    banned_until: Option<Instant>,
+}
+
+/// In-memory registry tracking failed authentication attempts per IP.
+///
+/// Cheap to clone (it's always wrapped in [`Arc`]) because the only state
+/// is an `RwLock`-guarded `HashMap` + `VecDeque` pair. The same registry
+/// instance is shared across every login request handler via the qBt
+/// router's [`super::state::QbtState`].
+pub struct BruteForceRegistry {
+    /// Primary map: IP → per-IP counters. Guarded by the same lock as
+    /// `lru` so state transitions are atomic relative to LRU reordering.
+    inner: RwLock<HashMap<IpAddr, FailedAuthState>>,
+    /// Shadow LRU index: newest at front, oldest at back. Same lock as
+    /// `inner` — coarse-grained but cheap (single login per request).
+    lru: RwLock<VecDeque<IpAddr>>,
+    /// LRU cap. When full and a new IP is admitted, pop the tail.
+    capacity: usize,
+}
+
+/// RAII guard proving admission into the argon2 verify pipeline.
+///
+/// Acquired by [`BruteForceRegistry::check_and_admit`] on success and
+/// released on drop — which is the ONLY path that decrements the
+/// in-flight `pending` counter. Panic-safe: the `Drop` impl runs even
+/// when the login handler aborts mid-verify.
+pub struct AdmitGuard {
+    /// Shared registry reference so [`Drop`] can release the pending slot.
+    /// `Option` so we can `take()` safely during drop if needed (today we
+    /// just use the ref directly).
+    registry: Arc<BruteForceRegistry>,
+    /// IP whose pending counter we will decrement on drop.
+    ip: IpAddr,
+}
+
+impl AdmitGuard {
+    /// Construct a guard. Private — callers must go through
+    /// [`BruteForceRegistry::check_and_admit`] which increments the
+    /// pending counter atomically with admission.
+    fn new(registry: Arc<BruteForceRegistry>, ip: IpAddr) -> Self {
+        Self { registry, ip }
+    }
+}
+
+impl Drop for AdmitGuard {
+    fn drop(&mut self) {
+        // Decrement pending counter (A1). Safe on panic because tokio
+        // unwinds through Drop impls on panicking tasks. Saturating sub
+        // defends against the impossible — double-drop would otherwise
+        // underflow — but in practice the Option-free design of AdmitGuard
+        // means every guard is dropped exactly once.
+        let mut inner = self.registry.inner.write();
+        if let Some(state) = inner.get_mut(&self.ip) {
+            state.pending = state.pending.saturating_sub(1);
+        }
+    }
+}
+
+/// Opaque admission-denied token. No information on why (banned vs
+/// at-pending-cap) because the caller always maps it to the same 403
+/// `Fails.` response to preserve qBt parity (C4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AdmissionDenied;
+
+impl BruteForceRegistry {
+    /// Construct a fresh registry wrapped in `Arc`. `capacity` is the
+    /// LRU cap; callers typically pass `DEFAULT_REGISTRY_CAPACITY` or the
+    /// operator override from
+    /// `Settings::qbt_compat::brute_force_registry_capacity`.
+    ///
+    /// Caps `capacity` to a minimum of 1 to avoid division-by-zero on
+    /// eviction; validation at the `Settings` layer rejects values `< 100`
+    /// but this is belt-and-braces.
+    #[must_use]
+    pub fn new(capacity: usize) -> Arc<Self> {
+        let cap = capacity.max(1);
+        Arc::new(Self {
+            inner: RwLock::new(HashMap::with_capacity(cap.min(1024))),
+            lru: RwLock::new(VecDeque::with_capacity(cap.min(1024))),
+            capacity: cap,
+        })
+    }
+
+    /// Attempt to admit this IP into the verify pipeline.
+    ///
+    /// Returns [`Ok(AdmitGuard)`] on admission, [`Err(AdmissionDenied)`]
+    /// when the IP is banned OR has `attempts + pending >= max` pending
+    /// plus historical failures. The `AdmitGuard` RAII token holds the
+    /// `pending` slot until it is dropped — both on the success path
+    /// (which calls [`record_success`]) and the failure path (which calls
+    /// [`record_failure`]) the caller should let the guard drop *after*
+    /// the recording method returns so the pending-- happens strictly
+    /// after the state transition lands.
+    ///
+    /// Admission is allowed when:
+    /// * `max == 0` — the operator has disabled the check (only valid
+    ///   with `bypass_local_auth = true`; we still admit to keep the
+    ///   pipeline uniform).
+    /// * there is no ban OR the ban window has elapsed; AND
+    /// * `attempts + pending < max`.
+    ///
+    /// When admitted:
+    /// * On a pre-existing entry: increments `pending`, bumps `last_touch`,
+    ///   and moves the entry to the LRU front.
+    /// * On a NEW entry: inserts a fresh state with `attempts = 0,
+    ///   pending = 1`, evicts the LRU tail if over capacity, and places
+    ///   the new IP at the LRU front.
+    #[allow(clippy::missing_errors_doc)] // single Err variant, zero data
+    pub fn check_and_admit(
+        self: &Arc<Self>,
+        ip: IpAddr,
+        max: u32,
+        ban_secs: u64,
+    ) -> Result<AdmitGuard, AdmissionDenied> {
+        // `ban_secs` is accepted for signature symmetry with
+        // `record_failure` — a banned-then-expired IP re-admission does
+        // not need to know the ban window here (the window lives inside
+        // the FailedAuthState). Suppress the unused-parameter warning.
+        let _ = ban_secs;
+        let now = Instant::now();
+        let mut map = self.inner.write();
+        let mut lru = self.lru.write();
+
+        if let Some(state) = map.get_mut(&ip) {
+            // Ban check: if the ban window elapsed, clear it AND the
+            // attempts counter — qBt parity: ban expiry is a full reset.
+            if let Some(until) = state.banned_until
+                && now >= until
+            {
+                state.banned_until = None;
+                state.attempts = 0;
+            }
+            if state.banned_until.is_some() {
+                return Err(AdmissionDenied);
+            }
+            // `max == 0` means "counter disabled" (only valid when
+            // bypass_local_auth is set and the handler has already let
+            // the request through); don't deny here so the handler path
+            // stays uniform. Otherwise gate on attempts + pending.
+            if max > 0 {
+                let in_use = state.attempts.saturating_add(state.pending);
+                if in_use >= max {
+                    return Err(AdmissionDenied);
+                }
+            }
+            state.pending = state.pending.saturating_add(1);
+            state.last_touch = now;
+            move_to_front(&mut lru, ip);
+        } else {
+            // New IP: evict LRU tail if at capacity.
+            evict_until_under_capacity(&mut map, &mut lru, self.capacity);
+            let state = FailedAuthState {
+                attempts: 0,
+                pending: 1,
+                first_failure_at: now,
+                last_touch: now,
+                banned_until: None,
+            };
+            map.insert(ip, state);
+            lru.push_front(ip);
+        }
+
+        drop(lru);
+        drop(map);
+        Ok(AdmitGuard::new(Arc::clone(self), ip))
+    }
+
+    /// Record a failed argon2 verify. Increments `attempts`, stamps
+    /// `banned_until` on cross-threshold, and prunes up to [`PRUNE_BATCH`]
+    /// LRU-tail entries with long-elapsed bans.
+    ///
+    /// Caller contract: invoke this BEFORE dropping the admission guard
+    /// so the state transition lands while we still hold the logical
+    /// "my verify is still accounted for" semantics.
+    pub fn record_failure(&self, ip: IpAddr, max: u32, ban_secs: u64) {
+        let now = Instant::now();
+        let mut map = self.inner.write();
+        let mut lru = self.lru.write();
+
+        if let Some(state) = map.get_mut(&ip) {
+            // Ban-expiry reset: if the caller raced a long-banned IP back
+            // into verify and the ban window lapsed, reset before the
+            // increment so the "next failure after ban" is attempt #1.
+            if let Some(until) = state.banned_until
+                && now >= until
+            {
+                state.banned_until = None;
+                state.attempts = 0;
+            }
+            state.attempts = state.attempts.saturating_add(1);
+            if state.attempts == 1 {
+                state.first_failure_at = now;
+            }
+            if state.attempts >= max {
+                state.banned_until = Some(now + Duration::from_secs(ban_secs));
+            }
+            state.last_touch = now;
+            move_to_front(&mut lru, ip);
+        }
+        // If the entry vanished (evicted between admit and record), we
+        // skip silently — the attacker still got a 403, the counter
+        // merely restarts next round. Acceptable.
+
+        // Lazy prune (P2): scan up to PRUNE_BATCH tail entries and drop
+        // any whose ban elapsed `ban_secs` ago. The `+ ban_secs` delay
+        // gives the stale-ban check a stable hysteresis — we don't want
+        // to prune an IP whose ban JUST expired because that same IP
+        // might retry in the next few seconds and we want the counter
+        // transition to be observable on their side.
+        prune_expired_tail(&mut map, &mut lru, now, ban_secs);
+    }
+
+    /// Record a successful verify. Clears `attempts` and `banned_until`,
+    /// bumps `last_touch`, moves to LRU front. Leaves the entry in place
+    /// (future failures start a fresh counter).
+    ///
+    /// Caller contract: invoke this BEFORE dropping the admission guard.
+    pub fn record_success(&self, ip: IpAddr) {
+        let now = Instant::now();
+        let mut map = self.inner.write();
+        let mut lru = self.lru.write();
+
+        if let Some(state) = map.get_mut(&ip) {
+            state.attempts = 0;
+            state.banned_until = None;
+            state.last_touch = now;
+            move_to_front(&mut lru, ip);
+        }
+    }
+
+    /// Test-only: eagerly prune every expired entry (not limited to the
+    /// PRUNE_BATCH tail) so test #11 can assert the registry actually
+    /// frees memory after a ban elapses.
+    #[cfg(test)]
+    pub fn prune_expired(&self, ban_secs: u64) {
+        let now = Instant::now();
+        let mut map = self.inner.write();
+        let mut lru = self.lru.write();
+        // Scan the whole LRU tail until we hit a non-prunable entry or
+        // the VecDeque empties.
+        while let Some(&ip) = lru.back() {
+            let should_prune = match map.get(&ip) {
+                Some(state) => match state.banned_until {
+                    Some(until) => now >= until + Duration::from_secs(ban_secs),
+                    // No ban and already idle in the tail — safe to drop
+                    // even though production would not reach this branch
+                    // because tail entries with attempts=0, banned=None
+                    // are rare.
+                    None => state.attempts == 0 && state.pending == 0,
+                },
+                None => true,
+            };
+            if should_prune {
+                lru.pop_back();
+                map.remove(&ip);
+            } else {
+                break;
+            }
+        }
+    }
+
+    /// Test-only: current number of tracked entries.
+    #[cfg(test)]
+    pub fn len(&self) -> usize {
+        self.inner.read().len()
+    }
+
+    /// Test-only: capacity of the registry.
+    #[cfg(test)]
+    pub fn capacity(&self) -> usize {
+        self.capacity
+    }
+
+    /// Test-only: inspect the attempt count for an IP.
+    #[cfg(test)]
+    pub fn attempts_for(&self, ip: IpAddr) -> u32 {
+        self.inner
+            .read()
+            .get(&ip)
+            .map_or(0, |state| state.attempts)
+    }
+
+    /// Test-only: inspect the pending count for an IP.
+    #[cfg(test)]
+    pub fn pending_for(&self, ip: IpAddr) -> u32 {
+        self.inner
+            .read()
+            .get(&ip)
+            .map_or(0, |state| state.pending)
+    }
+
+    /// Test-only: `true` when the IP is currently banned.
+    #[cfg(test)]
+    pub fn is_banned(&self, ip: IpAddr) -> bool {
+        self.inner
+            .read()
+            .get(&ip)
+            .and_then(|state| state.banned_until)
+            .is_some_and(|until| Instant::now() < until)
+    }
+}
+
+/// Move `ip` to the front of the LRU deque. If the IP is already in the
+/// deque we relocate it; otherwise we push it.
+fn move_to_front(lru: &mut VecDeque<IpAddr>, ip: IpAddr) {
+    // Linear scan is fine — deque length is bounded by `capacity`. A
+    // sorted-by-last-touch `BTreeMap` would be asymptotically better but
+    // the constant factor wins at capacity = 10_000.
+    if let Some(pos) = lru.iter().position(|&x| x == ip) {
+        lru.remove(pos);
+    }
+    lru.push_front(ip);
+}
+
+/// Evict LRU-tail entries until the map has room for one more.
+fn evict_until_under_capacity(
+    map: &mut HashMap<IpAddr, FailedAuthState>,
+    lru: &mut VecDeque<IpAddr>,
+    capacity: usize,
+) {
+    while map.len() >= capacity {
+        if let Some(evicted) = lru.pop_back() {
+            map.remove(&evicted);
+        } else {
+            break;
+        }
+    }
+}
+
+/// Prune up to [`PRUNE_BATCH`] LRU-tail entries whose bans elapsed over
+/// `ban_secs` ago. Shared between the production hot path
+/// ([`BruteForceRegistry::record_failure`]) and nowhere else.
+fn prune_expired_tail(
+    map: &mut HashMap<IpAddr, FailedAuthState>,
+    lru: &mut VecDeque<IpAddr>,
+    now: Instant,
+    ban_secs: u64,
+) {
+    let mut scanned = 0;
+    while scanned < PRUNE_BATCH
+        && let Some(&ip) = lru.back()
+    {
+        scanned = scanned.saturating_add(1);
+        let should_prune = match map.get(&ip) {
+            Some(state) => match state.banned_until {
+                Some(until) => now >= until + Duration::from_secs(ban_secs),
+                None => false, // no ban — leave in place for LRU bookkeeping
+            },
+            None => true, // orphaned LRU entry — always drop
+        };
+        if should_prune {
+            lru.pop_back();
+            map.remove(&ip);
+        } else {
+            break;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::Ipv4Addr;
+
+    fn ip(a: u8, b: u8, c: u8, d: u8) -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(a, b, c, d))
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn fresh_ip_admitted_and_guard_decrements_pending_on_drop() {
+        let reg = BruteForceRegistry::new(100);
+        let addr = ip(10, 0, 0, 1);
+        {
+            let _guard = reg.check_and_admit(addr, 5, 60).expect("admit");
+            assert_eq!(reg.pending_for(addr), 1);
+        }
+        assert_eq!(reg.pending_for(addr), 0);
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn record_failure_increments_attempts() {
+        let reg = BruteForceRegistry::new(100);
+        let addr = ip(10, 0, 0, 1);
+        {
+            let _guard = reg.check_and_admit(addr, 5, 60).expect("admit");
+            reg.record_failure(addr, 5, 60);
+        }
+        assert_eq!(reg.attempts_for(addr), 1);
+        assert_eq!(reg.pending_for(addr), 0);
+        assert!(!reg.is_banned(addr));
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn cross_max_threshold_stamps_ban() {
+        let reg = BruteForceRegistry::new(100);
+        let addr = ip(10, 0, 0, 1);
+        for _ in 0..5 {
+            let _guard = reg.check_and_admit(addr, 5, 60).expect("admit");
+            reg.record_failure(addr, 5, 60);
+        }
+        assert_eq!(reg.attempts_for(addr), 5);
+        assert!(reg.is_banned(addr));
+
+        // Next admit is denied (banned).
+        assert!(
+            reg.check_and_admit(addr, 5, 60).is_err(),
+            "6th attempt must be denied"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn ban_expires_after_ban_duration_secs() {
+        let reg = BruteForceRegistry::new(100);
+        let addr = ip(10, 0, 0, 1);
+        for _ in 0..5 {
+            let _guard = reg.check_and_admit(addr, 5, 60).expect("admit");
+            reg.record_failure(addr, 5, 60);
+        }
+        assert!(reg.is_banned(addr));
+        tokio::time::advance(Duration::from_secs(61)).await;
+        assert!(!reg.is_banned(addr));
+        // First failure AFTER ban expires should be attempt #1 again.
+        let _guard = reg.check_and_admit(addr, 5, 60).expect("admit post-ban");
+        reg.record_failure(addr, 5, 60);
+        assert_eq!(reg.attempts_for(addr), 1);
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn record_success_clears_counter() {
+        let reg = BruteForceRegistry::new(100);
+        let addr = ip(10, 0, 0, 1);
+        {
+            let _guard = reg.check_and_admit(addr, 5, 60).expect("admit");
+            reg.record_failure(addr, 5, 60);
+        }
+        {
+            let _guard = reg.check_and_admit(addr, 5, 60).expect("admit");
+            reg.record_success(addr);
+        }
+        assert_eq!(reg.attempts_for(addr), 0);
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn at_pending_cap_denies_admission() {
+        let reg = BruteForceRegistry::new(100);
+        let addr = ip(10, 0, 0, 1);
+        // Hold `max` guards open concurrently — pending == 5.
+        let g1 = reg.check_and_admit(addr, 5, 60).expect("admit");
+        let g2 = reg.check_and_admit(addr, 5, 60).expect("admit");
+        let g3 = reg.check_and_admit(addr, 5, 60).expect("admit");
+        let g4 = reg.check_and_admit(addr, 5, 60).expect("admit");
+        let g5 = reg.check_and_admit(addr, 5, 60).expect("admit");
+        assert_eq!(reg.pending_for(addr), 5);
+        // 6th must be denied (at pending cap).
+        assert!(reg.check_and_admit(addr, 5, 60).is_err());
+        drop((g1, g2, g3, g4, g5));
+        assert_eq!(reg.pending_for(addr), 0);
+        // With all guards dropped, a fresh admit is allowed again.
+        let _g = reg.check_and_admit(addr, 5, 60).expect("admit after drop");
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn lru_evicts_oldest_when_capacity_hit() {
+        let reg = BruteForceRegistry::new(3);
+        let a = ip(10, 0, 0, 1);
+        let b = ip(10, 0, 0, 2);
+        let c = ip(10, 0, 0, 3);
+        let d = ip(10, 0, 0, 4);
+        {
+            let _ga = reg.check_and_admit(a, 5, 60).expect("a");
+            reg.record_failure(a, 5, 60);
+        }
+        tokio::time::advance(Duration::from_millis(10)).await;
+        {
+            let _gb = reg.check_and_admit(b, 5, 60).expect("b");
+            reg.record_failure(b, 5, 60);
+        }
+        tokio::time::advance(Duration::from_millis(10)).await;
+        {
+            let _gc = reg.check_and_admit(c, 5, 60).expect("c");
+            reg.record_failure(c, 5, 60);
+        }
+        assert_eq!(reg.len(), 3);
+        tokio::time::advance(Duration::from_millis(10)).await;
+        {
+            let _gd = reg.check_and_admit(d, 5, 60).expect("d");
+        }
+        assert_eq!(reg.len(), 3);
+        // a was the oldest — should have been evicted.
+        assert_eq!(reg.attempts_for(a), 0);
+        // b, c, d remain
+        assert!(reg.attempts_for(b) == 1 || reg.attempts_for(c) == 1);
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn prune_expired_frees_memory_after_ban_plus_window() {
+        let reg = BruteForceRegistry::new(100);
+        let addr = ip(10, 0, 0, 1);
+        for _ in 0..5 {
+            let _guard = reg.check_and_admit(addr, 5, 60).expect("admit");
+            reg.record_failure(addr, 5, 60);
+        }
+        assert!(reg.is_banned(addr));
+        assert_eq!(reg.len(), 1);
+        // Advance past ban + prune hysteresis window.
+        tokio::time::advance(Duration::from_secs(120 + 5)).await;
+        reg.prune_expired(60);
+        assert_eq!(reg.len(), 0, "expired ban must be pruned");
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn different_ips_tracked_independently() {
+        let reg = BruteForceRegistry::new(100);
+        let a = ip(10, 0, 0, 1);
+        let b = ip(10, 0, 0, 2);
+        for _ in 0..5 {
+            let _guard = reg.check_and_admit(a, 5, 60).expect("a admit");
+            reg.record_failure(a, 5, 60);
+        }
+        assert!(reg.is_banned(a));
+        // b was untouched — must still be admitted.
+        let _gb = reg.check_and_admit(b, 5, 60).expect("b admit");
+        assert!(!reg.is_banned(b));
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn max_zero_never_denies_on_pending() {
+        // qBt-parity: `max == 0` means "counter disabled" (only legitimate
+        // with bypass_local_auth). The brute-force gate must not deny
+        // admission when it's configured as a no-op; otherwise a misconfig
+        // on the handler side (calling the gate when max=0) would cause
+        // a 100% outage.
+        let reg = BruteForceRegistry::new(100);
+        let addr = ip(10, 0, 0, 1);
+        let g1 = reg.check_and_admit(addr, 0, 60).expect("admit 1");
+        let g2 = reg.check_and_admit(addr, 0, 60).expect("admit 2");
+        let g3 = reg.check_and_admit(addr, 0, 60).expect("admit 3");
+        drop((g1, g2, g3));
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn orphan_lru_tail_pruned_silently() {
+        // Simulate a state divergence (shouldn't happen in production) —
+        // if the LRU back() is missing from the map, prune drops it.
+        let reg = BruteForceRegistry::new(3);
+        let a = ip(10, 0, 0, 1);
+        {
+            let _g = reg.check_and_admit(a, 5, 60).expect("admit");
+            reg.record_failure(a, 5, 60);
+        }
+        reg.prune_expired(60);
+        // Fresh map — prune on record_failure for a DIFFERENT IP must
+        // not panic.
+        let b = ip(10, 0, 0, 2);
+        let _g = reg.check_and_admit(b, 5, 60).expect("b admit");
+        reg.record_failure(b, 5, 60);
+    }
+}
