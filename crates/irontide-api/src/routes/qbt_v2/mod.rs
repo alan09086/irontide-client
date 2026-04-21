@@ -98,7 +98,8 @@ pub fn build_router(session: Arc<SessionHandle>) -> Router {
     let torrent_details = Router::new()
         .route("/api/v2/torrents/trackers", get(trackers::list))
         .route("/api/v2/torrents/webseeds", get(webseeds::list))
-        .route("/api/v2/torrents/pieceStates", get(pieces::states));
+        .route("/api/v2/torrents/pieceStates", get(pieces::states))
+        .route("/api/v2/torrents/pieceHashes", get(pieces::hashes));
 
     // Lane C (M171) inserts here: `let torrent_tags    = Router::new().route("/api/v2/torrents/tags",     ...)...;`
     // Lane D (M171) inserts here: `let app_write       = Router::new().route("/api/v2/app/setPreferences", ...);`

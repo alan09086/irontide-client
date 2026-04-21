@@ -277,3 +277,191 @@ async fn piece_states_qbt_compat_disabled_returns_404() {
     let resp = router.oneshot(req).await.expect("GET");
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
+
+// ── /pieceHashes (B4) ─────────────────────────────────────────────────
+
+/// Recompute the expected SHA-1 hex hash for piece `idx` of the fixture
+/// produced by [`make_torrent`]. The fixture fills each piece with the
+/// byte `idx & 0xFF` repeated `piece_length` times, so tests can check
+/// specific indices without needing to parse the torrent back out.
+fn expected_sha1_hex_for(piece_idx: u32, piece_length: u64) -> String {
+    let byte = (piece_idx & 0xFF) as u8;
+    let data: Vec<u8> = std::iter::repeat_n(byte, piece_length as usize).collect();
+    let h = irontide::core::sha1(&data);
+    hex::encode(h.as_bytes())
+}
+
+#[tokio::test]
+async fn piece_hashes_v1_returns_40_char_sha1_hex() {
+    let session = start_session(default_settings()).await;
+    let router = build_router(session.clone());
+    let sid = login(&router).await;
+
+    let piece_length: u64 = 16_384;
+    let bytes = make_torrent("fixture.bin", piece_length, 3);
+    let params = SessionAddTorrentParams::bytes(bytes);
+    let hash = add_and_wait(&session, params).await;
+
+    let (status, v) = get_json(
+        &router,
+        &format!("/api/v2/torrents/pieceHashes?hash={hash}"),
+        &sid,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let arr = v.as_array().expect("array");
+    assert_eq!(arr.len(), 3, "3-piece torrent should yield 3 hashes");
+
+    for (i, entry) in arr.iter().enumerate() {
+        let s = entry.as_str().expect("hash string");
+        assert_eq!(
+            s.len(),
+            40,
+            "piece {i}: v1 hash must be 40-char SHA-1 hex"
+        );
+        assert!(
+            s.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
+            "piece {i}: hash must be lowercase hex: {s}"
+        );
+        assert_eq!(
+            s,
+            &expected_sha1_hex_for(i as u32, piece_length),
+            "piece {i} hash mismatch"
+        );
+    }
+}
+
+#[tokio::test]
+async fn piece_hashes_pagination_limits_response() {
+    let session = start_session(default_settings()).await;
+    let router = build_router(session.clone());
+    let sid = login(&router).await;
+
+    // 100-piece torrent, `?offset=10&limit=20` → 20 hashes starting
+    // at piece 10.
+    let piece_length: u64 = 16_384;
+    let bytes = make_torrent("paged.bin", piece_length, 100);
+    let params = SessionAddTorrentParams::bytes(bytes);
+    let hash = add_and_wait(&session, params).await;
+
+    let (status, v) = get_json(
+        &router,
+        &format!("/api/v2/torrents/pieceHashes?hash={hash}&offset=10&limit=20"),
+        &sid,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let arr = v.as_array().expect("array");
+    assert_eq!(arr.len(), 20, "expected 20 hashes under ?limit=20");
+
+    // First hash in the page must correspond to piece index 10.
+    let first = arr[0].as_str().expect("str");
+    assert_eq!(first, expected_sha1_hex_for(10, piece_length));
+}
+
+#[tokio::test]
+async fn piece_hashes_default_limit_includes_small_torrent() {
+    // Under the default cap (4096) a small torrent returns its full
+    // hash set untruncated.
+    let session = start_session(default_settings()).await;
+    let router = build_router(session.clone());
+    let sid = login(&router).await;
+
+    let piece_length: u64 = 16_384;
+    let bytes = make_torrent("small.bin", piece_length, 100);
+    let params = SessionAddTorrentParams::bytes(bytes);
+    let hash = add_and_wait(&session, params).await;
+
+    let (status, v) = get_json(
+        &router,
+        &format!("/api/v2/torrents/pieceHashes?hash={hash}"),
+        &sid,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let arr = v.as_array().expect("array");
+    assert_eq!(arr.len(), 100, "100-piece torrent fits under default 4096 cap");
+}
+
+#[tokio::test]
+async fn piece_hashes_offset_past_end_returns_empty() {
+    let session = start_session(default_settings()).await;
+    let router = build_router(session.clone());
+    let sid = login(&router).await;
+
+    let piece_length: u64 = 16_384;
+    let bytes = make_torrent("offpast.bin", piece_length, 5);
+    let params = SessionAddTorrentParams::bytes(bytes);
+    let hash = add_and_wait(&session, params).await;
+
+    // Only 5 hashes; offset=100 is well past the end.
+    let (status, v) = get_json(
+        &router,
+        &format!("/api/v2/torrents/pieceHashes?hash={hash}&offset=100&limit=10"),
+        &sid,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let arr = v.as_array().expect("array");
+    assert!(arr.is_empty(), "offset past end must return []");
+}
+
+#[tokio::test]
+async fn piece_hashes_unknown_hash_returns_404() {
+    let session = start_session(default_settings()).await;
+    let router = build_router(session.clone());
+    let sid = login(&router).await;
+
+    let (status, _) = get_json(
+        &router,
+        "/api/v2/torrents/pieceHashes?hash=0123456789abcdef0123456789abcdef01234567",
+        &sid,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn piece_hashes_invalid_hash_returns_400() {
+    let session = start_session(default_settings()).await;
+    let router = build_router(session.clone());
+    let sid = login(&router).await;
+
+    let (status, _) = get_json(
+        &router,
+        "/api/v2/torrents/pieceHashes?hash=not-a-hash",
+        &sid,
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn piece_hashes_missing_auth_returns_403() {
+    let session = start_session(default_settings()).await;
+    let router = build_router(session.clone());
+
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v2/torrents/pieceHashes?hash=0123456789abcdef0123456789abcdef01234567")
+        .body(Body::empty())
+        .expect("build GET");
+    let resp = router.oneshot(req).await.expect("GET");
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn piece_hashes_qbt_compat_disabled_returns_404() {
+    let mut settings = default_settings();
+    settings.qbt_compat.enabled = false;
+    let session = start_session(settings).await;
+    let router = build_router(session.clone());
+
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v2/torrents/pieceHashes?hash=0123456789abcdef0123456789abcdef01234567")
+        .body(Body::empty())
+        .expect("build GET");
+    let resp = router.oneshot(req).await.expect("GET");
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
