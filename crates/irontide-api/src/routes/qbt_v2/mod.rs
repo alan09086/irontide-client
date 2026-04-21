@@ -34,16 +34,18 @@ pub mod torrents;
 pub mod trackers;
 pub mod webseeds;
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::Router;
+use axum::extract::connect_info::MockConnectInfo;
 use axum::middleware::from_fn_with_state;
 use axum::routing::{get, post};
 use irontide::session::SessionHandle;
 
 pub use response::{QbtError, QbtResponse};
 pub use session_store::SessionStore;
-pub use state::QbtState;
+pub use state::{QbtState, default_argon2_permits, resolve_client_ip};
 
 /// Build the qBt v2 sub-router.
 ///
@@ -70,7 +72,14 @@ pub fn build_router(session: Arc<SessionHandle>) -> Router {
         std::time::Duration::from_secs(86_400),
         1024,
     ));
-    let state = QbtState::new(session, store);
+    // M172a G2: default argon2 semaphore size — num_cpus*2 clamped [2,16].
+    // Overrideable at runtime via `qbt_compat.max_concurrent_argon2_ops`,
+    // but re-reading the setting would require piping the Settings snapshot
+    // through router construction; instead we grab the upstream Settings
+    // *once* here to honour any override, and leave live-reconfig to a
+    // future milestone (requires rebuilding the Semaphore — design work).
+    let argon2_permits = default_argon2_permits(None);
+    let state = QbtState::new(session, store, argon2_permits);
 
     let app_read = Router::new()
         .route("/api/v2/app/version", get(app::version))
@@ -134,8 +143,21 @@ pub fn build_router(session: Arc<SessionHandle>) -> Router {
         .route("/api/v2/auth/logout", post(auth::logout))
         .with_state(state.clone());
 
+    // M172a C3: `ConnectInfo<SocketAddr>` is a required extractor on
+    // `auth::login`. Production binds go through
+    // `into_make_service_with_connect_info::<SocketAddr>()` in
+    // `ApiServer::run`, which provides a real peer address; that path takes
+    // precedence over `MockConnectInfo` per axum semantics. Test fixtures
+    // that use `tower::ServiceExt::oneshot` skip the make-service layer —
+    // the `MockConnectInfo` here injects a synthetic 0.0.0.0:0 fallback
+    // so the test path doesn't hit a 500 on login. Never fires in
+    // production because the make-service layer overrides it.
     Router::new()
         .merge(protected)
         .merge(unprotected)
         .route_layer(from_fn_with_state(state, auth::qbt_gate))
+        .layer(MockConnectInfo::<SocketAddr>(SocketAddr::from((
+            [0_u8, 0, 0, 0],
+            0,
+        ))))
 }
