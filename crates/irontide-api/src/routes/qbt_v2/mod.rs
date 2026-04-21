@@ -29,6 +29,7 @@ pub mod session_store;
 pub mod state;
 pub mod torrent_dto;
 pub mod torrents;
+pub mod trackers;
 
 use std::sync::Arc;
 
@@ -92,14 +93,16 @@ pub fn build_router(session: Arc<SessionHandle>) -> Router {
         .route("/api/v2/torrents/editCategory", post(categories::edit))
         .route("/api/v2/torrents/removeCategories", post(categories::remove));
 
-    // Lane B (M171) inserts here: `let torrent_details = Router::new().route("/api/v2/torrents/trackers", ...)...;`
+    let torrent_details =
+        Router::new().route("/api/v2/torrents/trackers", get(trackers::list));
+
     // Lane C (M171) inserts here: `let torrent_tags    = Router::new().route("/api/v2/torrents/tags",     ...)...;`
     // Lane D (M171) inserts here: `let app_write       = Router::new().route("/api/v2/app/setPreferences", ...);`
 
     let protected = app_read
         .merge(torrent_core)
         .merge(category_routes)
-        // Lane B (M171): .merge(torrent_details)
+        .merge(torrent_details)
         // Lane C (M171): .merge(torrent_tags)
         // Lane D (M171): .merge(app_write)
         .route_layer(from_fn_with_state(state.clone(), auth::require_sid))
