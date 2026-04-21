@@ -15,6 +15,7 @@ pub use qbt_v2::default_argon2_permits;
 use std::sync::Arc;
 
 use axum::Router;
+use axum::middleware::from_fn_with_state;
 use axum::routing::{any, delete, get, patch, post};
 use irontide::session::SessionHandle;
 
@@ -89,7 +90,11 @@ pub fn build_router(session: SessionHandle) -> Router {
     // qBt sub-router even when the generic webui fallback would otherwise
     // catch them. Disabled-by-default behaviour is enforced by qbt_gate
     // middleware (returns 404 when qbt_compat.enabled == false).
-    let qbt_router = qbt_v2::build_router(Arc::clone(&state));
+    //
+    // M172a Lane B: the same [`QbtState`] backs both the qBt v2 routes and
+    // the `/webui/*` CSRF guard so both surfaces consult the same trusted-
+    // proxies RwLock.
+    let (qbt_router, qbt_state) = qbt_v2::build_router_with_state(Arc::clone(&state));
 
     // -- Web UI routes (feature-gated) --
     #[cfg(feature = "webui")]
@@ -142,5 +147,12 @@ pub fn build_router(session: SessionHandle) -> Router {
             .fallback(webui::serve_static);
     }
 
-    router.with_state(state).merge(qbt_router)
+    // M172a Lane B: wrap the whole `AppState`-typed router (torrents + webui
+    // surfaces) in the CSRF guard. `route_layer` with a typed-state middleware
+    // and the `with_state(state)` call below coexist because the layer only
+    // closes over `QbtState`, not `AppState`.
+    let router = router
+        .route_layer(from_fn_with_state(qbt_state, qbt_v2::csrf_guard))
+        .with_state(state);
+    router.merge(qbt_router)
 }
