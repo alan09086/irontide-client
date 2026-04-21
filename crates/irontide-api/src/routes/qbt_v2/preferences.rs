@@ -4,7 +4,7 @@
 //! that `*arr` clients expect. See M170 for the reverse direction
 //! (`setPreferences`).
 
-use irontide::session::Settings;
+use irontide::session::{MaxRatioAction, Settings};
 use serde::{Deserialize, Serialize};
 
 /// qBt encryption mode enum — canonical mapping.
@@ -59,15 +59,25 @@ pub struct QbtPreferences {
     pub encryption: QbtEncryption,
     pub web_ui_username: String,
 
-    // Hardcoded safe defaults below. FIXME(M171): wire to real state.
+    /// M171: Action taken when `seed_ratio_limit` is reached.
+    /// Wire format: `"pause"` | `"remove"` | `"enable_super_seeding"`.
     pub max_ratio_act: String,
+    /// M171: Wired to `seed_time_limit_secs` (D1a).
     pub max_seeding_time_enabled: bool,
+    /// M171: Wired to `seed_time_limit_secs` (D1a), minutes on the wire.
     pub max_seeding_time: i64,
+    /// M171: Wired to `inactive_seed_time_limit_secs` (D1a).
     pub max_inactive_seeding_time_enabled: bool,
+    /// M171: Wired to `inactive_seed_time_limit_secs` (D1a), minutes on the wire.
     pub max_inactive_seeding_time: i64,
+    /// M171: Wired to `queueing_enabled` (D1+D2).
     pub queueing_enabled: bool,
+    /// M171: Wired to `create_subfolder` (D1+D2).
     pub create_subfolder_enabled: bool,
+    /// Hardcoded safe default — IronTide adds torrents running by default.
+    /// TODO(M174): wire once we have an "add paused" toggle in Settings.
     pub start_paused_enabled: bool,
+    /// M171: Wired to `auto_manage_torrents` (D1+D2).
     pub auto_tmm_enabled: bool,
 }
 
@@ -120,12 +130,21 @@ impl From<&Settings> for QbtPreferences {
             max_inactive_seeding_time,
             max_inactive_seeding_time_enabled,
 
-            // FIXME(M171): wire to real state (D1/D2).
-            max_ratio_act: "pause".into(),
-            queueing_enabled: false,
-            create_subfolder_enabled: true,
+            // M171 D2: four fields that were hardcoded in M168/M170 are
+            // now wired to real Settings — see commit for the canonical
+            // mapping.
+            max_ratio_act: match s.max_ratio_action {
+                MaxRatioAction::Pause => "pause",
+                MaxRatioAction::Remove => "remove",
+                MaxRatioAction::EnableSuperSeeding => "enable_super_seeding",
+            }
+            .into(),
+            queueing_enabled: s.queueing_enabled,
+            create_subfolder_enabled: s.create_subfolder,
+            auto_tmm_enabled: s.auto_manage_torrents,
+
+            // Hardcoded safe default until M174.
             start_paused_enabled: false,
-            auto_tmm_enabled: false,
         }
     }
 }

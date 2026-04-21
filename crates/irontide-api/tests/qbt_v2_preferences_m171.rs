@@ -160,3 +160,74 @@ async fn preferences_max_inactive_seeding_time_seconds_to_minutes() {
         Some(30)
     );
 }
+
+// ── D2: max_ratio_act / queueing_enabled / create_subfolder / auto_tmm ──
+
+#[tokio::test]
+async fn preferences_max_ratio_act_default_is_pause() {
+    let (router, sid) = enabled_router_with(|_| {}).await;
+    let v = get_prefs(&router, &sid).await;
+    assert_eq!(
+        v.get("max_ratio_act").and_then(|s| s.as_str()),
+        Some("pause")
+    );
+}
+
+#[tokio::test]
+async fn preferences_max_ratio_act_remove_round_trip() {
+    use irontide::session::MaxRatioAction;
+    let (router, sid) = enabled_router_with(|s| {
+        s.max_ratio_action = MaxRatioAction::Remove;
+    })
+    .await;
+    let v = get_prefs(&router, &sid).await;
+    assert_eq!(
+        v.get("max_ratio_act").and_then(|s| s.as_str()),
+        Some("remove")
+    );
+}
+
+#[tokio::test]
+async fn preferences_max_ratio_act_enable_super_seeding_round_trip() {
+    use irontide::session::MaxRatioAction;
+    let (router, sid) = enabled_router_with(|s| {
+        s.max_ratio_action = MaxRatioAction::EnableSuperSeeding;
+    })
+    .await;
+    let v = get_prefs(&router, &sid).await;
+    assert_eq!(
+        v.get("max_ratio_act").and_then(|s| s.as_str()),
+        Some("enable_super_seeding")
+    );
+}
+
+#[tokio::test]
+async fn preferences_reflects_real_settings_d2() {
+    // Apply non-default values to all four D2 fields at once and verify
+    // every one appears in the preferences response.
+    use irontide::session::MaxRatioAction;
+    let (router, sid) = enabled_router_with(|s| {
+        s.max_ratio_action = MaxRatioAction::Remove;
+        s.queueing_enabled = true;
+        s.create_subfolder = false;
+        s.auto_manage_torrents = true;
+    })
+    .await;
+    let v = get_prefs(&router, &sid).await;
+    assert_eq!(
+        v.get("max_ratio_act").and_then(|s| s.as_str()),
+        Some("remove")
+    );
+    assert_eq!(
+        v.get("queueing_enabled").and_then(|b| b.as_bool()),
+        Some(true)
+    );
+    assert_eq!(
+        v.get("create_subfolder_enabled").and_then(|b| b.as_bool()),
+        Some(false)
+    );
+    assert_eq!(
+        v.get("auto_tmm_enabled").and_then(|b| b.as_bool()),
+        Some(true)
+    );
+}
