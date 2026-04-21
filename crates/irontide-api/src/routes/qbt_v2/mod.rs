@@ -30,6 +30,7 @@ pub mod state;
 pub mod torrent_dto;
 pub mod torrents;
 pub mod trackers;
+pub mod webseeds;
 
 use std::sync::Arc;
 
@@ -93,8 +94,9 @@ pub fn build_router(session: Arc<SessionHandle>) -> Router {
         .route("/api/v2/torrents/editCategory", post(categories::edit))
         .route("/api/v2/torrents/removeCategories", post(categories::remove));
 
-    let torrent_details =
-        Router::new().route("/api/v2/torrents/trackers", get(trackers::list));
+    let torrent_details = Router::new()
+        .route("/api/v2/torrents/trackers", get(trackers::list))
+        .route("/api/v2/torrents/webseeds", get(webseeds::list));
 
     // Lane C (M171) inserts here: `let torrent_tags    = Router::new().route("/api/v2/torrents/tags",     ...)...;`
     // Lane D (M171) inserts here: `let app_write       = Router::new().route("/api/v2/app/setPreferences", ...);`
