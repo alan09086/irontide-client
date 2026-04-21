@@ -651,3 +651,56 @@ async fn delete_tag_clears_from_all_assigned_torrents() {
     }
 }
 
+/// C2 verification: after tagging a torrent, its row in `/torrents/info`
+/// has `tags` populated as a comma-joined string.
+#[tokio::test]
+async fn torrent_list_row_populates_tags_field() {
+    let session = test_session().await;
+    let router = build_router(session.clone());
+    let sid = login(&router).await;
+
+    // Create the tags first.
+    let (status, _) = post_form(
+        &router,
+        "/api/v2/torrents/createTags",
+        &sid,
+        "tags=sonarr,kids",
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Add a torrent and tag it.
+    let bytes = make_torrent("c2-list.bin");
+    let params = SessionAddTorrentParams::bytes(bytes);
+    let hash = add_and_wait(&session, params).await;
+
+    let body = format!("hashes={hash}&tags=sonarr,kids");
+    let (status, _) = post_form(&router, "/api/v2/torrents/addTags", &sid, &body).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Let set_tags settle.
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // GET /torrents/info and find our row.
+    let (status, body) = get(&router, "/api/v2/torrents/info", &sid).await;
+    assert_eq!(status, StatusCode::OK);
+    let v: Value = serde_json::from_slice(&body).expect("parse JSON");
+    let rows = v.as_array().expect("info returns JSON array");
+    let row = rows
+        .iter()
+        .find(|r| r["hash"].as_str() == Some(hash.as_str()))
+        .expect("torrent row present in /torrents/info");
+
+    // The `tags` field must be a comma-joined string. Order mirrors the
+    // Vec<String> order — `add_tags_to_torrents` appends to existing tags
+    // via `TorrentHandle::set_tags(union)` so we sort both sides to make
+    // the assertion order-independent.
+    let tags_str = row["tags"].as_str().expect("tags is a string");
+    let mut got: Vec<&str> = tags_str.split(',').collect();
+    got.sort_unstable();
+    assert_eq!(
+        got,
+        vec!["kids", "sonarr"],
+        "expected both tags joined by comma"
+    );
+}

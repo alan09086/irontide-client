@@ -148,7 +148,10 @@ impl From<&TorrentStats> for QbtTorrent {
             // M170: surface the resolved qBt-compat category label; empty
             // string (not `null`) when absent matches qBt's JSON shape.
             category: s.category.clone().unwrap_or_default(),
-            tags: String::new(),
+            // M171: qBt wire convention is a comma-separated string (not
+            // a JSON array) for `tags`. Empty vec renders as empty string,
+            // matching qBt's untagged-torrent shape.
+            tags: s.tags.join(","),
             auto_tmm: false,
             priority: 0,
             added_on: s.added_time,
@@ -362,5 +365,30 @@ mod tests {
         let mut s = sample_stats();
         s.error = "disk full".into();
         assert_eq!(qbt_state_string(&s), "error");
+    }
+
+    // M171 C2: QbtTorrent.tags mirrors TorrentStats.tags as comma-joined string.
+
+    #[test]
+    fn qbt_torrent_tags_empty_when_no_tags() {
+        let s = sample_stats();
+        let t = QbtTorrent::from(&s);
+        assert_eq!(t.tags, "");
+    }
+
+    #[test]
+    fn qbt_torrent_tags_comma_joined_from_stats() {
+        let mut s = sample_stats();
+        s.tags = vec!["sonarr".to_string(), "kids".to_string()];
+        let t = QbtTorrent::from(&s);
+        assert_eq!(t.tags, "sonarr,kids");
+    }
+
+    #[test]
+    fn qbt_torrent_tags_single_value() {
+        let mut s = sample_stats();
+        s.tags = vec!["only".to_string()];
+        let t = QbtTorrent::from(&s);
+        assert_eq!(t.tags, "only");
     }
 }
