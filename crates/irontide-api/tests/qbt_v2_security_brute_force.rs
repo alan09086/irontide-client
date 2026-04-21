@@ -42,8 +42,8 @@ const PROXY_PEER: SocketAddr = SocketAddr::new(
 /// brute-force settings, whitelists, etc.
 async fn test_session(customize: impl FnOnce(&mut Settings)) -> irontide::session::SessionHandle {
     let n = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let resume_dir = std::env::temp_dir()
-        .join(format!("irontide-qbt-brute-{}-{}", std::process::id(), n));
+    let resume_dir =
+        std::env::temp_dir().join(format!("irontide-qbt-brute-{}-{}", std::process::id(), n));
     let _ = std::fs::remove_dir_all(&resume_dir);
 
     let mut settings = Settings {
@@ -175,7 +175,11 @@ async fn success_clears_failure_counter() {
             .oneshot(login_req_peer("admin", "wrongpw"))
             .await
             .unwrap();
-        assert_eq!(resp.status(), StatusCode::FORBIDDEN, "post-reset attempt {i}");
+        assert_eq!(
+            resp.status(),
+            StatusCode::FORBIDDEN,
+            "post-reset attempt {i}"
+        );
     }
 
     // Correct login still works (pending=0 now; 4 failures, under cap).
@@ -201,10 +205,7 @@ async fn ban_expires_after_ban_duration_secs() {
         let _g = reg.check_and_admit(ip, 5, 3_600).expect("admit");
         reg.record_failure(ip, 5, 3_600);
     }
-    assert!(
-        reg.is_banned(ip),
-        "IP must be banned after 5 failures"
-    );
+    assert!(reg.is_banned(ip), "IP must be banned after 5 failures");
 
     // Admission denied during the ban window.
     assert!(
@@ -308,7 +309,11 @@ async fn bypass_local_auth_skips_check_on_127_0_0_1() {
         .await
         .unwrap();
     let (status, body, headers) = resp_parts(resp).await;
-    assert_eq!(status, StatusCode::OK, "loopback bypass must skip auth; body: {body}");
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "loopback bypass must skip auth; body: {body}"
+    );
     assert!(
         headers.get(header::SET_COOKIE).is_some(),
         "loopback bypass must still mint an SID"

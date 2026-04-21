@@ -356,20 +356,14 @@ impl BruteForceRegistry {
     /// no entry. Test + diagnostic use only.
     #[must_use]
     pub fn attempts_for(&self, ip: IpAddr) -> u32 {
-        self.inner
-            .read()
-            .get(&ip)
-            .map_or(0, |state| state.attempts)
+        self.inner.read().get(&ip).map_or(0, |state| state.attempts)
     }
 
     /// Current in-flight (pending) count for the given IP. Test +
     /// diagnostic use only.
     #[must_use]
     pub fn pending_for(&self, ip: IpAddr) -> u32 {
-        self.inner
-            .read()
-            .get(&ip)
-            .map_or(0, |state| state.pending)
+        self.inner.read().get(&ip).map_or(0, |state| state.pending)
     }
 
     /// `true` when the IP is currently banned.
