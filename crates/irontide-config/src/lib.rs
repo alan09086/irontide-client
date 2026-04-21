@@ -456,6 +456,23 @@ pub enum QbtFileMigration {
 /// Lane A — Lane B owns that plumbing. Unknown fields in the on-disk TOML
 /// are preserved verbatim.
 ///
+/// # Security — `.bak` retains the plaintext password indefinitely
+///
+/// On the first run that actually rewrites the file, [`write_config_bytes_atomic`]
+/// leaves a one-time `<path>.bak` snapshot of the PRE-MIGRATION file, chmod
+/// `0o600`. That snapshot **still contains the legacy plaintext password**.
+/// Subsequent migration passes are no-ops (the live file is already hashed)
+/// and do NOT refresh the `.bak`, so the plaintext lingers for as long as the
+/// operator leaves the backup in place. This is the intentional trade: keep
+/// an auditable pre-migration artefact for rollback, at the cost of plaintext
+/// sitting on disk.
+///
+/// **Operators who want to fully retire the plaintext should delete
+/// `<path>.bak` after verifying the daemon authenticates with the migrated
+/// hash on the next restart.** A future milestone (M172 future hardening, see
+/// the M172a design doc) will add an opt-in "shred `.bak` after N successful
+/// authenticates" mode; Lane A does not ship that.
+///
 /// # Failure semantics
 ///
 /// Every filesystem / hash error is returned as `Err` — the caller (the CLI
