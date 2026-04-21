@@ -115,14 +115,17 @@ pub fn build_router(session: Arc<SessionHandle>) -> Router {
             post(tags::remove_from_torrents),
         );
 
-    // Lane D (M171) inserts here: `let app_write       = Router::new().route("/api/v2/app/setPreferences", ...);`
+    // Lane D (M171): setPreferences is the only `app` write endpoint today;
+    // shutdown lands in a later milestone.
+    let app_write = Router::new()
+        .route("/api/v2/app/setPreferences", post(app::set_preferences));
 
     let protected = app_read
         .merge(torrent_core)
         .merge(category_routes)
         .merge(torrent_details)
         .merge(torrent_tags)
-        // Lane D (M171): .merge(app_write)
+        .merge(app_write)
         .route_layer(from_fn_with_state(state.clone(), auth::require_sid))
         .with_state(state.clone());
 
