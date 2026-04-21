@@ -8,9 +8,14 @@
 //! - `POST /api/v2/app/setPreferences` — writable-field allowlist patch
 //!   (M171 D3). Accepts JSON body or qBt's legacy `json=<string>` URL-encoded
 //!   form. Validates via [`Settings::validate`] and applies via
-//!   [`apply_settings`](irontide::session::SessionHandle::apply_settings).
+//!   [`apply_settings_classified`](irontide::session::SessionHandle::apply_settings_classified);
+//!   restart-required fields are surfaced as the `X-IronTide-Restart-Pending`
+//!   response header (M171 D3.5) — comma-joined list so clients can render a
+//!   "restart to apply" UX affordance.
 
 use axum::extract::State;
+use axum::http::{HeaderName, HeaderValue};
+use axum::response::{IntoResponse, Response};
 
 use irontide::prelude::EncryptionMode;
 use irontide::session::MaxRatioAction;
@@ -143,16 +148,22 @@ struct QbtPreferencesPatch {
     max_inactive_seeding_time_enabled: Option<bool>,
 }
 
-/// `POST /api/v2/app/setPreferences` (M171 D3).
+/// `POST /api/v2/app/setPreferences` (M171 D3 + D3.5).
 ///
 /// qBt's WebUI v2 historically POSTs this as
 /// `application/x-www-form-urlencoded` with a single `json=<stringified
 /// JSON>` field, but recent `*arr` versions just POST an
 /// `application/json` body. The handler accepts either.
+///
+/// When any field in the patch requires a session restart to take effect
+/// (listen_port, dht, lsd, pex, encryption, anonymous_mode, save_path) the
+/// response carries an `X-IronTide-Restart-Pending: <comma-joined-fields>`
+/// header. Immediate fields (rate limiters, peer cap, queueing, ratio
+/// action, create_subfolder, auto_tmm, max_ratio) produce no header.
 pub async fn set_preferences(
     State(state): State<QbtState>,
     req: axum::extract::Request,
-) -> Result<QbtResponse, QbtError> {
+) -> Result<Response, QbtError> {
     let bytes = axum::body::to_bytes(req.into_body(), 1024 * 1024)
         .await
         .map_err(|e| QbtError::BadRequest(format!("read body: {e}")))?;
@@ -171,13 +182,25 @@ pub async fn set_preferences(
         .validate()
         .map_err(|e| QbtError::BadRequest(format!("invalid settings: {e}")))?;
 
-    state
+    let applied = state
         .session
-        .apply_settings(settings)
+        .apply_settings_classified(settings)
         .await
         .map_err(|e| QbtError::Internal(format!("apply settings: {e}")))?;
 
-    Ok(QbtResponse::ok())
+    let mut response = QbtResponse::ok().into_response();
+    if !applied.restart_required.is_empty() {
+        // All field names are `&'static str` ASCII identifiers, so the
+        // joined value is always a valid ASCII HeaderValue.
+        let value = applied.restart_required.join(",");
+        let header_value = HeaderValue::try_from(value)
+            .expect("restart_required field names are ASCII identifiers");
+        response.headers_mut().insert(
+            HeaderName::from_static("x-irontide-restart-pending"),
+            header_value,
+        );
+    }
+    Ok(response)
 }
 
 /// Detect JSON body first, fall back to qBt's legacy `json=<...>` URL-encoded

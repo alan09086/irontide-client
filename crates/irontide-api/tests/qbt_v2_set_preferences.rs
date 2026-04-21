@@ -433,6 +433,69 @@ fn urlencoding_encode(s: &str) -> String {
     out
 }
 
+// ── D3.5 — X-IronTide-Restart-Pending header ─────────────────────────
+
+#[tokio::test]
+async fn set_preferences_only_rate_limits_no_restart_header() {
+    let (router, sid) = enabled_router_with(|_| {}).await;
+    let resp = post_json(
+        &router,
+        &sid,
+        serde_json::json!({"dl_limit": 500_000, "up_limit": 600_000}),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(
+        resp.headers().get("x-irontide-restart-pending").is_none(),
+        "rate-limit-only patch must NOT flag a restart"
+    );
+}
+
+#[tokio::test]
+async fn set_preferences_listen_port_flags_restart_required() {
+    // Fixture starts with listen_port=0; patching to 6881 is a real change
+    // and must flag the port rebind as restart-required.
+    let (router, sid) = enabled_router_with(|_| {}).await;
+    let resp = post_json(&router, &sid, serde_json::json!({"listen_port": 6881})).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let header = resp
+        .headers()
+        .get("x-irontide-restart-pending")
+        .expect("listen_port change must flag a restart")
+        .to_str()
+        .expect("header value is ASCII");
+    assert_eq!(header, "listen_port");
+}
+
+#[tokio::test]
+async fn set_preferences_multi_restart_fields_header_comma_joined() {
+    // Fixture starts with enable_dht=false and listen_port=0. Flipping both
+    // via one patch must emit both field names, comma-joined, in the header.
+    let (router, sid) = enabled_router_with(|s| {
+        s.enable_dht = false;
+    })
+    .await;
+    let resp = post_json(
+        &router,
+        &sid,
+        serde_json::json!({"listen_port": 6881, "dht": true}),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let header = resp
+        .headers()
+        .get("x-irontide-restart-pending")
+        .expect("multi-field restart change must flag a restart")
+        .to_str()
+        .expect("header value is ASCII");
+    // Order is deterministic (listen_port classifier runs before dht), but
+    // we parse defensively so the test survives a future reclassification.
+    let fields: std::collections::HashSet<&str> = header.split(',').collect();
+    assert!(fields.contains("listen_port"), "listen_port missing from {header:?}");
+    assert!(fields.contains("dht"), "dht missing from {header:?}");
+    assert_eq!(fields.len(), 2, "no spurious fields in {header:?}");
+}
+
 // ── Auth gate ─────────────────────────────────────────────────────────
 
 #[tokio::test]
