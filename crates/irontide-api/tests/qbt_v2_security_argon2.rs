@@ -429,6 +429,87 @@ async fn set_preferences_web_ui_password_hashes_not_stored_plaintext() {
     );
 }
 
+// ── Username-enumeration timing oracle (M172a Lane A review fix) ───────
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn username_mismatch_runs_timing_equalizing_argon2_verify() {
+    // M172a Lane A review fix (Fix 2): an attacker must not be able to
+    // enumerate valid usernames by wall-clock-timing a sequence of logins.
+    // qBt's factory default `admin` makes this especially juicy if we short-
+    // circuit on username mismatch — one fast response vs one slow response
+    // would leak "user admin is still configured".
+    //
+    // This test verifies WALL-CLOCK PARITY, not a constant-time guarantee.
+    // Constant-time assertions are flaky on CI (tokio scheduler jitter,
+    // system load, thermal throttling). We assert a factor-of-3 ceiling
+    // between fastest and slowest of the three paths — if we ever see a
+    // 10x+ spread here, the short-circuit has probably been re-introduced.
+    //
+    // Run on a multi-thread runtime so argon2's spawn_blocking has somewhere
+    // to run in parallel; single-thread `flavor = "current_thread"` would
+    // serialise every verify and the ratio stops being interesting.
+
+    use std::time::Instant;
+
+    let session = test_session(|_| {}).await;
+    let router = build_router(session);
+
+    // Warmup: the very first argon2 verify in the process pays page-fault
+    // costs (parameter setup, allocator warmup). Discard it so the three
+    // measurements below are comparable.
+    let _ = router
+        .clone()
+        .oneshot(login_req("admin", "adminadmin"))
+        .await
+        .expect("warmup");
+
+    async fn time_login(
+        router: axum::Router,
+        user: &str,
+        pass: &str,
+    ) -> (StatusCode, std::time::Duration) {
+        let start = Instant::now();
+        let resp = router
+            .oneshot(login_req(user, pass))
+            .await
+            .expect("send login");
+        let elapsed = start.elapsed();
+        let status = resp.status();
+        // Drain body so we don't measure transport-local teardown as part of
+        // a later call.
+        let _ = resp.into_body().collect().await.expect("drain body");
+        (status, elapsed)
+    }
+
+    let (s_wrong_user, t_wrong_user) =
+        time_login(router.clone(), "nonexistent", "adminadmin").await;
+    let (s_wrong_pw, t_wrong_pw) = time_login(router.clone(), "admin", "wrongpassword").await;
+    let (s_ok, t_ok) = time_login(router.clone(), "admin", "adminadmin").await;
+
+    assert_eq!(s_wrong_user, StatusCode::FORBIDDEN);
+    assert_eq!(s_wrong_pw, StatusCode::FORBIDDEN);
+    assert_eq!(s_ok, StatusCode::OK);
+
+    let min = t_wrong_user.min(t_wrong_pw).min(t_ok);
+    let max = t_wrong_user.max(t_wrong_pw).max(t_ok);
+
+    // Conservative: factor of 3 between the three elapsed times. Tight
+    // bounds (1.3x) are the ACTUAL constant-time property we want but are
+    // flaky under CI load. This assertion is a regression guard — if a
+    // future refactor re-adds the `if username != cfg.username { return
+    // Forbidden; }` short-circuit, the wrong-user timing will be
+    // microseconds while the wrong-password timing will be ~100 ms, which
+    // blows past 3x trivially. Tighten this bound only when the overall
+    // test suite runs on dedicated hardware.
+    let ratio = max.as_nanos() as f64 / min.as_nanos().max(1) as f64;
+    assert!(
+        ratio < 3.0,
+        "wall-clock spread between wrong-user / wrong-pw / ok logins must \
+         stay within 3x to defeat username enumeration: wrong_user={t_wrong_user:?}, \
+         wrong_pw={t_wrong_pw:?}, ok={t_ok:?}, ratio={ratio:.2}x"
+    );
+}
+
 // SocketAddr import kept for future Lane B/C tests that need to compare the
 // mock peer against a CIDR whitelist.
 #[allow(dead_code)]

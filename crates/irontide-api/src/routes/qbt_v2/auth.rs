@@ -11,8 +11,14 @@
 //! `argon2::Argon2::verify_password`, which is internally constant-time —
 //! closing the `!=` timing-side-channel gap M168 had. Concurrent verifies
 //! are bounded by a shared `tokio::sync::Semaphore` so a login flood can
-//! consume at most `permits × 19 MiB` of memory. CSRF + brute-force ban
-//! land in Lanes B and C of M172.
+//! consume at most `permits × 19 MiB` of memory. The verify itself runs on
+//! the blocking pool (see [`login`]) so the async event loop is never
+//! stalled by the ~80-120 ms of argon2 CPU work. The username-equality
+//! check is DELIBERATELY followed by a dummy argon2 verify on mismatch so
+//! the total wall-clock cost of wrong-user / wrong-password / correct-user
+//! paths are equalised — closing the classic "fast-fail on unknown username"
+//! enumeration oracle. CSRF + brute-force ban land in Lanes B and C of
+//! M172.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -26,9 +32,18 @@ use axum_extra::extract::CookieJar;
 use serde::Deserialize;
 use zeroize::Zeroizing;
 
+use irontide::session::DEFAULT_ADMINADMIN_HASH;
+
 use super::response::{QbtError, QbtResponse};
 use super::session_store::SessionStore;
 use super::state::QbtState;
+
+/// Placeholder password fed into the argon2 verify on the username-mismatch
+/// timing-equaliser path. The bytes never match anything (the real hash is
+/// `DEFAULT_ADMINADMIN_HASH` of the string `"adminadmin"`), so this will always
+/// verify to `false`; the only observable is the wall-clock cost which by
+/// design matches the real-password path.
+const USERNAME_MISMATCH_EQUALIZER_INPUT: &str = "wrong-password-timing-equalizer";
 
 /// Form body for `POST /api/v2/auth/login`.
 ///
@@ -53,17 +68,38 @@ pub struct LoginForm {
 ///
 /// # M172a verification flow
 ///
-/// 1. Acquire a permit from `state.argon2_semaphore` (bounds concurrent
-///    argon2 CPU/memory consumption).
-/// 2. Parse `settings.qbt_compat.password_hash` as a PHC string. A malformed
-///    hash is treated identically to a mismatch (C2) — returns 403 `Fails.`
-///    without leaking the distinct failure mode.
-/// 3. If the hash is empty, fall back to constant-time plaintext compare
-///    against the legacy `settings.qbt_compat.password` (grandfather path:
-///    serves the in-flight boot where `migrate_qbt_credentials` failed but
-///    kept the plaintext in memory).
-/// 4. Zero the plaintext form buffer immediately after the verify, regardless
+/// 1. Capture the `username == cfg.username` boolean but do NOT short-circuit
+///    yet — a fast-fail on username mismatch would leak "unknown user" vs
+///    "user exists, wrong password" via wall-clock timing (argon2 costs
+///    80-120 ms). The real qBt factory default is `admin`, so any operator
+///    who kept the default would be fingerprint-enumerable.
+/// 2. Acquire a permit from `state.argon2_semaphore` (bounds concurrent
+///    argon2 CPU/memory consumption, even across the blocking pool).
+/// 3. Dispatch the argon2 verify to [`tokio::task::spawn_blocking`]. On a
+///    `current_thread` runtime, calling `verify_password` inline would stall
+///    the entire async event loop for ~100 ms. On a multi-threaded runtime
+///    with N workers, a burst of N inline verifies starves every other task.
+///    The permit is held across the spawn so the total in-flight argon2
+///    work stays bounded.
+/// 4. If `username_matches` is false, feed `DEFAULT_ADMINADMIN_HASH` plus a
+///    throwaway password into the verify so the wall-clock cost matches the
+///    real-password path. The verify will always return `false`; the branch
+///    below ignores the result when `!username_matches`.
+/// 5. Branch on `username_matches && verified` only AFTER the verify
+///    completes, so the three outcomes (wrong user / wrong pw / both-right)
+///    resolve in statistically similar time.
+/// 6. Zero the plaintext form buffer immediately after the verify, regardless
 ///    of outcome.
+///
+/// Malformed PHC hashes short-circuit to `false` inside the blocking task
+/// BEFORE invoking the argon2 verify — this is a server-side configuration
+/// leak (operator's own `password_hash` is corrupt), not an attacker-
+/// distinguishable external oracle. We accept the opacity-vs-timing trade:
+/// malformed hashes should be caught by `Settings::validate()` at startup
+/// and be a near-zero-probability production state, whereas a correctly
+/// configured server's user-mismatch / password-mismatch paths must run in
+/// constant wall-clock time (G1 is about external attackers, not
+/// misconfiguration forensics).
 ///
 /// # Rejected paths
 ///
@@ -73,6 +109,13 @@ pub struct LoginForm {
 /// and C that use the client IP for trust-hop resolution and brute-force
 /// rate-limiting. See `ApiServer::run` at `crates/irontide-api/src/lib.rs`
 /// for the serve site.
+///
+/// # Errors
+///
+/// Returns [`QbtError::Forbidden`] on wrong credentials (including username
+/// mismatch and malformed stored hash). Returns [`QbtError::Internal`] on
+/// infrastructure failures: settings-read failure, semaphore poison, argon2
+/// worker panic (a `JoinError` on the blocking task).
 pub async fn login(
     State(state): State<QbtState>,
     ConnectInfo(_peer): ConnectInfo<SocketAddr>,
@@ -100,68 +143,141 @@ pub async fn login(
     // is the substantive one.
     let plaintext = Zeroizing::new(form.password);
 
-    if form.username != cfg.username {
-        return Err(QbtError::Forbidden);
-    }
+    // Capture the equality bit BUT DO NOT BRANCH YET — short-circuiting here
+    // is the timing-oracle bug we are closing. See the module-level threat
+    // model and the step-by-step rustdoc above.
+    let username_matches = form.username == cfg.username;
 
     // G2: bounded concurrent verifications — protects peak memory under flood.
-    let _permit = state
+    // `acquire_owned` so the permit survives the move into `spawn_blocking`.
+    let permit = state
         .argon2_semaphore
         .clone()
         .acquire_owned()
         .await
         .map_err(|e| QbtError::Internal(format!("argon2 semaphore closed: {e}")))?;
 
-    if verify_qbt_password(cfg, &plaintext) {
-        let sid = state
-            .store
-            .create(form.username.clone())
-            .map_err(|e| QbtError::Internal(format!("token gen: {e}")))?;
-
-        // Cookie attributes: HttpOnly (JS can't read it), Path=/ (sent to all
-        // sub-paths), SameSite=Lax (blocks CSRF from cross-site POST). Secure
-        // deferred to M172b+ when TLS termination lands.
-        let cookie_value = format!("SID={sid}; HttpOnly; Path=/; SameSite=Lax");
-        Ok(QbtResponse::Ok {
-            set_cookie: Some(cookie_value),
-        })
-    } else {
-        Err(QbtError::Forbidden)
+    // Grandfather path: hash empty + plaintext set. The compare is O(len)
+    // nanoseconds — cheap enough to stay on the async side even for the
+    // timing-equalised dummy branch. We run the compare against the LEGACY
+    // plaintext regardless of `username_matches` so both paths take the same
+    // handful of nanoseconds inside this mode.
+    if cfg.password_hash.is_empty() {
+        let verified = if plaintext.len() == cfg.password.len() {
+            constant_time_eq(plaintext.as_bytes(), cfg.password.as_bytes())
+        } else {
+            // Equaliser: still walk `cfg.password.len()` bytes in a
+            // constant-time compare against itself so the branch cost does
+            // not leak the plaintext length. Result is ignored.
+            let _ = constant_time_eq(cfg.password.as_bytes(), cfg.password.as_bytes());
+            false
+        };
+        drop(permit);
+        return finalise_login(&state, username_matches && verified, &form.username);
     }
+
+    // Normal path: argon2id verify, routed through `spawn_blocking` so the
+    // ~80-120 ms of CPU work does not stall the tokio scheduler (worst on a
+    // `current_thread` runtime, but also harmful on multi-thread runtimes
+    // with ≤ semaphore-permits workers).
+    let hash_to_verify: String = if username_matches {
+        cfg.password_hash.clone()
+    } else {
+        DEFAULT_ADMINADMIN_HASH.to_owned()
+    };
+    let pw_to_verify: Zeroizing<String> = if username_matches {
+        Zeroizing::new(plaintext.as_str().to_owned())
+    } else {
+        Zeroizing::new(USERNAME_MISMATCH_EQUALIZER_INPUT.to_owned())
+    };
+
+    let verify_result: Result<bool, argon2::password_hash::Error> =
+        tokio::task::spawn_blocking(move || {
+            verify_qbt_password_blocking(&hash_to_verify, &pw_to_verify)
+        })
+        .await
+        .map_err(|_| QbtError::Internal("argon2 worker panicked".to_owned()))?;
+
+    drop(permit);
+
+    // A `password_hash::Error` here means the argon2 crate rejected the
+    // operation for a reason OTHER than `Error::Password` (which is already
+    // folded into `Ok(false)` inside `verify_qbt_password_blocking`). Treat
+    // as infrastructure failure — the operator should see a 500, not a 403
+    // masquerading as wrong-creds, so they can diagnose the misconfiguration.
+    let verified = verify_result.map_err(|e| QbtError::Internal(format!("argon2 verify: {e}")))?;
+
+    // Authoritative branch: BOTH username matched AND password verified. The
+    // work above (argon2 dummy verify on mismatch) is not skipped because
+    // skipping it is exactly the timing oracle we're closing.
+    finalise_login(&state, username_matches && verified, &form.username)
 }
 
-/// Verify `plaintext` against the configured credentials (M172a).
+/// Complete the login flow: issue a session token on success, or return
+/// opaque `QbtError::Forbidden` on failure. Extracted so both the normal and
+/// grandfather paths terminate through the same code.
+fn finalise_login(
+    state: &QbtState,
+    authenticated: bool,
+    username: &str,
+) -> Result<QbtResponse, QbtError> {
+    if !authenticated {
+        return Err(QbtError::Forbidden);
+    }
+    let sid = state
+        .store
+        .create(username.to_owned())
+        .map_err(|e| QbtError::Internal(format!("token gen: {e}")))?;
+
+    // Cookie attributes: HttpOnly (JS can't read it), Path=/ (sent to all
+    // sub-paths), SameSite=Lax (blocks CSRF from cross-site POST). Secure
+    // deferred to M172b+ when TLS termination lands.
+    let cookie_value = format!("SID={sid}; HttpOnly; Path=/; SameSite=Lax");
+    Ok(QbtResponse::Ok {
+        set_cookie: Some(cookie_value),
+    })
+}
+
+/// Blocking-pool argon2id verify (M172a).
 ///
-/// Prefers the argon2id PHC hash in `cfg.password_hash`. Any hash-side error
-/// (malformed PHC string, parameter mismatch, verify mismatch) is mapped to
-/// `false` — indistinguishable from a wrong-password rejection (C2, no side
-/// channel on malformed hashes).
+/// Invoked only via [`tokio::task::spawn_blocking`] so the ~80-120 ms of
+/// CPU work does not stall the async scheduler. Returns:
+/// - `Ok(true)` on a successful verify,
+/// - `Ok(false)` on a mismatch (the argon2 crate's `Error::Password` case)
+///   OR on a malformed PHC string (C2, see below),
+/// - `Err(...)` on any other `password_hash::Error` — treated by the caller
+///   as a 500 because it indicates a runtime misconfiguration rather than a
+///   wrong password.
 ///
-/// Falls back to constant-time plaintext compare against `cfg.password` when
-/// the hash is empty — the grandfather path for a boot where in-memory
-/// migration failed.
-fn verify_qbt_password(cfg: &irontide::session::QbtCompatSettings, plaintext: &str) -> bool {
+/// **C2 note (server-side opacity vs. timing leak):** a malformed PHC string
+/// short-circuits to `Ok(false)` *before* the verify call. This means the
+/// total wall-clock cost of "malformed hash + any password" is noticeably
+/// shorter than a correct verify — a timing leak to the remote attacker
+/// *if and only if* the operator managed to install an unparseable hash
+/// (Settings::validate() should catch this at startup, so the probability
+/// is near-zero in production). The alternative (always calling
+/// `verify_password` even when we know the parse failed) would need a dummy
+/// `PasswordHash` we could reliably construct; argon2 does not expose such a
+/// helper. We accept the trade; see the rustdoc on [`login`] for the full
+/// rationale.
+fn verify_qbt_password_blocking(
+    password_hash: &str,
+    plaintext: &Zeroizing<String>,
+) -> Result<bool, argon2::password_hash::Error> {
     use argon2::Argon2;
-    use argon2::password_hash::{PasswordHash, PasswordVerifier};
+    use argon2::password_hash::{Error as PhcError, PasswordHash, PasswordVerifier};
 
-    if !cfg.password_hash.is_empty() {
-        let Ok(parsed) = PasswordHash::new(&cfg.password_hash) else {
-            // C2: malformed hash → indistinguishable from a wrong-password
-            // result. Do not leak via distinct error.
-            return false;
-        };
-        return Argon2::default()
-            .verify_password(plaintext.as_bytes(), &parsed)
-            .is_ok();
+    let parsed = match PasswordHash::new(password_hash) {
+        Ok(p) => p,
+        // C2: malformed operator-side hash. Opaque to the client; investigate
+        // via server-side logging (logged at the call site if needed).
+        Err(_) => return Ok(false),
+    };
+    match Argon2::default().verify_password(plaintext.as_bytes(), &parsed) {
+        Ok(()) => Ok(true),
+        Err(PhcError::Password) => Ok(false),
+        Err(other) => Err(other),
     }
-
-    // Legacy plaintext grandfather path: constant-time compare using subtle
-    // via argon2's re-export. Falls back to a byte-wise scan if lengths
-    // differ — any length difference is already a mismatch.
-    if plaintext.len() != cfg.password.len() {
-        return false;
-    }
-    constant_time_eq(plaintext.as_bytes(), cfg.password.as_bytes())
 }
 
 /// Byte-wise constant-time equality for equal-length slices.
