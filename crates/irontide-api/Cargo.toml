@@ -37,6 +37,11 @@ serde_urlencoded = "0.7"
 tokio = { workspace = true }
 tower-http = { version = "0.6", features = ["cors"] }
 tracing = { workspace = true }
+# M172a Lane A: argon2 + zeroize + CIDR + CPU-count for semaphore default.
+argon2 = { workspace = true }
+zeroize = { workspace = true }
+ipnet = { workspace = true }
+num_cpus = { workspace = true }
 
 # Web UI (behind "webui" feature)
 irontide-webui-assets = { path = "../irontide-webui-assets", version = "0.171.0", optional = true }
