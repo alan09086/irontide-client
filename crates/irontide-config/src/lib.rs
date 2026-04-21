@@ -339,6 +339,110 @@ pub fn load(config_path: Option<&Path>, cli_overrides: &ConfigFile) -> Result<Se
     Ok(settings)
 }
 
+/// Atomically write `config` to `path` with Unix `0o600` permissions and a
+/// one-time pre-existing `.bak` snapshot (M172a Lane A).
+///
+/// # Security semantics
+///
+/// The qBt-compat password hash lives in this file. Owner-only file permissions
+/// (`0o600`) are therefore a defence-in-depth requirement — `chmod` is applied
+/// to the tempfile *before* `NamedTempFile::persist` performs the atomic
+/// rename, so there is no window during which the target file is world- or
+/// group-readable.
+///
+/// A `.bak` snapshot of the previous on-disk contents is taken exactly once —
+/// the first time `save_config_atomic` is invoked on an existing file with no
+/// prior `.bak`. Subsequent writes do not overwrite the `.bak`; if an operator
+/// rolls back by renaming `.bak` back onto the primary path, the next write
+/// will create a fresh snapshot. The `.bak` is also permissioned `0o600`.
+///
+/// # Errors
+///
+/// Returns an error if the parent directory cannot be created, if serialisation
+/// fails, if `chmod` fails on the temp file, or if the atomic persist fails.
+pub fn save_config_atomic(path: &Path, config: &ConfigFile) -> Result<()> {
+    let serialized =
+        toml::to_string_pretty(config).context("failed to serialize config to TOML")?;
+    write_config_bytes_atomic(path, serialized.as_bytes())
+}
+
+/// Atomic-write + `0o600` + one-time `.bak` for an already-serialised byte
+/// buffer. Used by `save_config_atomic` and by `cmd_init`, which hand-rolls a
+/// commented-out TOML document via `toml_edit` that isn't a `ConfigFile`.
+///
+/// # Errors
+///
+/// See [`save_config_atomic`] — same failure modes.
+pub fn write_config_bytes_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create config directory: {parent:?}"))?;
+    }
+
+    // One-time `.bak` snapshot: copy the *existing* file before we overwrite it,
+    // but only if no `.bak` is present yet. Operators can roll back by renaming
+    // `.bak` onto the primary path and the next save_config_atomic will make a
+    // fresh snapshot.
+    if path.exists() {
+        let bak_path = bak_path_for(path);
+        if !bak_path.exists() {
+            std::fs::copy(path, &bak_path)
+                .with_context(|| format!("failed to snapshot config to {bak_path:?}"))?;
+            #[cfg(unix)]
+            apply_owner_only_perms(&bak_path)
+                .with_context(|| format!("failed to chmod 0600 {bak_path:?}"))?;
+        }
+    }
+
+    // Tempfile lives in the same directory as the target so the atomic
+    // rename is guaranteed to stay on one filesystem (matches M170/M171's
+    // registry write pattern).
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let mut tmp = tempfile::NamedTempFile::new_in(parent)
+        .with_context(|| format!("failed to create temp file in {parent:?}"))?;
+    std::io::Write::write_all(tmp.as_file_mut(), bytes)
+        .context("failed to write config body to temp file")?;
+    std::io::Write::flush(tmp.as_file_mut()).context("failed to flush temp file")?;
+    #[cfg(unix)]
+    apply_owner_only_perms(tmp.path())
+        .with_context(|| format!("failed to chmod 0600 temp config {:?}", tmp.path()))?;
+
+    tmp.persist(path)
+        .map_err(|e| anyhow::anyhow!("failed to atomically rename config to {path:?}: {e}"))?;
+
+    Ok(())
+}
+
+/// Path where `save_config_atomic` writes the one-time pre-existing snapshot.
+///
+/// Mirrors the `.bak` convention used by the M170 `CategoryRegistry` /
+/// M171 `TagRegistry`. Public for downstream tooling that wants to rotate or
+/// inspect the backup.
+#[must_use]
+pub fn bak_path_for(path: &Path) -> PathBuf {
+    let mut bak = path.as_os_str().to_owned();
+    bak.push(".bak");
+    PathBuf::from(bak)
+}
+
+/// Apply Unix owner-read-write-only (`0o600`) permissions to a path.
+///
+/// Separated out so the secret-bearing write paths (`save_config_atomic`) and
+/// the `.bak` snapshot path both use the identical mode. No-op on non-Unix —
+/// Windows does not model POSIX modes directly, and the registry-backed
+/// credential store is the right fix there (deferred).
+#[cfg(unix)]
+fn apply_owner_only_perms(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let perms = std::fs::Permissions::from_mode(0o600);
+    std::fs::set_permissions(path, perms)
+}
+
 /// Persist GUI-specific configuration back to the TOML file.
 ///
 /// Reads the existing file (if any), replaces the `[gui]` section, and
@@ -363,22 +467,7 @@ pub fn save_gui_config(config_path: Option<&Path>, gui: &GuiConfig) -> Result<()
 
     config.gui = gui.clone();
 
-    let serialized =
-        toml::to_string_pretty(&config).context("failed to serialize config to TOML")?;
-
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create config directory: {parent:?}"))?;
-    }
-
-    // Write atomically: write to a sibling temp file, then rename.
-    let tmp_path = path.with_extension("toml.tmp");
-    std::fs::write(&tmp_path, &serialized)
-        .with_context(|| format!("failed to write temp config file: {tmp_path:?}"))?;
-    std::fs::rename(&tmp_path, &path)
-        .with_context(|| format!("failed to rename temp config to {path:?}"))?;
-
-    Ok(())
+    save_config_atomic(&path, &config)
 }
 
 /// Persist `[session]` download directory and resume directory to the TOML file.
@@ -407,21 +496,7 @@ pub fn save_session_download_dir(
 
     config.session.download_dir = Some(download_dir.to_path_buf());
 
-    let serialized =
-        toml::to_string_pretty(&config).context("failed to serialize config to TOML")?;
-
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create config directory: {parent:?}"))?;
-    }
-
-    let tmp_path = path.with_extension("toml.tmp");
-    std::fs::write(&tmp_path, &serialized)
-        .with_context(|| format!("failed to write temp config file: {tmp_path:?}"))?;
-    std::fs::rename(&tmp_path, &path)
-        .with_context(|| format!("failed to rename temp config to {path:?}"))?;
-
-    Ok(())
+    save_config_atomic(&path, &config)
 }
 
 // ── Runtime construction ────────────────────────────────────────────
@@ -845,8 +920,10 @@ max_peers_per_torrent = 50
 
     #[test]
     fn round_trip_resume_dir_through_config() {
-        let mut settings = Settings::default();
-        settings.resume_data_dir = Some(PathBuf::from("/data/resume"));
+        let settings = Settings {
+            resume_data_dir: Some(PathBuf::from("/data/resume")),
+            ..Settings::default()
+        };
         let config = ConfigFile::from_settings(&settings);
         assert_eq!(
             config.session.resume_dir,
@@ -983,5 +1060,112 @@ listen_port = 42020
         assert_eq!(reloaded.gui.column_order, gui.column_order);
         assert_eq!(reloaded.gui.column_visibility, gui.column_visibility);
         assert_eq!(reloaded.gui.column_widths, gui.column_widths);
+    }
+
+    // ── M172a Lane A: save_config_atomic ─────────────────────────────
+
+    #[test]
+    fn save_config_atomic_happy_path() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let path = dir.path().join("config.toml");
+
+        let config = ConfigFile {
+            session: SessionConfig {
+                listen_port: Some(12345),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        save_config_atomic(&path, &config).expect("happy-path write should succeed");
+
+        assert!(path.exists(), "atomic write must materialise the target");
+        let body = std::fs::read_to_string(&path).expect("read back");
+        let parsed: ConfigFile = toml::from_str(&body).expect("valid TOML emitted");
+        assert_eq!(parsed.session.listen_port, Some(12345));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn save_config_atomic_applies_chmod_0600_on_unix() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let path = dir.path().join("config.toml");
+
+        save_config_atomic(&path, &ConfigFile::default()).expect("write should succeed");
+
+        let mode = std::fs::metadata(&path)
+            .expect("stat written config")
+            .permissions()
+            .mode();
+        // Permissions may include file-type bits on some platforms; mask to the
+        // low 9 rwx bits we actually set.
+        assert_eq!(
+            mode & 0o777,
+            0o600,
+            "expected 0o600, got {:o}",
+            mode & 0o777
+        );
+    }
+
+    #[test]
+    fn bak_created_on_first_migration_only() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let path = dir.path().join("config.toml");
+        let bak = super::bak_path_for(&path);
+
+        // Pre-seed a v1 file on disk (simulates a pre-M172a config).
+        std::fs::write(&path, "[session]\nlisten_port = 11111\n")
+            .expect("pre-seed config");
+
+        let cfg_a = ConfigFile {
+            session: SessionConfig {
+                listen_port: Some(22222),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        save_config_atomic(&path, &cfg_a).expect("first write");
+        assert!(bak.exists(), "first rewrite must create .bak");
+        let bak_body_first =
+            std::fs::read_to_string(&bak).expect("read .bak after first write");
+        assert!(
+            bak_body_first.contains("11111"),
+            "expected original pre-seeded config in .bak, got: {bak_body_first}"
+        );
+
+        // Second write must NOT overwrite the existing .bak.
+        let cfg_b = ConfigFile {
+            session: SessionConfig {
+                listen_port: Some(33333),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        save_config_atomic(&path, &cfg_b).expect("second write");
+        let bak_body_second =
+            std::fs::read_to_string(&bak).expect("read .bak after second write");
+        assert_eq!(
+            bak_body_first, bak_body_second,
+            ".bak must be snapshot-on-first-write"
+        );
+    }
+
+    #[test]
+    fn save_config_atomic_propagates_tempfile_failure() {
+        // The parent "directory" here is actually a regular file — creating a
+        // sibling tempfile must fail because you cannot create a file inside
+        // a non-directory. Works on every platform, no platform-gated perm
+        // bits, no skip-if-root dance.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let blocker = dir.path().join("blocker");
+        std::fs::write(&blocker, b"not a directory").expect("create blocker file");
+
+        let path = blocker.join("config.toml");
+        let result = save_config_atomic(&path, &ConfigFile::default());
+
+        assert!(
+            result.is_err(),
+            "write into a non-directory parent should fail, got: {result:?}"
+        );
     }
 }
