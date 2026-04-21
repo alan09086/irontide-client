@@ -549,7 +549,7 @@ pub async fn transfer_info(State(state): State<QbtState>) -> Result<QbtResponse,
         up_info_speed: up_rate,
         up_info_data: up_total,
         connection_status,
-        dht_nodes: 0, // FIXME(M171): expose DHT node count on SessionHandle
+        dht_nodes: state.session.dht_node_count().await.unwrap_or(0) as u64,
         dl_rate_limit: -1,
         up_rate_limit: -1,
     };
