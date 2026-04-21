@@ -430,6 +430,88 @@ pub fn bak_path_for(path: &Path) -> PathBuf {
     PathBuf::from(bak)
 }
 
+/// Outcome of [`migrate_qbt_credentials_in_file`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QbtFileMigration {
+    /// No file, no `[qbt_compat]` section, or `password_hash` already present —
+    /// nothing rewritten.
+    NoOp,
+    /// Plaintext hashed into `password_hash` and the file atomically rewritten.
+    Rewritten,
+}
+
+/// On-disk migration for the legacy `[qbt_compat] password = "..."` block
+/// (M172a A3 + C2).
+///
+/// Reads the TOML at `path`, and if a `[qbt_compat]` section exists with a
+/// non-empty `password` key and an empty-or-absent `password_hash`, hashes the
+/// plaintext via argon2id, replaces the two keys accordingly, and atomically
+/// rewrites the file through [`write_config_bytes_atomic`] (which applies the
+/// `0o600` chmod and one-time `.bak` snapshot). If no migration is needed —
+/// which is the overwhelmingly common path on fresh installs — the file is
+/// not touched.
+///
+/// Runs as a raw `toml::Value` edit rather than a `ConfigFile` round-trip so
+/// we don't need to wire `qbt_compat` into the curated `ConfigFile` shape in
+/// Lane A — Lane B owns that plumbing. Unknown fields in the on-disk TOML
+/// are preserved verbatim.
+///
+/// # Failure semantics
+///
+/// Every filesystem / hash error is returned as `Err` — the caller (the CLI
+/// or GUI wrapper) decides whether to log + continue or escalate. The daemon
+/// itself (`SessionHandle::start_full`) never calls this function directly;
+/// it only mutates the in-memory `Settings`. This separation matters for C2:
+/// a transient `write`-denied config directory must not crash the daemon.
+///
+/// # Errors
+///
+/// Returns an error if the file exists but is not valid TOML, if hashing
+/// fails, or if the atomic rewrite fails.
+pub fn migrate_qbt_credentials_in_file(path: &Path) -> Result<QbtFileMigration> {
+    if !path.exists() {
+        return Ok(QbtFileMigration::NoOp);
+    }
+    let text = std::fs::read_to_string(path)
+        .with_context(|| format!("failed to read config file: {path:?}"))?;
+    let mut doc: toml::Value = text
+        .parse()
+        .with_context(|| format!("config file is not valid TOML: {path:?}"))?;
+
+    // Carve out the `[qbt_compat]` table — exit cleanly if it's not present.
+    let Some(qbt) = doc.get_mut("qbt_compat").and_then(|v| v.as_table_mut()) else {
+        return Ok(QbtFileMigration::NoOp);
+    };
+
+    let hash_present = qbt
+        .get("password_hash")
+        .and_then(|v| v.as_str())
+        .is_some_and(|s| !s.is_empty());
+    if hash_present {
+        return Ok(QbtFileMigration::NoOp);
+    }
+
+    // Acquire the plaintext as an owned String under a zeroize guard so it
+    // never lingers beyond the block. This is the substantive zeroize path:
+    // the Settings struct otherwise keeps the plaintext across the lifetime
+    // of the daemon.
+    let plaintext = match qbt.get("password").and_then(|v| v.as_str()) {
+        Some(pw) if !pw.is_empty() => zeroize::Zeroizing::new(pw.to_owned()),
+        _ => return Ok(QbtFileMigration::NoOp),
+    };
+
+    // Use the session crate's hasher so we stay parameter-aligned.
+    let hash = irontide_session::hash_qbt_password(&plaintext)
+        .map_err(|e| anyhow::anyhow!("argon2 hash: {e}"))?;
+    qbt.insert("password_hash".to_owned(), toml::Value::String(hash));
+    qbt.insert("password".to_owned(), toml::Value::String(String::new()));
+
+    let serialized = toml::to_string_pretty(&doc)
+        .context("failed to re-serialize migrated qbt_compat config")?;
+    write_config_bytes_atomic(path, serialized.as_bytes())?;
+    Ok(QbtFileMigration::Rewritten)
+}
+
 /// Apply Unix owner-read-write-only (`0o600`) permissions to a path.
 ///
 /// Separated out so the secret-bearing write paths (`save_config_atomic`) and
@@ -1148,6 +1230,117 @@ listen_port = 42020
             bak_body_first, bak_body_second,
             ".bak must be snapshot-on-first-write"
         );
+    }
+
+    // ── M172a Lane A: migrate_qbt_credentials_in_file ─────────────────
+
+    #[test]
+    fn migrate_qbt_credentials_in_file_noop_when_file_missing() {
+        let outcome = super::migrate_qbt_credentials_in_file(Path::new(
+            "/tmp/irontide-m172a-absent-config-XYZ.toml",
+        ))
+        .expect("missing file must be NoOp");
+        assert_eq!(outcome, super::QbtFileMigration::NoOp);
+    }
+
+    #[test]
+    fn migrate_qbt_credentials_in_file_noop_when_no_qbt_section() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            "[session]\nlisten_port = 12345\n",
+        )
+        .expect("write");
+
+        let outcome =
+            super::migrate_qbt_credentials_in_file(&path).expect("no-qbt_compat must be NoOp");
+        assert_eq!(outcome, super::QbtFileMigration::NoOp);
+
+        // File is untouched (no `.bak` should be created either).
+        assert!(!super::bak_path_for(&path).exists(), "no .bak when NoOp");
+    }
+
+    #[test]
+    fn migrate_qbt_credentials_in_file_rewrites_once_then_noop() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("config.toml");
+        let body = r#"
+[qbt_compat]
+enabled = true
+username = "admin"
+password = "legacyplaintext"
+"#;
+        std::fs::write(&path, body).expect("write legacy");
+
+        let outcome = super::migrate_qbt_credentials_in_file(&path).expect("first pass");
+        assert_eq!(outcome, super::QbtFileMigration::Rewritten);
+
+        let body_after = std::fs::read_to_string(&path).expect("read back");
+        assert!(body_after.contains("password_hash"), "rewrite must add hash");
+        assert!(
+            body_after.contains("password = \"\""),
+            "rewrite must blank plaintext: {body_after}"
+        );
+
+        // Second call must be NoOp and must not overwrite `.bak`.
+        let bak = super::bak_path_for(&path);
+        let bak_before = std::fs::read_to_string(&bak).expect("bak must exist after first write");
+        let outcome2 = super::migrate_qbt_credentials_in_file(&path).expect("second pass");
+        assert_eq!(outcome2, super::QbtFileMigration::NoOp);
+        let bak_after = std::fs::read_to_string(&bak).expect("bak still present");
+        assert_eq!(bak_before, bak_after, ".bak must not be overwritten");
+    }
+
+    #[test]
+    fn migrate_qbt_credentials_in_file_noop_when_hash_already_present() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("config.toml");
+        let body = r#"
+[qbt_compat]
+enabled = true
+username = "admin"
+password_hash = "$argon2id$v=19$m=19456,t=2,p=1$somesalt$somehash"
+"#;
+        std::fs::write(&path, body).expect("write");
+
+        let outcome =
+            super::migrate_qbt_credentials_in_file(&path).expect("already-hashed must be NoOp");
+        assert_eq!(outcome, super::QbtFileMigration::NoOp);
+        assert!(!super::bak_path_for(&path).exists(), "no .bak on NoOp");
+    }
+
+    #[test]
+    fn migrate_qbt_credentials_in_file_propagates_hash_rewrite_into_settings() {
+        use argon2::password_hash::{PasswordHash, PasswordVerifier};
+        use argon2::Argon2;
+
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+[qbt_compat]
+enabled = true
+username = "admin"
+password = "legacyplaintext"
+"#,
+        )
+        .expect("write");
+
+        super::migrate_qbt_credentials_in_file(&path).expect("migrate");
+
+        // Extract the rewritten hash and verify it with the argon2 crate.
+        let text = std::fs::read_to_string(&path).expect("read back");
+        let doc: toml::Value = text.parse().expect("valid TOML");
+        let hash = doc["qbt_compat"]["password_hash"]
+            .as_str()
+            .expect("password_hash must be a string")
+            .to_owned();
+        let parsed = PasswordHash::new(&hash).expect("rewrite must be valid PHC");
+        Argon2::default()
+            .verify_password(b"legacyplaintext", &parsed)
+            .expect("rewrite must verify the original plaintext");
     }
 
     #[test]
