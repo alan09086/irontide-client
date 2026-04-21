@@ -89,9 +89,17 @@ impl ApiServer {
     /// Returns [`std::io::Error`] if the underlying server encounters
     /// a fatal I/O error.
     pub async fn run(self) -> std::io::Result<()> {
-        axum::serve(self.listener, self.router)
-            .await
-            .map_err(std::io::Error::other)
+        // M172a C3: expose the peer `SocketAddr` to handlers via
+        // `ConnectInfo<SocketAddr>`. The qBt login handler requires it so
+        // `resolve_client_ip` can identify the originating address for
+        // brute-force ban (Lane C) and XFF trust-hop resolution (Lane B).
+        axum::serve(
+            self.listener,
+            self.router
+                .into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .await
+        .map_err(std::io::Error::other)
     }
 
     /// The local address the server is bound to.

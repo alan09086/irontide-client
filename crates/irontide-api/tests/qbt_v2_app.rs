@@ -12,19 +12,17 @@ use irontide_api::routes::build_router;
 
 static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-async fn enabled_router_with(
-    customize: impl FnOnce(&mut Settings),
-) -> (axum::Router, String) {
-    // Capture the final username/password from the customized Settings so the
-    // follow-up login uses the correct creds even if the caller changed them.
-    let creds: (String, String);
+async fn enabled_router_with(customize: impl FnOnce(&mut Settings)) -> (axum::Router, String) {
+    // Capture the username from the customized Settings. The plaintext
+    // "adminadmin" is hardcoded because M172a ships `password_hash` with the
+    // pre-hashed default — callers who rotate the password must rotate the
+    // hash (via `hash_qbt_password`) OR supply a legacy plaintext in the
+    // same Settings customize closure and we'd need a different helper.
+    let username: String;
     let session = {
         let n = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let resume_dir = std::env::temp_dir().join(format!(
-            "irontide-qbt-v2-app-{}-{}",
-            std::process::id(),
-            n
-        ));
+        let resume_dir =
+            std::env::temp_dir().join(format!("irontide-qbt-v2-app-{}-{}", std::process::id(), n));
         let _ = std::fs::remove_dir_all(&resume_dir);
 
         let mut settings = Settings {
@@ -40,17 +38,15 @@ async fn enabled_router_with(
         };
         settings.qbt_compat.enabled = true;
         customize(&mut settings);
-        creds = (
-            settings.qbt_compat.username.clone(),
-            settings.qbt_compat.password.clone(),
-        );
+        username = settings.qbt_compat.username.clone();
         irontide::ClientBuilder::from_settings(settings)
             .start()
             .await
             .expect("failed to start test session")
     };
     let router = build_router(session);
-    let form = format!("username={}&password={}", creds.0, creds.1);
+    // M172a: default `password_hash` matches "adminadmin".
+    let form = format!("username={username}&password=adminadmin");
     let req = Request::builder()
         .method("POST")
         .uri("/api/v2/auth/login")
@@ -111,7 +107,10 @@ async fn app_webapi_version_plaintext_no_prefix() {
     let (status, body, _) = get(&router, "/api/v2/app/webapiVersion", Some(&sid)).await;
     assert_eq!(status, StatusCode::OK);
     let s = String::from_utf8(body).unwrap();
-    assert!(!s.starts_with('v'), "webapi version must not start with v: {s}");
+    assert!(
+        !s.starts_with('v'),
+        "webapi version must not start with v: {s}"
+    );
     assert_eq!(s, "2.11.4");
 }
 
@@ -201,17 +200,21 @@ async fn preferences_max_ratio_enabled_follows_seed_ratio_limit_presence() {
     let (router, sid) = enabled_router_with(|s| s.seed_ratio_limit = None).await;
     let (_, body, _) = get(&router, "/api/v2/app/preferences", Some(&sid)).await;
     let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(v.get("max_ratio_enabled").and_then(|b| b.as_bool()), Some(false));
+    assert_eq!(
+        v.get("max_ratio_enabled").and_then(|b| b.as_bool()),
+        Some(false)
+    );
     assert_eq!(v.get("max_ratio").and_then(|r| r.as_f64()), Some(-1.0));
 
     // Case 2: ratio limit set — flag is true, value matches.
     let (router, sid) = enabled_router_with(|s| s.seed_ratio_limit = Some(2.5)).await;
     let (_, body, _) = get(&router, "/api/v2/app/preferences", Some(&sid)).await;
     let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(v.get("max_ratio_enabled").and_then(|b| b.as_bool()), Some(true));
-    assert!(
-        (v.get("max_ratio").and_then(|r| r.as_f64()).unwrap() - 2.5_f64).abs() < 1e-9
+    assert_eq!(
+        v.get("max_ratio_enabled").and_then(|b| b.as_bool()),
+        Some(true)
     );
+    assert!((v.get("max_ratio").and_then(|r| r.as_f64()).unwrap() - 2.5_f64).abs() < 1e-9);
 }
 
 #[tokio::test]

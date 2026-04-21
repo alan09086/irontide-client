@@ -48,7 +48,12 @@ fn cmd_init(global_config: Option<&Path>, force: bool) -> i32 {
     let doc = build_default_config_document();
     let content = doc.to_string();
 
-    if let Err(e) = std::fs::write(&target, content) {
+    // M172a Lane A: atomic write + 0o600 + one-time `.bak` snapshot.
+    // The config may contain the qBt-compat password hash; owner-only perms
+    // matter even on the initial write because the pre-hashed default ships
+    // the well-known "adminadmin" hash, which an operator is expected to
+    // rotate via setPreferences but may forget.
+    if let Err(e) = config::write_config_bytes_atomic(&target, content.as_bytes()) {
         eprintln!(
             "error: failed to write config file {}: {e}",
             target.display()

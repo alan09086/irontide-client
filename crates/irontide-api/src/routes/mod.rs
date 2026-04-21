@@ -8,6 +8,10 @@ pub mod torrents;
 #[cfg(feature = "webui")]
 pub mod webui;
 
+// M172a Lane A: re-export the argon2 concurrency helper for integration
+// tests and downstream tuning by alternate entry points.
+pub use qbt_v2::default_argon2_permits;
+
 use std::sync::Arc;
 
 use axum::Router;
@@ -122,23 +126,11 @@ pub fn build_router(session: SessionHandle) -> Router {
                 "/webui/fragments/torrent/{hash}/peers",
                 get(webui::peers_fragment),
             )
-            .route(
-                "/webui/fragments/settings",
-                get(webui::settings_fragment),
-            )
+            .route("/webui/fragments/settings", get(webui::settings_fragment))
             .route("/webui/add-magnet", post(webui::add_magnet_redirect))
-            .route(
-                "/webui/settings",
-                patch(webui::patch_settings_webui),
-            )
-            .route(
-                "/webui/torrents/{hash}/pause",
-                post(webui::pause_action),
-            )
-            .route(
-                "/webui/torrents/{hash}/resume",
-                post(webui::resume_action),
-            )
+            .route("/webui/settings", patch(webui::patch_settings_webui))
+            .route("/webui/torrents/{hash}/pause", post(webui::pause_action))
+            .route("/webui/torrents/{hash}/resume", post(webui::resume_action))
             .route(
                 "/webui/torrents/{hash}",
                 get(webui::torrent_detail).delete(webui::delete_action),

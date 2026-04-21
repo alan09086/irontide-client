@@ -146,6 +146,13 @@ struct QbtPreferencesPatch {
     max_inactive_seeding_time: Option<i64>,
     #[serde(default)]
     max_inactive_seeding_time_enabled: Option<bool>,
+    /// M172a: qBt's wire field for rotating the Web UI password. Input-only
+    /// — the handler hashes this immediately via
+    /// [`irontide::session::hash_qbt_password`] and writes into
+    /// `settings.qbt_compat.password_hash`. Never echoed back on the GET
+    /// side (see `QbtPreferences`, which has no password/hash field).
+    #[serde(default)]
+    web_ui_password: Option<String>,
 }
 
 /// `POST /api/v2/app/setPreferences` (M171 D3 + D3.5).
@@ -220,8 +227,7 @@ fn parse_preferences_patch(bytes: &[u8]) -> Result<QbtPreferencesPatch, QbtError
     }
     let form: JsonForm = serde_urlencoded::from_bytes(bytes)
         .map_err(|e| QbtError::BadRequest(format!("parse form: {e}")))?;
-    serde_json::from_str(&form.json)
-        .map_err(|e| QbtError::BadRequest(format!("parse json: {e}")))
+    serde_json::from_str(&form.json).map_err(|e| QbtError::BadRequest(format!("parse json: {e}")))
 }
 
 /// Apply the allowlist patch onto `settings` in place.
@@ -273,9 +279,7 @@ fn apply_preferences_patch(
             1 => EncryptionMode::Forced,
             2 => EncryptionMode::Disabled,
             _ => {
-                return Err(QbtError::BadRequest(format!(
-                    "invalid encryption: {v}"
-                )));
+                return Err(QbtError::BadRequest(format!("invalid encryption: {v}")));
             }
         };
     }
@@ -314,9 +318,7 @@ fn apply_preferences_patch(
             "remove" => MaxRatioAction::Remove,
             "enable_super_seeding" => MaxRatioAction::EnableSuperSeeding,
             _ => {
-                return Err(QbtError::BadRequest(format!(
-                    "invalid max_ratio_act: {v}"
-                )));
+                return Err(QbtError::BadRequest(format!("invalid max_ratio_act: {v}")));
             }
         };
     }
@@ -339,13 +341,28 @@ fn apply_preferences_patch(
         settings.seed_time_limit_secs = None;
     }
     if let Some(v) = patch.max_inactive_seeding_time {
-        settings.inactive_seed_time_limit_secs =
-            if v < 0 { None } else { Some((v as u64) * 60) };
+        settings.inactive_seed_time_limit_secs = if v < 0 { None } else { Some((v as u64) * 60) };
     }
     if let Some(v) = patch.max_inactive_seeding_time_enabled
         && !v
     {
         settings.inactive_seed_time_limit_secs = None;
+    }
+
+    // M172a: rotating the web UI password. Hash on write, scrub the
+    // plaintext before this function returns. Failure maps to 500 (not 400)
+    // because a transient argon2 error is an internal-engine problem from
+    // the caller's perspective — the input was valid, we failed to process.
+    if let Some(pw) = patch.web_ui_password {
+        let plaintext = zeroize::Zeroizing::new(pw);
+        if !plaintext.is_empty() {
+            let hash = irontide::session::hash_qbt_password(&plaintext)
+                .map_err(|e| QbtError::Internal(format!("argon2 hash: {e}")))?;
+            settings.qbt_compat.password_hash = hash;
+            // Clear any residual legacy plaintext — the admin just rotated
+            // the password, so the pre-migration value is irrelevant.
+            settings.qbt_compat.password.clear();
+        }
     }
 
     Ok(())

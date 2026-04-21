@@ -339,6 +339,209 @@ pub fn load(config_path: Option<&Path>, cli_overrides: &ConfigFile) -> Result<Se
     Ok(settings)
 }
 
+/// Atomically write `config` to `path` with Unix `0o600` permissions and a
+/// one-time pre-existing `.bak` snapshot (M172a Lane A).
+///
+/// # Security semantics
+///
+/// The qBt-compat password hash lives in this file. Owner-only file permissions
+/// (`0o600`) are therefore a defence-in-depth requirement — `chmod` is applied
+/// to the tempfile *before* `NamedTempFile::persist` performs the atomic
+/// rename, so there is no window during which the target file is world- or
+/// group-readable.
+///
+/// A `.bak` snapshot of the previous on-disk contents is taken exactly once —
+/// the first time `save_config_atomic` is invoked on an existing file with no
+/// prior `.bak`. Subsequent writes do not overwrite the `.bak`; if an operator
+/// rolls back by renaming `.bak` back onto the primary path, the next write
+/// will create a fresh snapshot. The `.bak` is also permissioned `0o600`.
+///
+/// # Errors
+///
+/// Returns an error if the parent directory cannot be created, if serialisation
+/// fails, if `chmod` fails on the temp file, or if the atomic persist fails.
+pub fn save_config_atomic(path: &Path, config: &ConfigFile) -> Result<()> {
+    let serialized =
+        toml::to_string_pretty(config).context("failed to serialize config to TOML")?;
+    write_config_bytes_atomic(path, serialized.as_bytes())
+}
+
+/// Atomic-write + `0o600` + one-time `.bak` for an already-serialised byte
+/// buffer. Used by `save_config_atomic` and by `cmd_init`, which hand-rolls a
+/// commented-out TOML document via `toml_edit` that isn't a `ConfigFile`.
+///
+/// # Errors
+///
+/// See [`save_config_atomic`] — same failure modes.
+pub fn write_config_bytes_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create config directory: {parent:?}"))?;
+    }
+
+    // One-time `.bak` snapshot: copy the *existing* file before we overwrite it,
+    // but only if no `.bak` is present yet. Operators can roll back by renaming
+    // `.bak` onto the primary path and the next save_config_atomic will make a
+    // fresh snapshot.
+    if path.exists() {
+        let bak_path = bak_path_for(path);
+        if !bak_path.exists() {
+            std::fs::copy(path, &bak_path)
+                .with_context(|| format!("failed to snapshot config to {bak_path:?}"))?;
+            #[cfg(unix)]
+            apply_owner_only_perms(&bak_path)
+                .with_context(|| format!("failed to chmod 0600 {bak_path:?}"))?;
+        }
+    }
+
+    // Tempfile lives in the same directory as the target so the atomic
+    // rename is guaranteed to stay on one filesystem (matches M170/M171's
+    // registry write pattern).
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let mut tmp = tempfile::NamedTempFile::new_in(parent)
+        .with_context(|| format!("failed to create temp file in {parent:?}"))?;
+    std::io::Write::write_all(tmp.as_file_mut(), bytes)
+        .context("failed to write config body to temp file")?;
+    std::io::Write::flush(tmp.as_file_mut()).context("failed to flush temp file")?;
+    #[cfg(unix)]
+    apply_owner_only_perms(tmp.path())
+        .with_context(|| format!("failed to chmod 0600 temp config {:?}", tmp.path()))?;
+
+    tmp.persist(path)
+        .map_err(|e| anyhow::anyhow!("failed to atomically rename config to {path:?}: {e}"))?;
+
+    Ok(())
+}
+
+/// Path where `save_config_atomic` writes the one-time pre-existing snapshot.
+///
+/// Mirrors the `.bak` convention used by the M170 `CategoryRegistry` /
+/// M171 `TagRegistry`. Public for downstream tooling that wants to rotate or
+/// inspect the backup.
+#[must_use]
+pub fn bak_path_for(path: &Path) -> PathBuf {
+    let mut bak = path.as_os_str().to_owned();
+    bak.push(".bak");
+    PathBuf::from(bak)
+}
+
+/// Outcome of [`migrate_qbt_credentials_in_file`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QbtFileMigration {
+    /// No file, no `[qbt_compat]` section, or `password_hash` already present —
+    /// nothing rewritten.
+    NoOp,
+    /// Plaintext hashed into `password_hash` and the file atomically rewritten.
+    Rewritten,
+}
+
+/// On-disk migration for the legacy `[qbt_compat] password = "..."` block
+/// (M172a A3 + C2).
+///
+/// Reads the TOML at `path`, and if a `[qbt_compat]` section exists with a
+/// non-empty `password` key and an empty-or-absent `password_hash`, hashes the
+/// plaintext via argon2id, replaces the two keys accordingly, and atomically
+/// rewrites the file through [`write_config_bytes_atomic`] (which applies the
+/// `0o600` chmod and one-time `.bak` snapshot). If no migration is needed —
+/// which is the overwhelmingly common path on fresh installs — the file is
+/// not touched.
+///
+/// Runs as a raw `toml::Value` edit rather than a `ConfigFile` round-trip so
+/// we don't need to wire `qbt_compat` into the curated `ConfigFile` shape in
+/// Lane A — Lane B owns that plumbing. Unknown fields in the on-disk TOML
+/// are preserved verbatim.
+///
+/// # Security — `.bak` retains the plaintext password indefinitely
+///
+/// On the first run that actually rewrites the file, [`write_config_bytes_atomic`]
+/// leaves a one-time `<path>.bak` snapshot of the PRE-MIGRATION file, chmod
+/// `0o600`. That snapshot **still contains the legacy plaintext password**.
+/// Subsequent migration passes are no-ops (the live file is already hashed)
+/// and do NOT refresh the `.bak`, so the plaintext lingers for as long as the
+/// operator leaves the backup in place. This is the intentional trade: keep
+/// an auditable pre-migration artefact for rollback, at the cost of plaintext
+/// sitting on disk.
+///
+/// **Operators who want to fully retire the plaintext should delete
+/// `<path>.bak` after verifying the daemon authenticates with the migrated
+/// hash on the next restart.** A future milestone (M172 future hardening, see
+/// the M172a design doc) will add an opt-in "shred `.bak` after N successful
+/// authenticates" mode; Lane A does not ship that.
+///
+/// # Failure semantics
+///
+/// Every filesystem / hash error is returned as `Err` — the caller (the CLI
+/// or GUI wrapper) decides whether to log + continue or escalate. The daemon
+/// itself (`SessionHandle::start_full`) never calls this function directly;
+/// it only mutates the in-memory `Settings`. This separation matters for C2:
+/// a transient `write`-denied config directory must not crash the daemon.
+///
+/// # Errors
+///
+/// Returns an error if the file exists but is not valid TOML, if hashing
+/// fails, or if the atomic rewrite fails.
+pub fn migrate_qbt_credentials_in_file(path: &Path) -> Result<QbtFileMigration> {
+    if !path.exists() {
+        return Ok(QbtFileMigration::NoOp);
+    }
+    let text = std::fs::read_to_string(path)
+        .with_context(|| format!("failed to read config file: {path:?}"))?;
+    let mut doc: toml::Value = text
+        .parse()
+        .with_context(|| format!("config file is not valid TOML: {path:?}"))?;
+
+    // Carve out the `[qbt_compat]` table — exit cleanly if it's not present.
+    let Some(qbt) = doc.get_mut("qbt_compat").and_then(|v| v.as_table_mut()) else {
+        return Ok(QbtFileMigration::NoOp);
+    };
+
+    let hash_present = qbt
+        .get("password_hash")
+        .and_then(|v| v.as_str())
+        .is_some_and(|s| !s.is_empty());
+    if hash_present {
+        return Ok(QbtFileMigration::NoOp);
+    }
+
+    // Acquire the plaintext as an owned String under a zeroize guard so it
+    // never lingers beyond the block. This is the substantive zeroize path:
+    // the Settings struct otherwise keeps the plaintext across the lifetime
+    // of the daemon.
+    let plaintext = match qbt.get("password").and_then(|v| v.as_str()) {
+        Some(pw) if !pw.is_empty() => zeroize::Zeroizing::new(pw.to_owned()),
+        _ => return Ok(QbtFileMigration::NoOp),
+    };
+
+    // Use the session crate's hasher so we stay parameter-aligned.
+    let hash = irontide_session::hash_qbt_password(&plaintext)
+        .map_err(|e| anyhow::anyhow!("argon2 hash: {e}"))?;
+    qbt.insert("password_hash".to_owned(), toml::Value::String(hash));
+    qbt.insert("password".to_owned(), toml::Value::String(String::new()));
+
+    let serialized = toml::to_string_pretty(&doc)
+        .context("failed to re-serialize migrated qbt_compat config")?;
+    write_config_bytes_atomic(path, serialized.as_bytes())?;
+    Ok(QbtFileMigration::Rewritten)
+}
+
+/// Apply Unix owner-read-write-only (`0o600`) permissions to a path.
+///
+/// Separated out so the secret-bearing write paths (`save_config_atomic`) and
+/// the `.bak` snapshot path both use the identical mode. No-op on non-Unix —
+/// Windows does not model POSIX modes directly, and the registry-backed
+/// credential store is the right fix there (deferred).
+#[cfg(unix)]
+fn apply_owner_only_perms(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let perms = std::fs::Permissions::from_mode(0o600);
+    std::fs::set_permissions(path, perms)
+}
+
 /// Persist GUI-specific configuration back to the TOML file.
 ///
 /// Reads the existing file (if any), replaces the `[gui]` section, and
@@ -363,22 +566,7 @@ pub fn save_gui_config(config_path: Option<&Path>, gui: &GuiConfig) -> Result<()
 
     config.gui = gui.clone();
 
-    let serialized =
-        toml::to_string_pretty(&config).context("failed to serialize config to TOML")?;
-
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create config directory: {parent:?}"))?;
-    }
-
-    // Write atomically: write to a sibling temp file, then rename.
-    let tmp_path = path.with_extension("toml.tmp");
-    std::fs::write(&tmp_path, &serialized)
-        .with_context(|| format!("failed to write temp config file: {tmp_path:?}"))?;
-    std::fs::rename(&tmp_path, &path)
-        .with_context(|| format!("failed to rename temp config to {path:?}"))?;
-
-    Ok(())
+    save_config_atomic(&path, &config)
 }
 
 /// Persist `[session]` download directory and resume directory to the TOML file.
@@ -390,10 +578,7 @@ pub fn save_gui_config(config_path: Option<&Path>, gui: &GuiConfig) -> Result<()
 /// # Errors
 ///
 /// Returns an error if the file cannot be read/written.
-pub fn save_session_download_dir(
-    config_path: Option<&Path>,
-    download_dir: &Path,
-) -> Result<()> {
+pub fn save_session_download_dir(config_path: Option<&Path>, download_dir: &Path) -> Result<()> {
     let path = resolve_config_path(config_path);
 
     let mut config = if path.exists() {
@@ -407,21 +592,7 @@ pub fn save_session_download_dir(
 
     config.session.download_dir = Some(download_dir.to_path_buf());
 
-    let serialized =
-        toml::to_string_pretty(&config).context("failed to serialize config to TOML")?;
-
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create config directory: {parent:?}"))?;
-    }
-
-    let tmp_path = path.with_extension("toml.tmp");
-    std::fs::write(&tmp_path, &serialized)
-        .with_context(|| format!("failed to write temp config file: {tmp_path:?}"))?;
-    std::fs::rename(&tmp_path, &path)
-        .with_context(|| format!("failed to rename temp config to {path:?}"))?;
-
-    Ok(())
+    save_config_atomic(&path, &config)
 }
 
 // ── Runtime construction ────────────────────────────────────────────
@@ -845,8 +1016,10 @@ max_peers_per_torrent = 50
 
     #[test]
     fn round_trip_resume_dir_through_config() {
-        let mut settings = Settings::default();
-        settings.resume_data_dir = Some(PathBuf::from("/data/resume"));
+        let settings = Settings {
+            resume_data_dir: Some(PathBuf::from("/data/resume")),
+            ..Settings::default()
+        };
         let config = ConfigFile::from_settings(&settings);
         assert_eq!(
             config.session.resume_dir,
@@ -983,5 +1156,219 @@ listen_port = 42020
         assert_eq!(reloaded.gui.column_order, gui.column_order);
         assert_eq!(reloaded.gui.column_visibility, gui.column_visibility);
         assert_eq!(reloaded.gui.column_widths, gui.column_widths);
+    }
+
+    // ── M172a Lane A: save_config_atomic ─────────────────────────────
+
+    #[test]
+    fn save_config_atomic_happy_path() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let path = dir.path().join("config.toml");
+
+        let config = ConfigFile {
+            session: SessionConfig {
+                listen_port: Some(12345),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        save_config_atomic(&path, &config).expect("happy-path write should succeed");
+
+        assert!(path.exists(), "atomic write must materialise the target");
+        let body = std::fs::read_to_string(&path).expect("read back");
+        let parsed: ConfigFile = toml::from_str(&body).expect("valid TOML emitted");
+        assert_eq!(parsed.session.listen_port, Some(12345));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn save_config_atomic_applies_chmod_0600_on_unix() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let path = dir.path().join("config.toml");
+
+        save_config_atomic(&path, &ConfigFile::default()).expect("write should succeed");
+
+        let mode = std::fs::metadata(&path)
+            .expect("stat written config")
+            .permissions()
+            .mode();
+        // Permissions may include file-type bits on some platforms; mask to the
+        // low 9 rwx bits we actually set.
+        assert_eq!(
+            mode & 0o777,
+            0o600,
+            "expected 0o600, got {:o}",
+            mode & 0o777
+        );
+    }
+
+    #[test]
+    fn bak_created_on_first_migration_only() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let path = dir.path().join("config.toml");
+        let bak = super::bak_path_for(&path);
+
+        // Pre-seed a v1 file on disk (simulates a pre-M172a config).
+        std::fs::write(&path, "[session]\nlisten_port = 11111\n").expect("pre-seed config");
+
+        let cfg_a = ConfigFile {
+            session: SessionConfig {
+                listen_port: Some(22222),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        save_config_atomic(&path, &cfg_a).expect("first write");
+        assert!(bak.exists(), "first rewrite must create .bak");
+        let bak_body_first = std::fs::read_to_string(&bak).expect("read .bak after first write");
+        assert!(
+            bak_body_first.contains("11111"),
+            "expected original pre-seeded config in .bak, got: {bak_body_first}"
+        );
+
+        // Second write must NOT overwrite the existing .bak.
+        let cfg_b = ConfigFile {
+            session: SessionConfig {
+                listen_port: Some(33333),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        save_config_atomic(&path, &cfg_b).expect("second write");
+        let bak_body_second = std::fs::read_to_string(&bak).expect("read .bak after second write");
+        assert_eq!(
+            bak_body_first, bak_body_second,
+            ".bak must be snapshot-on-first-write"
+        );
+    }
+
+    // ── M172a Lane A: migrate_qbt_credentials_in_file ─────────────────
+
+    #[test]
+    fn migrate_qbt_credentials_in_file_noop_when_file_missing() {
+        let outcome = super::migrate_qbt_credentials_in_file(Path::new(
+            "/tmp/irontide-m172a-absent-config-XYZ.toml",
+        ))
+        .expect("missing file must be NoOp");
+        assert_eq!(outcome, super::QbtFileMigration::NoOp);
+    }
+
+    #[test]
+    fn migrate_qbt_credentials_in_file_noop_when_no_qbt_section() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "[session]\nlisten_port = 12345\n").expect("write");
+
+        let outcome =
+            super::migrate_qbt_credentials_in_file(&path).expect("no-qbt_compat must be NoOp");
+        assert_eq!(outcome, super::QbtFileMigration::NoOp);
+
+        // File is untouched (no `.bak` should be created either).
+        assert!(!super::bak_path_for(&path).exists(), "no .bak when NoOp");
+    }
+
+    #[test]
+    fn migrate_qbt_credentials_in_file_rewrites_once_then_noop() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("config.toml");
+        let body = r#"
+[qbt_compat]
+enabled = true
+username = "admin"
+password = "legacyplaintext"
+"#;
+        std::fs::write(&path, body).expect("write legacy");
+
+        let outcome = super::migrate_qbt_credentials_in_file(&path).expect("first pass");
+        assert_eq!(outcome, super::QbtFileMigration::Rewritten);
+
+        let body_after = std::fs::read_to_string(&path).expect("read back");
+        assert!(
+            body_after.contains("password_hash"),
+            "rewrite must add hash"
+        );
+        assert!(
+            body_after.contains("password = \"\""),
+            "rewrite must blank plaintext: {body_after}"
+        );
+
+        // Second call must be NoOp and must not overwrite `.bak`.
+        let bak = super::bak_path_for(&path);
+        let bak_before = std::fs::read_to_string(&bak).expect("bak must exist after first write");
+        let outcome2 = super::migrate_qbt_credentials_in_file(&path).expect("second pass");
+        assert_eq!(outcome2, super::QbtFileMigration::NoOp);
+        let bak_after = std::fs::read_to_string(&bak).expect("bak still present");
+        assert_eq!(bak_before, bak_after, ".bak must not be overwritten");
+    }
+
+    #[test]
+    fn migrate_qbt_credentials_in_file_noop_when_hash_already_present() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("config.toml");
+        let body = r#"
+[qbt_compat]
+enabled = true
+username = "admin"
+password_hash = "$argon2id$v=19$m=19456,t=2,p=1$somesalt$somehash"
+"#;
+        std::fs::write(&path, body).expect("write");
+
+        let outcome =
+            super::migrate_qbt_credentials_in_file(&path).expect("already-hashed must be NoOp");
+        assert_eq!(outcome, super::QbtFileMigration::NoOp);
+        assert!(!super::bak_path_for(&path).exists(), "no .bak on NoOp");
+    }
+
+    #[test]
+    fn migrate_qbt_credentials_in_file_propagates_hash_rewrite_into_settings() {
+        use argon2::Argon2;
+        use argon2::password_hash::{PasswordHash, PasswordVerifier};
+
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+[qbt_compat]
+enabled = true
+username = "admin"
+password = "legacyplaintext"
+"#,
+        )
+        .expect("write");
+
+        super::migrate_qbt_credentials_in_file(&path).expect("migrate");
+
+        // Extract the rewritten hash and verify it with the argon2 crate.
+        let text = std::fs::read_to_string(&path).expect("read back");
+        let doc: toml::Value = text.parse().expect("valid TOML");
+        let hash = doc["qbt_compat"]["password_hash"]
+            .as_str()
+            .expect("password_hash must be a string")
+            .to_owned();
+        let parsed = PasswordHash::new(&hash).expect("rewrite must be valid PHC");
+        Argon2::default()
+            .verify_password(b"legacyplaintext", &parsed)
+            .expect("rewrite must verify the original plaintext");
+    }
+
+    #[test]
+    fn save_config_atomic_propagates_tempfile_failure() {
+        // The parent "directory" here is actually a regular file — creating a
+        // sibling tempfile must fail because you cannot create a file inside
+        // a non-directory. Works on every platform, no platform-gated perm
+        // bits, no skip-if-root dance.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let blocker = dir.path().join("blocker");
+        std::fs::write(&blocker, b"not a directory").expect("create blocker file");
+
+        let path = blocker.join("config.toml");
+        let result = save_config_atomic(&path, &ConfigFile::default());
+
+        assert!(
+            result.is_err(),
+            "write into a non-directory parent should fail, got: {result:?}"
+        );
     }
 }
