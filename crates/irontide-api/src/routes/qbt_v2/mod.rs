@@ -126,8 +126,7 @@ pub fn build_router(session: Arc<SessionHandle>) -> Router {
 
     // Lane D (M171): setPreferences is the only `app` write endpoint today;
     // shutdown lands in a later milestone.
-    let app_write = Router::new()
-        .route("/api/v2/app/setPreferences", post(app::set_preferences));
+    let app_write = Router::new().route("/api/v2/app/setPreferences", post(app::set_preferences));
 
     let protected = app_read
         .merge(torrent_core)

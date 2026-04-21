@@ -227,8 +227,7 @@ fn parse_preferences_patch(bytes: &[u8]) -> Result<QbtPreferencesPatch, QbtError
     }
     let form: JsonForm = serde_urlencoded::from_bytes(bytes)
         .map_err(|e| QbtError::BadRequest(format!("parse form: {e}")))?;
-    serde_json::from_str(&form.json)
-        .map_err(|e| QbtError::BadRequest(format!("parse json: {e}")))
+    serde_json::from_str(&form.json).map_err(|e| QbtError::BadRequest(format!("parse json: {e}")))
 }
 
 /// Apply the allowlist patch onto `settings` in place.
@@ -280,9 +279,7 @@ fn apply_preferences_patch(
             1 => EncryptionMode::Forced,
             2 => EncryptionMode::Disabled,
             _ => {
-                return Err(QbtError::BadRequest(format!(
-                    "invalid encryption: {v}"
-                )));
+                return Err(QbtError::BadRequest(format!("invalid encryption: {v}")));
             }
         };
     }
@@ -321,9 +318,7 @@ fn apply_preferences_patch(
             "remove" => MaxRatioAction::Remove,
             "enable_super_seeding" => MaxRatioAction::EnableSuperSeeding,
             _ => {
-                return Err(QbtError::BadRequest(format!(
-                    "invalid max_ratio_act: {v}"
-                )));
+                return Err(QbtError::BadRequest(format!("invalid max_ratio_act: {v}")));
             }
         };
     }
@@ -346,8 +341,7 @@ fn apply_preferences_patch(
         settings.seed_time_limit_secs = None;
     }
     if let Some(v) = patch.max_inactive_seeding_time {
-        settings.inactive_seed_time_limit_secs =
-            if v < 0 { None } else { Some((v as u64) * 60) };
+        settings.inactive_seed_time_limit_secs = if v < 0 { None } else { Some((v as u64) * 60) };
     }
     if let Some(v) = patch.max_inactive_seeding_time_enabled
         && !v

@@ -21,15 +21,10 @@ use irontide_api::routes::build_router;
 
 static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-async fn test_session(
-    customize: impl FnOnce(&mut Settings),
-) -> irontide::session::SessionHandle {
+async fn test_session(customize: impl FnOnce(&mut Settings)) -> irontide::session::SessionHandle {
     let n = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let resume_dir = std::env::temp_dir().join(format!(
-        "irontide-qbt-argon2-{}-{}",
-        std::process::id(),
-        n
-    ));
+    let resume_dir =
+        std::env::temp_dir().join(format!("irontide-qbt-argon2-{}-{}", std::process::id(), n));
     let _ = std::fs::remove_dir_all(&resume_dir);
 
     let mut settings = Settings {
@@ -80,10 +75,19 @@ async fn resp_parts(
 async fn password_hash_roundtrip_verifies_admin_admin() {
     let session = test_session(|_| {}).await;
     let router = build_router(session);
-    let (status, body, headers) =
-        resp_parts(router.clone().oneshot(login_req("admin", "adminadmin")).await.unwrap()).await;
+    let (status, body, headers) = resp_parts(
+        router
+            .clone()
+            .oneshot(login_req("admin", "adminadmin"))
+            .await
+            .unwrap(),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK, "body was: {body}");
-    assert!(headers.get(header::SET_COOKIE).is_some(), "expect SID cookie");
+    assert!(
+        headers.get(header::SET_COOKIE).is_some(),
+        "expect SID cookie"
+    );
 }
 
 #[tokio::test]
@@ -93,8 +97,13 @@ async fn wrong_password_rejected_constant_time() {
     // password both return the identical 403 `Fails.` payload.
     let session = test_session(|_| {}).await;
     let router = build_router(session);
-    let (status, body, headers) =
-        resp_parts(router.oneshot(login_req("admin", "wrongpassword")).await.unwrap()).await;
+    let (status, body, headers) = resp_parts(
+        router
+            .oneshot(login_req("admin", "wrongpassword"))
+            .await
+            .unwrap(),
+    )
+    .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(body, "Fails.");
     assert!(headers.get(header::SET_COOKIE).is_none());
@@ -114,8 +123,13 @@ async fn malformed_password_hash_returns_forbidden() {
     })
     .await;
     let router = build_router(session);
-    let (status, body, _) =
-        resp_parts(router.oneshot(login_req("admin", "adminadmin")).await.unwrap()).await;
+    let (status, body, _) = resp_parts(
+        router
+            .oneshot(login_req("admin", "adminadmin"))
+            .await
+            .unwrap(),
+    )
+    .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(body, "Fails.");
 }
@@ -225,11 +239,7 @@ fn migration_failure_logs_and_keeps_plaintext_working() {
 
 // ── setPreferences password rotation ──────────────────────────────
 
-async fn login_ok(
-    router: &axum::Router,
-    user: &str,
-    pass: &str,
-) -> Option<String> {
+async fn login_ok(router: &axum::Router, user: &str, pass: &str) -> Option<String> {
     let resp = router
         .clone()
         .oneshot(login_req(user, pass))
@@ -353,8 +363,16 @@ async fn distributed_flood_capped_at_semaphore_size() {
     for i in 0..n {
         let router = Arc::clone(&router);
         handles.push(tokio::spawn(async move {
-            let pass = if i.is_multiple_of(2) { "adminadmin" } else { "wrong" };
-            let resp = (*router).clone().oneshot(login_req("admin", pass)).await.unwrap();
+            let pass = if i.is_multiple_of(2) {
+                "adminadmin"
+            } else {
+                "wrong"
+            };
+            let resp = (*router)
+                .clone()
+                .oneshot(login_req("admin", pass))
+                .await
+                .unwrap();
             resp.status()
         }));
     }

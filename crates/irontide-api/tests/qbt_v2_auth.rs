@@ -29,20 +29,18 @@ static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 /// Any routable address works — the handler only checks that ConnectInfo
 /// extraction *succeeds*, not the specific value. Lanes B and C (trust-hop
 /// CIDR + brute-force ban) tests override this via their own helpers.
-const MOCK_PEER: SocketAddr = SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::new(
-    127, 0, 0, 1,
-)), 12345);
+const MOCK_PEER: SocketAddr = SocketAddr::new(
+    std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)),
+    12345,
+);
 
 /// Build an enabled-qbt_compat session with the given overrides applied.
 async fn test_session_with_qbt(
     customize: impl FnOnce(&mut Settings),
 ) -> irontide::session::SessionHandle {
     let n = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let resume_dir = std::env::temp_dir().join(format!(
-        "irontide-qbt-v2-test-{}-{}",
-        std::process::id(),
-        n
-    ));
+    let resume_dir =
+        std::env::temp_dir().join(format!("irontide-qbt-v2-test-{}-{}", std::process::id(), n));
     let _ = std::fs::remove_dir_all(&resume_dir);
 
     let mut settings = Settings {
@@ -79,12 +77,10 @@ async fn test_session_with_qbt_tcp(
     irontide::session::SessionHandle,
 ) {
     let session = test_session_with_qbt(customize).await;
-    let server = irontide_api::ApiServer::bind(
-        "127.0.0.1:0".parse().expect("valid addr"),
-        session.clone(),
-    )
-    .await
-    .expect("bind");
+    let server =
+        irontide_api::ApiServer::bind("127.0.0.1:0".parse().expect("valid addr"), session.clone())
+            .await
+            .expect("bind");
     let base = format!("http://{}", server.local_addr());
     let handle = tokio::spawn(server.run());
     (base, handle, session)
@@ -97,11 +93,8 @@ async fn enabled_router() -> axum::Router {
 
 async fn disabled_router() -> axum::Router {
     let n = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let resume_dir = std::env::temp_dir().join(format!(
-        "irontide-qbt-v2-dis-{}-{}",
-        std::process::id(),
-        n
-    ));
+    let resume_dir =
+        std::env::temp_dir().join(format!("irontide-qbt-v2-dis-{}-{}", std::process::id(), n));
     let _ = std::fs::remove_dir_all(&resume_dir);
 
     let settings = Settings {
@@ -126,7 +119,9 @@ async fn send(router: &axum::Router, req: Request<Body>) -> axum::http::Response
     router.clone().oneshot(req).await.expect("request failed")
 }
 
-async fn body_string(resp: axum::http::Response<Body>) -> (StatusCode, String, axum::http::HeaderMap) {
+async fn body_string(
+    resp: axum::http::Response<Body>,
+) -> (StatusCode, String, axum::http::HeaderMap) {
     let status = resp.status();
     let headers = resp.headers().clone();
     let body = resp
@@ -147,10 +142,7 @@ fn login_request(user: &str, pass: &str) -> Request<Body> {
     Request::builder()
         .method("POST")
         .uri("/api/v2/auth/login")
-        .header(
-            header::CONTENT_TYPE,
-            "application/x-www-form-urlencoded",
-        )
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
         .body(Body::from(form))
         .expect("build login request")
 }

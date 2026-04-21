@@ -12,17 +12,12 @@ use irontide_api::routes::build_router;
 
 static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-async fn enabled_router_with(
-    customize: impl FnOnce(&mut Settings),
-) -> (axum::Router, String) {
+async fn enabled_router_with(customize: impl FnOnce(&mut Settings)) -> (axum::Router, String) {
     let username: String;
     let session = {
         let n = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let resume_dir = std::env::temp_dir().join(format!(
-            "irontide-qbt-v2-tor-{}-{}",
-            std::process::id(),
-            n
-        ));
+        let resume_dir =
+            std::env::temp_dir().join(format!("irontide-qbt-v2-tor-{}-{}", std::process::id(), n));
         let _ = std::fs::remove_dir_all(&resume_dir);
 
         let mut settings = Settings {
@@ -66,11 +61,7 @@ async fn enabled_router_with(
     (router, sid)
 }
 
-async fn get(
-    router: &axum::Router,
-    uri: &str,
-    cookie: Option<&str>,
-) -> (StatusCode, Vec<u8>) {
+async fn get(router: &axum::Router, uri: &str, cookie: Option<&str>) -> (StatusCode, Vec<u8>) {
     let mut builder = Request::builder().method("GET").uri(uri);
     if let Some(c) = cookie {
         builder = builder.header(header::COOKIE, c);
@@ -144,7 +135,10 @@ fn make_test_torrent_bytes() -> Vec<u8> {
         info: Info {
             piece_length: 16384,
             pieces: serde_bytes::ByteBuf::from(pieces),
-            name: format!("qbt-test-{}", SESSION_COUNTER.fetch_add(1, Ordering::Relaxed)),
+            name: format!(
+                "qbt-test-{}",
+                SESSION_COUNTER.fetch_add(1, Ordering::Relaxed)
+            ),
             length: 16384,
         },
     };
@@ -186,7 +180,10 @@ async fn torrents_info_includes_all_torrents_by_default() {
             b,
         )
         .await;
-        assert!(st.is_success() || st.is_client_error(), "v1 add status: {st}");
+        assert!(
+            st.is_success() || st.is_client_error(),
+            "v1 add status: {st}"
+        );
     }
     let (_, body) = get(&router, "/api/v2/torrents/info", Some(&sid)).await;
     let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
@@ -205,14 +202,24 @@ async fn torrents_info_filter_all() {
 #[tokio::test]
 async fn torrents_info_filter_downloading() {
     let (router, sid) = enabled_router_with(|_| {}).await;
-    let (status, _) = get(&router, "/api/v2/torrents/info?filter=downloading", Some(&sid)).await;
+    let (status, _) = get(
+        &router,
+        "/api/v2/torrents/info?filter=downloading",
+        Some(&sid),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
 }
 
 #[tokio::test]
 async fn torrents_info_filter_completed() {
     let (router, sid) = enabled_router_with(|_| {}).await;
-    let (status, _) = get(&router, "/api/v2/torrents/info?filter=completed", Some(&sid)).await;
+    let (status, _) = get(
+        &router,
+        "/api/v2/torrents/info?filter=completed",
+        Some(&sid),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
 }
 
@@ -234,7 +241,12 @@ async fn torrents_info_hashes_param_subsets_list() {
 #[tokio::test]
 async fn torrents_info_sort_by_name_reverse() {
     let (router, sid) = enabled_router_with(|_| {}).await;
-    let (status, _) = get(&router, "/api/v2/torrents/info?sort=name&reverse=true", Some(&sid)).await;
+    let (status, _) = get(
+        &router,
+        "/api/v2/torrents/info?sort=name&reverse=true",
+        Some(&sid),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
 }
 
@@ -411,7 +423,10 @@ async fn torrents_add_with_savepath_honors_per_torrent_dir() {
     )
     .await;
     // Accept 200 or 4xx (unknown magnet).
-    assert!(status == StatusCode::OK || status.is_client_error(), "got {status}");
+    assert!(
+        status == StatusCode::OK || status.is_client_error(),
+        "got {status}"
+    );
 }
 
 #[tokio::test]
@@ -429,7 +444,10 @@ async fn torrents_add_with_paused_starts_paused() {
         body.into_bytes(),
     )
     .await;
-    assert!(status == StatusCode::OK || status.is_client_error(), "got {status}");
+    assert!(
+        status == StatusCode::OK || status.is_client_error(),
+        "got {status}"
+    );
 }
 
 #[tokio::test]

@@ -126,23 +126,11 @@ pub fn build_router(session: SessionHandle) -> Router {
                 "/webui/fragments/torrent/{hash}/peers",
                 get(webui::peers_fragment),
             )
-            .route(
-                "/webui/fragments/settings",
-                get(webui::settings_fragment),
-            )
+            .route("/webui/fragments/settings", get(webui::settings_fragment))
             .route("/webui/add-magnet", post(webui::add_magnet_redirect))
-            .route(
-                "/webui/settings",
-                patch(webui::patch_settings_webui),
-            )
-            .route(
-                "/webui/torrents/{hash}/pause",
-                post(webui::pause_action),
-            )
-            .route(
-                "/webui/torrents/{hash}/resume",
-                post(webui::resume_action),
-            )
+            .route("/webui/settings", patch(webui::patch_settings_webui))
+            .route("/webui/torrents/{hash}/pause", post(webui::pause_action))
+            .route("/webui/torrents/{hash}/resume", post(webui::resume_action))
             .route(
                 "/webui/torrents/{hash}",
                 get(webui::torrent_detail).delete(webui::delete_action),

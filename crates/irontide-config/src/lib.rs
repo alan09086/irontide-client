@@ -561,10 +561,7 @@ pub fn save_gui_config(config_path: Option<&Path>, gui: &GuiConfig) -> Result<()
 /// # Errors
 ///
 /// Returns an error if the file cannot be read/written.
-pub fn save_session_download_dir(
-    config_path: Option<&Path>,
-    download_dir: &Path,
-) -> Result<()> {
+pub fn save_session_download_dir(config_path: Option<&Path>, download_dir: &Path) -> Result<()> {
     let path = resolve_config_path(config_path);
 
     let mut config = if path.exists() {
@@ -1196,8 +1193,7 @@ listen_port = 42020
         let bak = super::bak_path_for(&path);
 
         // Pre-seed a v1 file on disk (simulates a pre-M172a config).
-        std::fs::write(&path, "[session]\nlisten_port = 11111\n")
-            .expect("pre-seed config");
+        std::fs::write(&path, "[session]\nlisten_port = 11111\n").expect("pre-seed config");
 
         let cfg_a = ConfigFile {
             session: SessionConfig {
@@ -1208,8 +1204,7 @@ listen_port = 42020
         };
         save_config_atomic(&path, &cfg_a).expect("first write");
         assert!(bak.exists(), "first rewrite must create .bak");
-        let bak_body_first =
-            std::fs::read_to_string(&bak).expect("read .bak after first write");
+        let bak_body_first = std::fs::read_to_string(&bak).expect("read .bak after first write");
         assert!(
             bak_body_first.contains("11111"),
             "expected original pre-seeded config in .bak, got: {bak_body_first}"
@@ -1224,8 +1219,7 @@ listen_port = 42020
             ..Default::default()
         };
         save_config_atomic(&path, &cfg_b).expect("second write");
-        let bak_body_second =
-            std::fs::read_to_string(&bak).expect("read .bak after second write");
+        let bak_body_second = std::fs::read_to_string(&bak).expect("read .bak after second write");
         assert_eq!(
             bak_body_first, bak_body_second,
             ".bak must be snapshot-on-first-write"
@@ -1247,11 +1241,7 @@ listen_port = 42020
     fn migrate_qbt_credentials_in_file_noop_when_no_qbt_section() {
         let dir = tempfile::tempdir().expect("temp dir");
         let path = dir.path().join("config.toml");
-        std::fs::write(
-            &path,
-            "[session]\nlisten_port = 12345\n",
-        )
-        .expect("write");
+        std::fs::write(&path, "[session]\nlisten_port = 12345\n").expect("write");
 
         let outcome =
             super::migrate_qbt_credentials_in_file(&path).expect("no-qbt_compat must be NoOp");
@@ -1277,7 +1267,10 @@ password = "legacyplaintext"
         assert_eq!(outcome, super::QbtFileMigration::Rewritten);
 
         let body_after = std::fs::read_to_string(&path).expect("read back");
-        assert!(body_after.contains("password_hash"), "rewrite must add hash");
+        assert!(
+            body_after.contains("password_hash"),
+            "rewrite must add hash"
+        );
         assert!(
             body_after.contains("password = \"\""),
             "rewrite must blank plaintext: {body_after}"
@@ -1312,8 +1305,8 @@ password_hash = "$argon2id$v=19$m=19456,t=2,p=1$somesalt$somehash"
 
     #[test]
     fn migrate_qbt_credentials_in_file_propagates_hash_rewrite_into_settings() {
-        use argon2::password_hash::{PasswordHash, PasswordVerifier};
         use argon2::Argon2;
+        use argon2::password_hash::{PasswordHash, PasswordVerifier};
 
         let dir = tempfile::tempdir().expect("temp dir");
         let path = dir.path().join("config.toml");

@@ -17,9 +17,7 @@ use irontide_api::routes::build_router;
 
 static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-async fn enabled_router_with(
-    customize: impl FnOnce(&mut Settings),
-) -> (axum::Router, String) {
+async fn enabled_router_with(customize: impl FnOnce(&mut Settings)) -> (axum::Router, String) {
     let username: String;
     let session = {
         let n = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -80,7 +78,13 @@ async fn get_prefs(router: &axum::Router, sid: &str) -> serde_json::Value {
         .unwrap();
     let resp = router.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = resp.into_body().collect().await.unwrap().to_bytes().to_vec();
+    let body = resp
+        .into_body()
+        .collect()
+        .await
+        .unwrap()
+        .to_bytes()
+        .to_vec();
     serde_json::from_slice(&body).unwrap()
 }
 
@@ -97,10 +101,7 @@ async fn preferences_max_seeding_time_disabled_when_none() {
         v.get("max_seeding_time_enabled").and_then(|b| b.as_bool()),
         Some(false)
     );
-    assert_eq!(
-        v.get("max_seeding_time").and_then(|i| i.as_i64()),
-        Some(-1)
-    );
+    assert_eq!(v.get("max_seeding_time").and_then(|i| i.as_i64()), Some(-1));
 }
 
 #[tokio::test]

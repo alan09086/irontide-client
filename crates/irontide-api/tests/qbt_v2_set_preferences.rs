@@ -12,9 +12,7 @@ use irontide_api::routes::build_router;
 
 static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-async fn enabled_router_with(
-    customize: impl FnOnce(&mut Settings),
-) -> (axum::Router, String) {
+async fn enabled_router_with(customize: impl FnOnce(&mut Settings)) -> (axum::Router, String) {
     let username: String;
     let session = {
         let n = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -92,7 +90,13 @@ async fn get_prefs(router: &axum::Router, sid: &str) -> serde_json::Value {
         .unwrap();
     let resp = router.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = resp.into_body().collect().await.unwrap().to_bytes().to_vec();
+    let body = resp
+        .into_body()
+        .collect()
+        .await
+        .unwrap()
+        .to_bytes()
+        .to_vec();
     serde_json::from_slice(&body).unwrap()
 }
 
@@ -270,9 +274,7 @@ async fn set_preferences_max_ratio_positive_sets_limit() {
         v.get("max_ratio_enabled").and_then(|b| b.as_bool()),
         Some(true)
     );
-    assert!(
-        (v.get("max_ratio").and_then(|r| r.as_f64()).unwrap() - 2.5_f64).abs() < 1e-9
-    );
+    assert!((v.get("max_ratio").and_then(|r| r.as_f64()).unwrap() - 2.5_f64).abs() < 1e-9);
 }
 
 // ── max_ratio_act ─────────────────────────────────────────────────────
@@ -315,10 +317,7 @@ async fn set_preferences_max_seeding_time_minutes_to_seconds() {
     let resp = post_json(&router, &sid, body).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let v = get_prefs(&router, &sid).await;
-    assert_eq!(
-        v.get("max_seeding_time").and_then(|i| i.as_i64()),
-        Some(60)
-    );
+    assert_eq!(v.get("max_seeding_time").and_then(|i| i.as_i64()), Some(60));
     assert_eq!(
         v.get("max_seeding_time_enabled").and_then(|b| b.as_bool()),
         Some(true)
@@ -359,10 +358,7 @@ async fn set_preferences_listen_port_applies() {
     let resp = post_json(&router, &sid, serde_json::json!({"listen_port": 6881})).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let v = get_prefs(&router, &sid).await;
-    assert_eq!(
-        v.get("listen_port").and_then(|i| i.as_u64()),
-        Some(6881)
-    );
+    assert_eq!(v.get("listen_port").and_then(|i| i.as_u64()), Some(6881));
 }
 
 #[tokio::test]
@@ -489,7 +485,10 @@ async fn set_preferences_multi_restart_fields_header_comma_joined() {
     // Order is deterministic (listen_port classifier runs before dht), but
     // we parse defensively so the test survives a future reclassification.
     let fields: std::collections::HashSet<&str> = header.split(',').collect();
-    assert!(fields.contains("listen_port"), "listen_port missing from {header:?}");
+    assert!(
+        fields.contains("listen_port"),
+        "listen_port missing from {header:?}"
+    );
     assert!(fields.contains("dht"), "dht missing from {header:?}");
     assert_eq!(fields.len(), 2, "no spurious fields in {header:?}");
 }

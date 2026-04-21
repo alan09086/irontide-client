@@ -141,8 +141,8 @@ pub async fn login(
 /// the hash is empty — the grandfather path for a boot where in-memory
 /// migration failed.
 fn verify_qbt_password(cfg: &irontide::session::QbtCompatSettings, plaintext: &str) -> bool {
-    use argon2::password_hash::{PasswordHash, PasswordVerifier};
     use argon2::Argon2;
+    use argon2::password_hash::{PasswordHash, PasswordVerifier};
 
     if !cfg.password_hash.is_empty() {
         let Ok(parsed) = PasswordHash::new(&cfg.password_hash) else {
@@ -213,7 +213,12 @@ pub async fn qbt_gate(State(state): State<QbtState>, req: Request, next: Next) -
 /// has expired. Applies to every `/api/v2/*` route EXCEPT `auth/login` — the
 /// login route is registered on a sub-router that does not include this
 /// middleware.
-pub async fn require_sid(State(state): State<QbtState>, jar: CookieJar, req: Request, next: Next) -> Response {
+pub async fn require_sid(
+    State(state): State<QbtState>,
+    jar: CookieJar,
+    req: Request,
+    next: Next,
+) -> Response {
     let Some(sid_cookie) = jar.get("SID") else {
         return QbtError::Forbidden.into_response();
     };
