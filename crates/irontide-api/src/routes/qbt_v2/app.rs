@@ -153,6 +153,17 @@ struct QbtPreferencesPatch {
     /// side (see `QbtPreferences`, which has no password/hash field).
     #[serde(default)]
     web_ui_password: Option<String>,
+
+    // M172a Lane B: CSRF + reverse-proxy wire fields. qBt uses semicolon-
+    // joined CIDRs on the wire for the proxies list.
+    #[serde(default)]
+    web_ui_csrf_protection_enabled: Option<bool>,
+    #[serde(default)]
+    web_ui_host_header_validation_enabled: Option<bool>,
+    #[serde(default)]
+    web_ui_reverse_proxy_enabled: Option<bool>,
+    #[serde(default)]
+    web_ui_reverse_proxies_list: Option<String>,
 }
 
 /// `POST /api/v2/app/setPreferences` (M171 D3 + D3.5).
@@ -183,17 +194,39 @@ pub async fn set_preferences(
         .await
         .map_err(|e| QbtError::Internal(format!("read settings: {e}")))?;
 
+    // M172a Lane B: snapshot the list BEFORE the patch so we can detect a
+    // mutation after apply — the RwLock cache must be refreshed atomically
+    // when the CIDRs change so new requests see the new trust set.
+    let prev_proxies = settings.qbt_compat.web_ui_reverse_proxies_list.clone();
+
     apply_preferences_patch(&mut settings, patch)?;
 
     settings
         .validate()
         .map_err(|e| QbtError::BadRequest(format!("invalid settings: {e}")))?;
 
+    let proxies_changed = settings.qbt_compat.web_ui_reverse_proxies_list != prev_proxies;
+    let new_proxies_raw = settings.qbt_compat.web_ui_reverse_proxies_list.clone();
+
     let applied = state
         .session
         .apply_settings_classified(settings)
         .await
         .map_err(|e| QbtError::Internal(format!("apply settings: {e}")))?;
+
+    // A7: swap the RwLock under an exclusive write — never during a read.
+    // Already-in-flight CSRF checks reading the old list complete with the
+    // pre-swap data; subsequent requests see the new CIDRs. `validate()`
+    // has already rejected any malformed entry so this parse is infallible
+    // in practice; `filter_map` silently drops anything that somehow slipped
+    // through.
+    if proxies_changed {
+        let parsed: Vec<ipnet::IpNet> = new_proxies_raw
+            .iter()
+            .filter_map(|s| s.parse::<ipnet::IpNet>().ok())
+            .collect();
+        *state.reverse_proxies_list.write() = parsed;
+    }
 
     let mut response = QbtResponse::ok().into_response();
     if !applied.restart_required.is_empty() {
@@ -363,6 +396,40 @@ fn apply_preferences_patch(
             // the password, so the pre-migration value is irrelevant.
             settings.qbt_compat.password.clear();
         }
+    }
+
+    // M172a Lane B: CSRF + reverse-proxy toggles. CIDR list is parsed here
+    // as a strictness gate (invalid entries produce 400 before validate()
+    // runs, so the operator sees a precise error not a generic validation
+    // failure). The on-disk form is still `Vec<String>`; parsing into
+    // `Vec<IpNet>` happens lazily in the middleware.
+    if let Some(v) = patch.web_ui_csrf_protection_enabled {
+        settings.qbt_compat.csrf_protection_enabled = v;
+    }
+    if let Some(v) = patch.web_ui_host_header_validation_enabled {
+        settings.qbt_compat.host_header_validation_enabled = v;
+    }
+    if let Some(v) = patch.web_ui_reverse_proxy_enabled {
+        settings.qbt_compat.web_ui_reverse_proxy_enabled = v;
+    }
+    if let Some(raw) = patch.web_ui_reverse_proxies_list {
+        // qBt serialises the list as a semicolon-joined string on the wire;
+        // empty entries (from a trailing `;`) are dropped.
+        let parsed: Vec<String> = raw
+            .split(';')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+            .collect();
+        // Validate each entry parses before accepting the whole list.
+        for entry in &parsed {
+            if entry.parse::<ipnet::IpNet>().is_err() {
+                return Err(QbtError::BadRequest(format!(
+                    "invalid CIDR in web_ui_reverse_proxies_list: {entry}"
+                )));
+            }
+        }
+        settings.qbt_compat.web_ui_reverse_proxies_list = parsed;
     }
 
     Ok(())
