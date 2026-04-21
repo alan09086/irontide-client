@@ -59,3 +59,5 @@ tempfile = "3"
 tokio = { workspace = true }
 tokio-tungstenite = "0.28"
 tower = { version = "0.5", features = ["util"] }
+# M172a Lane A: integration tests exercise the on-disk migration helper.
+irontide-config = { path = "../irontide-config", version = "0.171.0" }

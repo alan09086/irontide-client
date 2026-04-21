@@ -8,6 +8,10 @@ pub mod torrents;
 #[cfg(feature = "webui")]
 pub mod webui;
 
+// M172a Lane A: re-export the argon2 concurrency helper for integration
+// tests and downstream tuning by alternate entry points.
+pub use qbt_v2::default_argon2_permits;
+
 use std::sync::Arc;
 
 use axum::Router;
