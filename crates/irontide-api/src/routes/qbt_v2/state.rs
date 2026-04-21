@@ -109,8 +109,20 @@ pub fn resolve_client_ip(req: &Request, state: &QbtState) -> IpAddr {
         .extensions()
         .get::<axum::extract::ConnectInfo<SocketAddr>>()
         .map(|ci| ci.0.ip());
+    resolve_client_ip_from_parts(peer, req.headers(), state)
+}
 
-    let xff_entries = parse_xff_header(req.headers());
+/// Same XFF trust-hop algorithm as [`resolve_client_ip`], but callable
+/// from a handler that has already destructured the request (no `&Request`
+/// available). Used by the qBt v2 login handler (Lane C) which receives
+/// `ConnectInfo<SocketAddr>` + `HeaderMap` directly.
+#[must_use]
+pub fn resolve_client_ip_from_parts(
+    peer: Option<IpAddr>,
+    headers: &HeaderMap,
+    state: &QbtState,
+) -> IpAddr {
+    let xff_entries = parse_xff_header(headers);
     let trusted = state.reverse_proxies_list.read();
 
     // chain = [XFF entries..., peer]

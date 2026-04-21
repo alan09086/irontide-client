@@ -20,12 +20,12 @@
 //! enumeration oracle. CSRF + brute-force ban land in Lanes B and C of
 //! M172.
 
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
 use axum::body::Body;
 use axum::extract::{ConnectInfo, Request, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum_extra::extract::CookieJar;
@@ -34,9 +34,10 @@ use zeroize::Zeroizing;
 
 use irontide::session::DEFAULT_ADMINADMIN_HASH;
 
+use super::brute_force::AdmitGuard;
 use super::response::{QbtError, QbtResponse};
 use super::session_store::SessionStore;
-use super::state::QbtState;
+use super::state::{QbtState, resolve_client_ip_from_parts};
 
 /// Placeholder password fed into the argon2 verify on the username-mismatch
 /// timing-equaliser path. The bytes never match anything (the real hash is
@@ -118,7 +119,8 @@ pub struct LoginForm {
 /// worker panic (a `JoinError` on the blocking task).
 pub async fn login(
     State(state): State<QbtState>,
-    ConnectInfo(_peer): ConnectInfo<SocketAddr>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     axum::extract::Form(form): axum::extract::Form<LoginForm>,
 ) -> Result<QbtResponse, QbtError> {
     // `ConnectInfo<SocketAddr>` is a REQUIRED extractor (C3). If the API
@@ -129,13 +131,57 @@ pub async fn login(
     // brute-force ban. Test fixtures must use `TcpListener::bind` +
     // `into_make_service_with_connect_info` (see `tests/qbt_v2_auth.rs`
     // `test_session_with_qbt_tcp`).
-    let _peer_addr = _peer;
     let settings = state
         .session
         .settings()
         .await
         .map_err(|e| QbtError::Internal(format!("read settings: {e}")))?;
     let cfg = &settings.qbt_compat;
+
+    // M172a Lane C: resolve the real client IP via Lane A's trust-hop
+    // algorithm — consults `X-Forwarded-For` with rightmost-non-trusted
+    // selection when a reverse-proxy CIDR list is configured, otherwise
+    // returns the raw TCP peer.
+    let client_ip = resolve_client_ip_from_parts(Some(peer.ip()), &headers, &state);
+
+    // M172a Lane C: CIDR-whitelist bypass — skip auth entirely for IPs
+    // inside the operator's `bypass_auth_subnet_whitelist`. The list
+    // lives in a shared RwLock so setPreferences updates take effect
+    // on the next login without rebuilding the router.
+    {
+        let whitelist = state.bypass_auth_subnet_whitelist.read();
+        if whitelist.iter().any(|cidr| cidr.contains(&client_ip)) {
+            return finalise_login(&state, true, &form.username);
+        }
+    }
+
+    // M172a Lane C: loopback bypass — `bypass_local_auth = true` lets
+    // any IP inside 127.0.0.0/8 / ::1 log in without credentials. qBt
+    // parity: their "Bypass authentication for clients on localhost"
+    // toggle has the same semantics.
+    if cfg.bypass_local_auth && client_ip.is_loopback() {
+        return finalise_login(&state, true, &form.username);
+    }
+
+    // M172a Lane C: brute-force gate. Checks whether the attacker's IP
+    // is already banned OR at the pending-cap, increments the in-flight
+    // pending counter, and returns an AdmitGuard RAII token we MUST hold
+    // until after we've recorded the outcome — that way a thundering-herd
+    // flood cannot saturate argon2 beyond `max_failed_auth_count`
+    // verifies per IP.
+    let admit_guard = match state.brute_force.check_and_admit(
+        client_ip,
+        cfg.max_failed_auth_count,
+        cfg.ban_duration_secs,
+    ) {
+        Ok(guard) => guard,
+        Err(_) => {
+            // C4 qBt parity: 403 `Fails.` — same response body as the
+            // wrong-password path so an attacker can't distinguish "am
+            // I banned?" from "did I guess wrong?".
+            return Err(QbtError::Forbidden);
+        }
+    };
 
     // Wrap the plaintext in Zeroizing to minimise stack residue. Serde
     // already made at least one intermediate copy so this is partial scrub
@@ -173,7 +219,15 @@ pub async fn login(
             false
         };
         drop(permit);
-        return finalise_login(&state, username_matches && verified, &form.username);
+        return finalise_login_with_tracking(
+            &state,
+            client_ip,
+            username_matches && verified,
+            &form.username,
+            cfg.max_failed_auth_count,
+            cfg.ban_duration_secs,
+            admit_guard,
+        );
     }
 
     // Normal path: argon2id verify, routed through `spawn_blocking` so the
@@ -210,7 +264,15 @@ pub async fn login(
     // Authoritative branch: BOTH username matched AND password verified. The
     // work above (argon2 dummy verify on mismatch) is not skipped because
     // skipping it is exactly the timing oracle we're closing.
-    finalise_login(&state, username_matches && verified, &form.username)
+    finalise_login_with_tracking(
+        &state,
+        client_ip,
+        username_matches && verified,
+        &form.username,
+        cfg.max_failed_auth_count,
+        cfg.ban_duration_secs,
+        admit_guard,
+    )
 }
 
 /// Complete the login flow: issue a session token on success, or return
@@ -236,6 +298,43 @@ fn finalise_login(
     Ok(QbtResponse::Ok {
         set_cookie: Some(cookie_value),
     })
+}
+
+/// M172a Lane C: terminate login with brute-force-registry bookkeeping.
+///
+/// Records the outcome (success clears the counter; failure increments
+/// it and stamps `banned_until` on cross-threshold), THEN drops the
+/// admission guard so the `pending` decrement happens strictly after the
+/// state transition lands. Returning `Err(Forbidden)` here yields the
+/// same `Fails.` 403 body as wrong-password and banned-IP paths — qBt
+/// parity C4.
+fn finalise_login_with_tracking(
+    state: &QbtState,
+    client_ip: IpAddr,
+    authenticated: bool,
+    username: &str,
+    max: u32,
+    ban_secs: u64,
+    admit_guard: AdmitGuard,
+) -> Result<QbtResponse, QbtError> {
+    if authenticated {
+        state.brute_force.record_success(client_ip);
+        // Drop the guard AFTER record_success so the state transition is
+        // observed before pending--.
+        drop(admit_guard);
+        let sid = state
+            .store
+            .create(username.to_owned())
+            .map_err(|e| QbtError::Internal(format!("token gen: {e}")))?;
+        let cookie_value = format!("SID={sid}; HttpOnly; Path=/; SameSite=Lax");
+        Ok(QbtResponse::Ok {
+            set_cookie: Some(cookie_value),
+        })
+    } else {
+        state.brute_force.record_failure(client_ip, max, ban_secs);
+        drop(admit_guard);
+        Err(QbtError::Forbidden)
+    }
 }
 
 /// Blocking-pool argon2id verify (M172a).
