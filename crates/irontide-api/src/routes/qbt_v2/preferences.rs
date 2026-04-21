@@ -88,6 +88,20 @@ impl From<&Settings> for QbtPreferences {
             None => (-1.0, false),
         };
 
+        // M171: qBt stores seed-time preferences in MINUTES on the wire;
+        // our canonical field is seconds. Use integer division — fractional
+        // minutes are not expressible in qBt's model. The paired `*_enabled`
+        // boolean mirrors qBt exactly: `Some` => true, `None` => false.
+        let (max_seeding_time, max_seeding_time_enabled) = match s.seed_time_limit_secs {
+            Some(secs) => ((secs / 60) as i64, true),
+            None => (-1, false),
+        };
+        let (max_inactive_seeding_time, max_inactive_seeding_time_enabled) =
+            match s.inactive_seed_time_limit_secs {
+                Some(secs) => ((secs / 60) as i64, true),
+                None => (-1, false),
+            };
+
         Self {
             save_path: s.download_dir.to_string_lossy().into_owned(),
             dht: s.enable_dht,
@@ -100,12 +114,14 @@ impl From<&Settings> for QbtPreferences {
             encryption,
             web_ui_username: s.qbt_compat.username.clone(),
 
-            // FIXME(M171): wire to real state.
+            // M171: seed-time preferences wired to real Settings (D1a).
+            max_seeding_time,
+            max_seeding_time_enabled,
+            max_inactive_seeding_time,
+            max_inactive_seeding_time_enabled,
+
+            // FIXME(M171): wire to real state (D1/D2).
             max_ratio_act: "pause".into(),
-            max_seeding_time_enabled: false,
-            max_seeding_time: -1,
-            max_inactive_seeding_time_enabled: false,
-            max_inactive_seeding_time: -1,
             queueing_enabled: false,
             create_subfolder_enabled: true,
             start_paused_enabled: false,
