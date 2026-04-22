@@ -14,7 +14,8 @@ use slint::{Model, ModelRc, SharedString, VecModel};
 use irontide::session::{SessionHandle, TorrentState, TorrentSummary};
 
 use crate::columns::ColumnId;
-use crate::sidebar::{RowView, SidebarPredicate};
+use crate::sidebar::{RowView, SidebarPredicate, TrackerIndex};
+use crate::sidebar_view;
 
 // Thread-local storage for the VecModel so the upgrade_in_event_loop
 // closure can access it without moving it into each closure.
@@ -101,17 +102,38 @@ pub async fn poll_loop(
         .map(|s| s.listen_port as i32)
         .unwrap_or(0);
 
+    // M173 Lane A: TrackerIndex carries previous-tick counts for diff-only
+    // sidebar updates. The first call returns the full Added/Changed mix
+    // for cold-start population.
+    let mut tracker_index = TrackerIndex::new();
+
     loop {
         tokio::time::sleep(Duration::from_millis(500)).await;
 
-        // Fetch data — on failure, keep last UI, log warning.
-        let summaries = match session.list_torrent_summaries().await {
-            Ok(s) => s,
+        // Fetch torrent IDs once, then enrich each with stats + trackers.
+        // We hold a (TorrentSummary, RowView) tuple per torrent so the
+        // existing model + the M173 sidebar share one fetch.
+        let ids = match session.list_torrents().await {
+            Ok(ids) => ids,
             Err(e) => {
-                tracing::warn!("poll: list_torrent_summaries failed: {e}");
+                tracing::warn!("poll: list_torrents failed: {e}");
                 continue;
             }
         };
+        let mut summaries: Vec<TorrentSummary> = Vec::with_capacity(ids.len());
+        let mut rich: Vec<RowView> = Vec::with_capacity(ids.len());
+        for id in ids {
+            let stats = match session.torrent_stats(id).await {
+                Ok(s) => s,
+                Err(_) => continue, // shutting down or vanishing — skip
+            };
+            // The tracker_list call is best-effort; on failure we still
+            // produce a row, just with empty tracker buckets.
+            let trackers = session.tracker_list(id).await.unwrap_or_default();
+            summaries.push(TorrentSummary::from(&stats));
+            rich.push(sidebar_view::rich_row_view(&stats, &trackers));
+        }
+
         let sess_stats = match session.session_stats().await {
             Ok(s) => s,
             Err(e) => {
@@ -126,10 +148,20 @@ pub async fn poll_loop(
             (st.sort, st.selected.clone(), st.predicate.clone())
         };
 
-        // Filter (M173 Lane A) then sort. Default predicate (`All`) is a
-        // pass-through, so the M163 behaviour is preserved exactly until the
-        // user clicks a sidebar row.
-        let mut sorted = apply_predicate(&summaries, &predicate, enrich_summary_only);
+        // Filter (M173 Lane A) then sort. The enricher reaches into the
+        // pre-built rich slice so the predicate can match against
+        // `error` / `category` / `tags` / tracker buckets.
+        let rich_by_hash: std::collections::HashMap<&str, &RowView> = rich
+            .iter()
+            .map(|r| (r.info_hash.as_str(), r))
+            .collect();
+        let mut sorted = apply_predicate(&summaries, &predicate, |s| {
+            rich_by_hash
+                .get(s.info_hash.as_str())
+                .copied()
+                .cloned()
+                .unwrap_or_else(|| RowView::from_summary(s))
+        });
         sort_summaries(&mut sorted, &sort);
 
         // Convert to Slint rows.
@@ -157,6 +189,27 @@ pub async fn poll_loop(
         } else {
             "\u{2014}".to_owned()
         };
+
+        // M173 Lane A: refresh the TrackerIndex + build sidebar rows.
+        // The Index is owned by the loop (per-tick state) so the diff is
+        // computed against the previous tick. We discard the diff for
+        // now — A8 just pushes the full counts to the UI; future work
+        // can route the diff to a `row_changed`-style incremental
+        // update on the Slint sidebar models.
+        let _ = tracker_index.update(&rich);
+        let counts = tracker_index
+            .snapshot()
+            .cloned()
+            .unwrap_or_default();
+        let category_names: Vec<String> = session
+            .list_categories()
+            .await
+            .into_iter()
+            .map(|c| c.name)
+            .collect();
+        let tag_names = session.list_tags().await;
+        let sidebar_rows =
+            sidebar_view::build_sidebar_rows(&counts, &category_names, &tag_names, &predicate);
 
         // Push to UI.
         let sort_col = sort.column.to_index();
@@ -199,6 +252,20 @@ pub async fn poll_loop(
             win.set_status_listen_port(listen_port);
             win.set_sort_column(sort_col);
             win.set_sort_ascending(sort_asc);
+
+            // M173 Lane A: push the four sidebar lists.
+            win.set_sidebar_library_rows(slint::ModelRc::new(slint::VecModel::from(
+                sidebar_rows.library,
+            )));
+            win.set_sidebar_category_rows(slint::ModelRc::new(slint::VecModel::from(
+                sidebar_rows.categories,
+            )));
+            win.set_sidebar_tag_rows(slint::ModelRc::new(slint::VecModel::from(
+                sidebar_rows.tags,
+            )));
+            win.set_sidebar_tracker_rows(slint::ModelRc::new(slint::VecModel::from(
+                sidebar_rows.trackers,
+            )));
         });
     }
 }
@@ -240,10 +307,14 @@ where
         .collect()
 }
 
-/// The minimal `enrich` hook used by `apply_predicate` when no richer data
-/// has been wired yet (task A3 baseline; task A4 replaces this with a
-/// closure that consults `TorrentStats` / `tracker_list`).
+/// The minimal `enrich` hook used by `apply_predicate` when no richer
+/// data is available — the A3 baseline. Production poll loop (A8) uses
+/// a richer closure that consults `TorrentStats` / `tracker_list`, so
+/// the helper is now used only by tests; kept public so future
+/// callers (e.g. lightweight unit tests against a synthetic summary
+/// stream) have a stable entry point.
 #[must_use]
+#[allow(dead_code)]
 pub fn enrich_summary_only(s: &TorrentSummary) -> RowView {
     RowView::from_summary(s)
 }

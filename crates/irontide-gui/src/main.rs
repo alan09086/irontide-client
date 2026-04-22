@@ -7,6 +7,7 @@ mod format;
 mod panic_hook;
 mod poll;
 mod sidebar;
+mod sidebar_view;
 mod skin;
 mod skin_tokens;
 
@@ -368,15 +369,15 @@ fn main() -> Result<(), error::GuiError> {
         });
     }
     {
-        // M173 Lane A task A7: Ctrl+1..9 / Cmd+1..9 sidebar shortcut.
+        // M173 Lane A task A7+A8: Ctrl+1..9 / Cmd+1..9 sidebar shortcut.
         // Slint forwards the raw digit text plus the focus-scope guard
         // already blocked any open dialog/menu. The Rust side validates
         // the platform accelerator via `accel::parse_sidebar_shortcut`
-        // and resolves the slot. Task A8 will wire this through to a
-        // real predicate change against the visible sidebar order; for
-        // now we surface the chosen slot via a toast so the keybind
-        // plumbing is observable end-to-end.
+        // and resolves the slot to a Library predicate via
+        // `sidebar_view::predicate_for_shortcut_slot` (slots 1..=8 →
+        // LibraryFilter::ORDER; slot 9 currently no-ops).
         let weak = main_window.as_weak();
+        let cb_state = state.clone();
         main_window.on_sidebar_shortcut(move |digit| {
             let Some(win) = weak.upgrade() else { return };
             let ctrl = win.get_ctrl_held();
@@ -385,9 +386,31 @@ fn main() -> Result<(), error::GuiError> {
             else {
                 return;
             };
-            let label = accel::sidebar_shortcut_label(slot);
-            let msg = format!("Sidebar shortcut {label} (slot {slot})");
-            bridge::show_toast(&weak, &msg, false);
+            let Some(predicate) = sidebar_view::predicate_for_shortcut_slot(slot) else {
+                return;
+            };
+            cb_state.lock().set_predicate(predicate);
+        });
+    }
+    {
+        // M173 Lane A task A8: sidebar row click → predicate change.
+        // The Slint sidebar emits the SidebarSection::to_token() slug;
+        // we parse it back into a SidebarPredicate and push onto
+        // AppState. The next poll tick rebuilds the visible model.
+        let cb_state = state.clone();
+        main_window.on_sidebar_predicate_changed(move |token| {
+            if let Some(section) = sidebar::SidebarSection::from_token(token.as_str()) {
+                let predicate = sidebar::SidebarPredicate::from_section(&section);
+                cb_state.lock().set_predicate(predicate);
+            }
+        });
+    }
+    {
+        // M173 Lane A task A8: sidebar section collapse toggle.
+        // Marks the sidebar config dirty so task A9 persists on quit.
+        let cb_state = state.clone();
+        main_window.on_sidebar_section_toggled(move |_kind, _collapsed| {
+            cb_state.lock().sidebar_dirty = true;
         });
     }
 

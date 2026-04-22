@@ -10,10 +10,10 @@ import { AddTorrentDialog } from "widgets/add_torrent_dialog.slint";
 import { ContextMenu } from "widgets/context_menu.slint";
 import { ConfirmDeleteDialog } from "widgets/confirm_delete_dialog.slint";
 import { TweaksOverlay } from "tweaks.slint";
-// M173 Lane A: sidebar IA. Layout wiring lands in task A8; A6 imports the
-// `SidebarRow` struct here so slint_build picks up the new files and Rust
-// callers can see the struct via slint::include_modules!(). The `Sidebar`
-// component itself is wired into the MainWindow body in task A8.
+// M173 Lane A: sidebar IA. The `Sidebar` organism + the `SidebarRow`
+// data struct are imported here so slint_build picks them up. The
+// MainWindow body (below) wires the `Sidebar` into the layout in task
+// A8.
 import { Sidebar, SidebarRow } from "organisms/sidebar.slint";
 
 export { Tokens, Shadow, SidebarRow }
@@ -313,6 +313,18 @@ export component MainWindow inherits Window {
     // the FocusScope handler below).
     callback sidebar-shortcut(/* digit text "1".."9" */ string);
 
+    // ── Sidebar (M173 Lane A task A8) ──
+    in property <[SidebarRow]> sidebar-library-rows;
+    in property <[SidebarRow]> sidebar-category-rows;
+    in property <[SidebarRow]> sidebar-tag-rows;
+    in property <[SidebarRow]> sidebar-tracker-rows;
+    in-out property <bool> sidebar-library-collapsed: false;
+    in-out property <bool> sidebar-category-collapsed: false;
+    in-out property <bool> sidebar-tag-collapsed: false;
+    in-out property <bool> sidebar-tracker-collapsed: false;
+    callback sidebar-predicate-changed(/* token */ string);
+    callback sidebar-section-toggled(/* kind: library|category|tag|tracker */ string, /* collapsed */ bool);
+
     // ── Tweaks overlay (M172b Lane B) ──
     in-out property <bool> show-tweaks: false;
     in-out property <string> current-skin: "tide";
@@ -438,10 +450,36 @@ export component MainWindow inherits Window {
                 }
             }
 
-            // Main content area
-            Rectangle {
-                background: Tokens.bg-0;
+            // M173 Lane A: sidebar lives left of the main content. The
+            // sidebar is hidden while the session is still loading so
+            // the loading spinner remains centred on the full window
+            // width.
+            HorizontalLayout {
+                spacing: 0;
                 vertical-stretch: 1;
+
+                if root.session-ready && root.error-text == "": Sidebar {
+                    library-rows: root.sidebar-library-rows;
+                    category-rows: root.sidebar-category-rows;
+                    tag-rows: root.sidebar-tag-rows;
+                    tracker-rows: root.sidebar-tracker-rows;
+                    library-collapsed <=> root.sidebar-library-collapsed;
+                    category-collapsed <=> root.sidebar-category-collapsed;
+                    tag-collapsed <=> root.sidebar-tag-collapsed;
+                    tracker-collapsed <=> root.sidebar-tracker-collapsed;
+                    predicate-changed(token) => {
+                        root.sidebar-predicate-changed(token);
+                    }
+                    section-toggled(kind, collapsed) => {
+                        root.sidebar-section-toggled(kind, collapsed);
+                    }
+                }
+
+                // Main content area
+                Rectangle {
+                    background: Tokens.bg-0;
+                    horizontal-stretch: 1;
+                    vertical-stretch: 1;
 
                 // Loading state: spinner + message
                 if !root.session-ready && root.error-text == "": VerticalLayout {
@@ -894,6 +932,7 @@ export component MainWindow inherits Window {
                         horizontal-alignment: center;
                         wrap: word-wrap;
                     }
+                }
                 }
             }
 
