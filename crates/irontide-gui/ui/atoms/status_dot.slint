@@ -1,0 +1,37 @@
+// StatusDot atom — small filled circle with an optional pulsing ring.
+//
+// Used by the torrent list progress cell (and, in future milestones, by
+// any peer/tracker status indicator). No design-system literals —
+// everything flows through Tokens.
+
+import { Tokens } from "../tokens.slint";
+
+export component StatusDot {
+    in property <color> dot-color;
+    in property <bool> pulsing: false;
+
+    width: Tokens.sp-4;
+    height: Tokens.sp-4;
+
+    // Outer pulse ring (visible only when pulsing).
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        border-radius: self.width / 2;
+        background: root.dot-color;
+        opacity: root.pulsing ? 0.4 : 0;
+        animate opacity {
+            duration: Tokens.dur-slow;
+            easing: ease-in-out;
+        }
+    }
+    // Inner solid dot.
+    Rectangle {
+        x: parent.width / 2 - Tokens.sp-3 / 2;
+        y: parent.height / 2 - Tokens.sp-3 / 2;
+        width: Tokens.sp-3;
+        height: Tokens.sp-3;
+        border-radius: Tokens.sp-3 / 2;
+        background: root.dot-color;
+    }
+}

@@ -1,6 +1,7 @@
 // Custom progress bar widget for torrent list rows.
 
 import { Tokens } from "../tokens.slint";
+import { StatusDot } from "../atoms/status_dot.slint";
 
 export component TorrentProgressBar {
     in property <float> progress: 0.0;
@@ -31,6 +32,14 @@ export component TorrentProgressBar {
             font-size: Tokens.fs-10;
             horizontal-alignment: center;
             vertical-alignment: center;
+        }
+
+        // State indicator dot on the trailing edge (same colour as the fill).
+        StatusDot {
+            x: parent.width - self.width - Tokens.sp-1;
+            y: (parent.height - self.height) / 2;
+            dot-color: root.fill-color;
+            pulsing: false;
         }
     }
 }
