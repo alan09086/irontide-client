@@ -156,6 +156,19 @@ pub struct AppState {
     pub columns: crate::columns::ColumnConfig,
     /// Whether the column config has unsaved changes.
     pub columns_dirty: bool,
+    /// Active skin/theme/density/radius settings.
+    ///
+    /// Stored in Lane A; Lane B wires `SkinSettings::apply` into the Slint
+    /// `Tokens` global and the `skin-applied` gate, at which point this
+    /// field is read on every settings change.
+    #[allow(dead_code)] // Read by Lane B (skin apply + settings-tab reads).
+    pub skin: crate::skin::SkinSettings,
+    /// Whether the skin config has unsaved changes.
+    ///
+    /// Lane B sets this from the settings-tab callbacks and inspects it on
+    /// shutdown to persist a `GuiConfig` update via `save_gui_config`.
+    #[allow(dead_code)] // Read by Lane B (save-on-shutdown gate).
+    pub skin_dirty: bool,
 }
 
 impl AppState {
@@ -163,6 +176,7 @@ impl AppState {
     pub fn new(
         shutdown_tx: tokio::sync::oneshot::Sender<()>,
         columns: crate::columns::ColumnConfig,
+        skin: crate::skin::SkinSettings,
     ) -> Self {
         Self {
             phase: AppPhase::Loading,
@@ -174,6 +188,8 @@ impl AppState {
             current_order: Vec::new(),
             columns,
             columns_dirty: false,
+            skin,
+            skin_dirty: false,
         }
     }
 
@@ -308,14 +324,22 @@ mod tests {
     #[test]
     fn app_phase_default_is_loading() {
         let (tx, _rx) = tokio::sync::oneshot::channel();
-        let state = AppState::new(tx, crate::columns::ColumnConfig::default());
+        let state = AppState::new(
+            tx,
+            crate::columns::ColumnConfig::default(),
+            crate::skin::SkinSettings::default(),
+        );
         assert_eq!(state.phase, AppPhase::Loading);
     }
 
     #[test]
     fn app_phase_transitions() {
         let (tx, _rx) = tokio::sync::oneshot::channel();
-        let mut state = AppState::new(tx, crate::columns::ColumnConfig::default());
+        let mut state = AppState::new(
+            tx,
+            crate::columns::ColumnConfig::default(),
+            crate::skin::SkinSettings::default(),
+        );
         assert_eq!(state.phase, AppPhase::Loading);
 
         state.phase = AppPhase::Ready;
@@ -342,7 +366,11 @@ mod tests {
     #[test]
     fn test_selection_single_click() {
         let (tx, _rx) = tokio::sync::oneshot::channel();
-        let mut state = AppState::new(tx, crate::columns::ColumnConfig::default());
+        let mut state = AppState::new(
+            tx,
+            crate::columns::ColumnConfig::default(),
+            crate::skin::SkinSettings::default(),
+        );
         state.selection_click("abc123");
         assert!(state.selected.contains("abc123"));
         assert_eq!(state.selected.len(), 1);
@@ -356,7 +384,11 @@ mod tests {
     #[test]
     fn test_selection_ctrl_toggle() {
         let (tx, _rx) = tokio::sync::oneshot::channel();
-        let mut state = AppState::new(tx, crate::columns::ColumnConfig::default());
+        let mut state = AppState::new(
+            tx,
+            crate::columns::ColumnConfig::default(),
+            crate::skin::SkinSettings::default(),
+        );
         state.selection_ctrl_click("abc123");
         assert!(state.selected.contains("abc123"));
         state.selection_ctrl_click("def456");
@@ -370,7 +402,11 @@ mod tests {
     #[test]
     fn test_selection_shift_range() {
         let (tx, _rx) = tokio::sync::oneshot::channel();
-        let mut state = AppState::new(tx, crate::columns::ColumnConfig::default());
+        let mut state = AppState::new(
+            tx,
+            crate::columns::ColumnConfig::default(),
+            crate::skin::SkinSettings::default(),
+        );
         state.current_order = vec!["a".into(), "b".into(), "c".into(), "d".into(), "e".into()];
         // Click "b" first (sets anchor)
         state.selection_click("b");
@@ -446,7 +482,11 @@ mod tests {
     #[test]
     fn select_all_populates() {
         let (tx, _rx) = tokio::sync::oneshot::channel();
-        let mut state = AppState::new(tx, crate::columns::ColumnConfig::default());
+        let mut state = AppState::new(
+            tx,
+            crate::columns::ColumnConfig::default(),
+            crate::skin::SkinSettings::default(),
+        );
         let hashes: Vec<String> = vec!["aaa".into(), "bbb".into(), "ccc".into()];
         state.select_all(&hashes);
         assert_eq!(state.selected.len(), 3);
@@ -458,7 +498,11 @@ mod tests {
     #[test]
     fn select_all_empty() {
         let (tx, _rx) = tokio::sync::oneshot::channel();
-        let mut state = AppState::new(tx, crate::columns::ColumnConfig::default());
+        let mut state = AppState::new(
+            tx,
+            crate::columns::ColumnConfig::default(),
+            crate::skin::SkinSettings::default(),
+        );
         // Pre-populate to verify it clears.
         state.selected.insert("existing".into());
         state.select_all(&[]);

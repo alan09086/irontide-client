@@ -1207,8 +1207,7 @@ column_widths = [200.0, 80.0]
             radius_preset: Some("sharp".into()),
         };
         let serialized = toml::to_string_pretty(&original).expect("serialize");
-        let deserialized: GuiConfig =
-            toml::from_str(&serialized).expect("deserialize");
+        let deserialized: GuiConfig = toml::from_str(&serialized).expect("deserialize");
         assert_eq!(deserialized.skin, original.skin);
         assert_eq!(deserialized.theme, original.theme);
         assert_eq!(deserialized.density, original.density);
