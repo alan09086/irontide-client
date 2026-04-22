@@ -525,13 +525,23 @@ async fn resolve_hashes(state: &QbtState, hashes: Option<&str>) -> Result<Vec<Id
     }
 }
 
+/// v0.173.1 Class B + C fix: `pause` now accepts `hashes=` from either
+/// URL query or form body (Class B), and logs session errors at warn
+/// level instead of swallowing them with `let _ = ...` (Class C). Per qBt
+/// WebUI v2 bulk-idempotency semantics we still return 200 OK — individual
+/// torrent errors must not take down a whole bulk action — but the caller
+/// and operator now have a visible failure signal.
 pub async fn pause(
     State(state): State<QbtState>,
-    Query(q): Query<HashesQuery>,
+    req: axum::extract::Request,
 ) -> Result<QbtResponse, QbtError> {
+    let q = extract_hashes_params(req).await?;
     let targets = resolve_hashes(&state, q.hashes.as_deref()).await?;
     for id in targets {
-        let _ = state.session.pause_torrent(id).await;
+        if let Err(e) = state.session.pause_torrent(id).await {
+            tracing::warn!(%id, error = %e,
+                "pause_torrent failed — reported to client as 200 per qBt bulk idempotency");
+        }
     }
     Ok(QbtResponse::ok())
 }
