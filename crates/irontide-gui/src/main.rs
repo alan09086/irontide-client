@@ -1,3 +1,4 @@
+mod accel;
 mod app;
 mod bridge;
 mod columns;
