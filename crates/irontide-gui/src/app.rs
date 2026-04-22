@@ -158,16 +158,14 @@ pub struct AppState {
     pub columns_dirty: bool,
     /// Active skin/theme/density/radius settings.
     ///
-    /// Stored in Lane A; Lane B wires `SkinSettings::apply` into the Slint
-    /// `Tokens` global and the `skin-applied` gate, at which point this
-    /// field is read on every settings change.
-    #[allow(dead_code)] // Read by Lane B (skin apply + settings-tab reads).
+    /// Loaded from `GuiConfig` on startup, applied to the Slint `Tokens`
+    /// global via [`crate::skin::SkinSettings::apply`]. Mutated by the
+    /// Tweaks overlay callbacks (see `main.rs`).
     pub skin: crate::skin::SkinSettings,
     /// Whether the skin config has unsaved changes.
     ///
-    /// Lane B sets this from the settings-tab callbacks and inspects it on
-    /// shutdown to persist a `GuiConfig` update via `save_gui_config`.
-    #[allow(dead_code)] // Read by Lane B (save-on-shutdown gate).
+    /// Set by the Tweaks overlay callbacks; inspected at shutdown to
+    /// persist a `GuiConfig` update via `save_gui_config`.
     pub skin_dirty: bool,
 }
 

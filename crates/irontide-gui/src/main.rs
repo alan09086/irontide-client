@@ -43,6 +43,7 @@ fn main() -> Result<(), error::GuiError> {
         }
     };
     let col_config = columns::ColumnConfig::from_gui_config(&gui_config);
+    let skin_settings = skin::SkinSettings::from_gui_config(&gui_config);
     let settings = config;
 
     // 4. Create shutdown channel + app state.
@@ -50,11 +51,22 @@ fn main() -> Result<(), error::GuiError> {
     let state = Arc::new(Mutex::new(app::AppState::new(
         shutdown_tx,
         col_config,
-        skin::SkinSettings::default(),
+        skin_settings,
     )));
 
-    // 5. Create main window.
+    // 5. Create main window + push initial skin into Tokens global.
     let main_window = MainWindow::new()?;
+    {
+        let weak = main_window.as_weak();
+        let st = state.lock();
+        st.skin.apply(&weak);
+        // Seed the Tweaks overlay's current-* pill state so the UI
+        // reflects the persisted config on first paint.
+        main_window.set_current_skin(st.skin.skin.to_string().into());
+        main_window.set_current_theme(st.skin.theme.to_string().into());
+        main_window.set_current_density(st.skin.density.to_string().into());
+        main_window.set_current_radius(st.skin.radius.to_string().into());
+    }
 
     // 6. Wire menu callbacks.
     let weak = main_window.as_weak();
@@ -440,11 +452,12 @@ fn main() -> Result<(), error::GuiError> {
     // 8. Run Slint event loop (blocks until window is closed).
     main_window.run()?;
 
-    // 9. Save column config if dirty.
+    // 9. Save GUI config if any dirty field (columns and/or skin).
     {
         let st = state.lock();
-        if st.columns_dirty {
-            let gui = st.columns.to_gui_config();
+        if st.columns_dirty || st.skin_dirty {
+            let mut gui = st.columns.to_gui_config();
+            st.skin.populate_gui_config(&mut gui);
             if let Err(e) = irontide_config::save_gui_config(None, &gui) {
                 tracing::warn!("failed to save GUI config: {e}");
             }

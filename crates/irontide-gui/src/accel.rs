@@ -5,9 +5,11 @@
 //! Control elsewhere) at compile time and provides utilities for rendering
 //! shortcut strings and matching key events.
 //!
-//! Lane A ships the primitives; Lane B wires them into the Slint menu bar
-//! labels and FocusScope key handlers. The `#[allow(dead_code)]` annotations
-//! below keep the build clean under `-D warnings` during the B gap.
+//! Lane B wires the Ctrl+Shift+T / Cmd+Shift+T toggle directly into
+//! `main.slint`'s FocusScope (via tracked `ctrl-held` / `meta-held`
+//! properties), so the Rust helpers are currently only consumed by
+//! tests and future menu-label strings. The module-level
+//! `#![allow(dead_code)]` covers that gap.
 
 #![allow(dead_code)]
 

@@ -19,13 +19,6 @@
 //!    with `skin-applied = true` so the main layout can unmask.
 //! 4. On shutdown, [`SkinSettings::populate_gui_config`] writes the
 //!    current state back into `GuiConfig` for persistence.
-//!
-//! The module-level `#![allow(dead_code)]` keeps `-D warnings` clean
-//! between Lane B sub-tasks — it is removed in B10 when `main.rs`
-//! wires `apply` / `from_gui_config` / `populate_gui_config` into the
-//! startup and shutdown paths.
-
-#![allow(dead_code)]
 
 use strum::{Display, EnumString};
 
