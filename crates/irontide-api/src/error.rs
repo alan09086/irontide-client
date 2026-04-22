@@ -101,6 +101,9 @@ impl From<irontide::session::Error> for ApiError {
             Error::MetadataNotReady(_) => (StatusCode::NOT_FOUND, "METADATA_NOT_READY"),
             Error::Shutdown => (StatusCode::SERVICE_UNAVAILABLE, "SHUTTING_DOWN"),
             Error::SessionAtCapacity(_) => (StatusCode::SERVICE_UNAVAILABLE, "SESSION_AT_CAPACITY"),
+            // M173 Lane B (B11): a second concurrent setPreferences
+            // hit the in-flight guard. Caller should retry shortly.
+            Error::ConcurrentReconfig => (StatusCode::CONFLICT, "CONCURRENT_RECONFIG"),
             _ => (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR"),
         };
 

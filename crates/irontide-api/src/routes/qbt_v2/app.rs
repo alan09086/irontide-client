@@ -257,7 +257,14 @@ pub async fn set_preferences(
         .session
         .apply_settings_classified(settings)
         .await
-        .map_err(|e| QbtError::Internal(format!("apply settings: {e}")))?;
+        .map_err(|e| match e {
+            // M173 Lane B (B11): concurrent setPreferences hit the
+            // in-flight guard. qBt clients can retry shortly.
+            irontide::session::Error::ConcurrentReconfig => {
+                QbtError::Conflict(e.to_string())
+            }
+            _ => QbtError::Internal(format!("apply settings: {e}")),
+        })?;
 
     // A7: swap the RwLock under an exclusive write — never during a read.
     // Already-in-flight CSRF checks reading the old list complete with the
