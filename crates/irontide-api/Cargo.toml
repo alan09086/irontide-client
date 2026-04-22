@@ -61,3 +61,8 @@ tokio-tungstenite = "0.28"
 tower = { version = "0.5", features = ["util"] }
 # M172a Lane A: integration tests exercise the on-disk migration helper.
 irontide-config = { path = "../irontide-config", version = "0.171.0" }
+# M172a Lane B: real-TCP reqwest-based *arr handshake smoke tests.
+reqwest = { version = "0.12", default-features = false, features = [
+    "rustls-tls",
+    "cookies",
+] }

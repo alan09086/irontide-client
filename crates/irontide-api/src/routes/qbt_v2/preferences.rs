@@ -79,6 +79,17 @@ pub struct QbtPreferences {
     pub start_paused_enabled: bool,
     /// M171: Wired to `auto_manage_torrents` (D1+D2).
     pub auto_tmm_enabled: bool,
+
+    /// M172a Lane B: wired to `qbt_compat.csrf_protection_enabled`.
+    pub web_ui_csrf_protection_enabled: bool,
+    /// M172a Lane B: wired to `qbt_compat.host_header_validation_enabled`.
+    pub web_ui_host_header_validation_enabled: bool,
+    /// M172a Lane B: wired to `qbt_compat.web_ui_reverse_proxy_enabled`.
+    pub web_ui_reverse_proxy_enabled: bool,
+    /// M172a Lane B: semicolon-joined string form of
+    /// `qbt_compat.web_ui_reverse_proxies_list` to match qBt's on-wire
+    /// convention.
+    pub web_ui_reverse_proxies_list: String,
 }
 
 impl From<&Settings> for QbtPreferences {
@@ -87,9 +98,7 @@ impl From<&Settings> for QbtPreferences {
 
         let encryption = match s.encryption_mode {
             EncryptionMode::Disabled => QbtEncryption::Disable,
-            EncryptionMode::Enabled | EncryptionMode::PreferPlaintext => {
-                QbtEncryption::Prefer
-            }
+            EncryptionMode::Enabled | EncryptionMode::PreferPlaintext => QbtEncryption::Prefer,
             EncryptionMode::Forced => QbtEncryption::Force,
         };
 
@@ -145,6 +154,12 @@ impl From<&Settings> for QbtPreferences {
 
             // Hardcoded safe default until M174.
             start_paused_enabled: false,
+
+            // M172a Lane B: CSRF + reverse-proxy toggles.
+            web_ui_csrf_protection_enabled: s.qbt_compat.csrf_protection_enabled,
+            web_ui_host_header_validation_enabled: s.qbt_compat.host_header_validation_enabled,
+            web_ui_reverse_proxy_enabled: s.qbt_compat.web_ui_reverse_proxy_enabled,
+            web_ui_reverse_proxies_list: s.qbt_compat.web_ui_reverse_proxies_list.join(";"),
         }
     }
 }

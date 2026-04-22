@@ -501,9 +501,10 @@ impl SettingsForm {
 /// 7396 JSON Merge Patch. Emits `HX-Trigger: settingsSaved` on success so
 /// the settings page can show a toast.
 ///
-/// SECURITY: unauthenticated. Auth/CSRF deferred to M171 — the M168 qBt
-/// v2 auth covers /api/v2/* only; the /webui/* surface is a separate
-/// decision and lands with argon2 hashing + Referer/Origin checks in M171.
+/// M172a Lane B: CSRF protection applied globally via [`qbt_v2::csrf_guard`]
+/// layered on the top-level router — cross-origin POST/PATCH from a hostile
+/// tab is rejected with 403 `Fails.`. Login auth for the /webui/* surface
+/// itself remains a future milestone.
 pub async fn patch_settings_webui(
     State(session): State<AppState>,
     axum::Form(form): axum::Form<SettingsForm>,

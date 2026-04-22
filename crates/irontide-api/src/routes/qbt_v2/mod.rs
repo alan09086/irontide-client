@@ -26,6 +26,7 @@ pub mod files;
 pub mod pieces;
 pub mod preferences;
 pub mod response;
+pub mod security;
 pub mod session_store;
 pub mod state;
 pub mod tags;
@@ -44,8 +45,19 @@ use axum::routing::{get, post};
 use irontide::session::SessionHandle;
 
 pub use response::{QbtError, QbtResponse};
+pub use security::csrf_guard;
 pub use session_store::SessionStore;
 pub use state::{QbtState, default_argon2_permits, resolve_client_ip};
+
+/// Build the qBt v2 sub-router along with the [`QbtState`] that backs it.
+///
+/// The state is returned so callers (e.g. the top-level `routes::build_router`)
+/// can share its reverse-proxies RwLock with adjacent surfaces that also need
+/// CSRF protection — most notably the `/webui/*` block (M172a Lane B).
+pub fn build_router_with_state(session: Arc<SessionHandle>) -> (Router, QbtState) {
+    let router_state = build_router_inner(session);
+    (router_state.0, router_state.1)
+}
 
 /// Build the qBt v2 sub-router.
 ///
@@ -64,6 +76,10 @@ pub use state::{QbtState, default_argon2_permits, resolve_client_ip};
 /// without a valid cookie — `require_sid` would otherwise reject it on a
 /// missing/expired SID.
 pub fn build_router(session: Arc<SessionHandle>) -> Router {
+    build_router_inner(session).0
+}
+
+fn build_router_inner(session: Arc<SessionHandle>) -> (Router, QbtState) {
     // Session store TTL + max_sessions are fixed at router construction
     // (matches real qBt — restart to reconfigure). Runtime toggles of
     // qbt_compat.enabled take effect immediately because qbt_gate re-reads
@@ -80,6 +96,27 @@ pub fn build_router(session: Arc<SessionHandle>) -> Router {
     // future milestone (requires rebuilding the Semaphore — design work).
     let argon2_permits = default_argon2_permits(None);
     let state = QbtState::new(session, store, argon2_permits);
+
+    // M172a Lane B: seed the reverse-proxies list from the current Settings.
+    // The build_router function is sync, so we spawn a best-effort task that
+    // reads settings and populates the RwLock. Until this completes the list
+    // is empty — equivalent to "no trusted proxies" — which is the safe
+    // default anyway. Runtime updates via setPreferences invalidate the lock
+    // through `SessionHandle::apply_settings_classified` (see session.rs).
+    {
+        let state_for_seed = state.clone();
+        tokio::spawn(async move {
+            if let Ok(settings) = state_for_seed.session.settings().await {
+                let parsed: Vec<ipnet::IpNet> = settings
+                    .qbt_compat
+                    .web_ui_reverse_proxies_list
+                    .iter()
+                    .filter_map(|s| s.parse::<ipnet::IpNet>().ok())
+                    .collect();
+                *state_for_seed.reverse_proxies_list.write() = parsed;
+            }
+        });
+    }
 
     let app_read = Router::new()
         .route("/api/v2/app/version", get(app::version))
@@ -134,12 +171,21 @@ pub fn build_router(session: Arc<SessionHandle>) -> Router {
         .merge(torrent_details)
         .merge(torrent_tags)
         .merge(app_write)
+        // M172a Lane B: CSRF guard sits outside `require_sid` so mutating
+        // requests with a valid cookie but a cross-origin Origin still 403
+        // (a browser-XSRF scenario against an authenticated session).
+        .route_layer(from_fn_with_state(state.clone(), security::csrf_guard))
         .route_layer(from_fn_with_state(state.clone(), auth::require_sid))
         .with_state(state.clone());
 
     let unprotected = Router::new()
         .route("/api/v2/auth/login", post(auth::login))
         .route("/api/v2/auth/logout", post(auth::logout))
+        // M172a Lane B: login itself is CSRF-protected — an Origin-mismatched
+        // login from a hostile tab must not be allowed to plant a SID cookie.
+        // Logout stays idempotent per qBt semantics, but routing the guard on
+        // both keeps the behaviour consistent.
+        .route_layer(from_fn_with_state(state.clone(), security::csrf_guard))
         .with_state(state.clone());
 
     // M172a C3: `ConnectInfo<SocketAddr>` is a required extractor on
@@ -151,12 +197,13 @@ pub fn build_router(session: Arc<SessionHandle>) -> Router {
     // the `MockConnectInfo` here injects a synthetic 0.0.0.0:0 fallback
     // so the test path doesn't hit a 500 on login. Never fires in
     // production because the make-service layer overrides it.
-    Router::new()
+    let router = Router::new()
         .merge(protected)
         .merge(unprotected)
-        .route_layer(from_fn_with_state(state, auth::qbt_gate))
+        .route_layer(from_fn_with_state(state.clone(), auth::qbt_gate))
         .layer(MockConnectInfo::<SocketAddr>(SocketAddr::from((
             [0_u8, 0, 0, 0],
             0,
-        ))))
+        ))));
+    (router, state)
 }
