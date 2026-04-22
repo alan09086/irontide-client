@@ -1,0 +1,102 @@
+// IronTide design tokens — skeleton populated by Lane A, values by Lane B.
+//
+// Shape:
+// - `struct Shadow` bundles color/blur/offset-y for drop-shadow-* binding.
+// - `export global Tokens { in-out property ... }` — all props mutated by
+//   `SkinSettings::apply` in Rust.
+//
+// Placeholder defaults are Tide-dark baked values so first paint is correct
+// (but gated on `skin-applied` — see main.slint).
+
+export struct Shadow {
+    color: color,
+    blur: length,
+    offset-y: length,
+}
+
+export global Tokens {
+    // ── Colours (active palette) ─────────────────────────────────────
+    in-out property <color> bg-0:         #0a0e14;
+    in-out property <color> bg-1:         #11161f;
+    in-out property <color> bg-2:         #161c27;
+    in-out property <color> bg-3:         #1d2430;
+    in-out property <color> bg-hover:     #1d2633;
+    in-out property <color> bg-selected:  #223042;
+    in-out property <color> bg-inset:     #070a10;
+    in-out property <color> fg-0:         #e8edf5;
+    in-out property <color> fg-1:         #b7c1d0;
+    in-out property <color> fg-2:         #8b97a8;
+    in-out property <color> fg-3:         #5b6576;
+    in-out property <color> border-1:     #2a3444;
+    in-out property <color> border-2:     #3a4555;
+    in-out property <color> divider:      #232c3a;
+    in-out property <color> accent:       #4da6ff;
+    in-out property <color> accent-hover: #6ab4ff;
+    in-out property <color> accent-fg:    #0a0e14;
+    in-out property <color> accent-bg-soft: #1a2838;
+
+    // ── Status colours (shared across skins/themes) ─────────────────
+    in-out property <color> status-downloading: #4da6ff;
+    in-out property <color> status-seeding:     #4dd99a;
+    in-out property <color> status-paused:      #8b97a8;
+    in-out property <color> status-checking:    #ffc34d;
+    in-out property <color> status-metadata:    #b98dff;
+    in-out property <color> status-queued:      #5b6576;
+    in-out property <color> status-error:       #ff6b6b;
+    in-out property <color> status-stalled:     #8b97a8;
+
+    // ── Spacing (sp-1 … sp-10) ──────────────────────────────────────
+    in-out property <length> sp-1:  2px;
+    in-out property <length> sp-2:  4px;
+    in-out property <length> sp-3:  6px;
+    in-out property <length> sp-4:  8px;
+    in-out property <length> sp-5: 12px;
+    in-out property <length> sp-6: 16px;
+    in-out property <length> sp-7: 20px;
+    in-out property <length> sp-8: 24px;
+    in-out property <length> sp-9: 32px;
+    in-out property <length> sp-10: 40px;
+
+    // ── Radii ───────────────────────────────────────────────────────
+    in-out property <length> r-sm: 3px;
+    in-out property <length> r-md: 6px;
+    in-out property <length> r-lg: 10px;
+    in-out property <length> r-xl: 14px;
+
+    // ── Density (row-h / row-px / chrome-h / sidebar-w / filters-w) ─
+    in-out property <length> row-h:     28px;
+    in-out property <length> row-px:     6px;
+    in-out property <length> chrome-h:  36px;
+    in-out property <length> sidebar-w: 240px;
+    in-out property <length> filters-w: 200px;
+
+    // ── Font sizes (fs-10 … fs-32) ─────────────────────────────────
+    in-out property <length> fs-10: 10px;
+    in-out property <length> fs-11: 11px;
+    in-out property <length> fs-12: 12px;
+    in-out property <length> fs-13: 13px;
+    in-out property <length> fs-14: 14px;
+    in-out property <length> fs-16: 16px;
+    in-out property <length> fs-18: 18px;
+    in-out property <length> fs-24: 24px;
+    in-out property <length> fs-32: 32px;
+
+    // ── Border widths ──────────────────────────────────────────────
+    in-out property <length> border-width-thin:   1px;
+    in-out property <length> border-width-medium: 2px;
+    in-out property <length> border-width-thick:  4px;
+
+    // ── Shadows (struct-shaped) ───────────────────────────────────
+    in-out property <Shadow> shadow-sm: { color: #0000004d, blur: 4px,  offset-y: 1px };
+    in-out property <Shadow> shadow-md: { color: #0000006b, blur: 8px,  offset-y: 2px };
+    in-out property <Shadow> shadow-lg: { color: #00000099, blur: 16px, offset-y: 4px };
+
+    // ── Motion durations ───────────────────────────────────────────
+    in-out property <duration> dur-fast: 80ms;
+    in-out property <duration> dur:      150ms;
+    in-out property <duration> dur-slow: 300ms;
+
+    // ── Identity strings (for test assertions + branching) ─────────
+    in-out property <string> active-skin:  "tide";
+    in-out property <string> active-theme: "dark";
+}
