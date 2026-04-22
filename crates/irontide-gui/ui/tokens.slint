@@ -102,6 +102,21 @@ export global Tokens {
     // ── Identity strings (for test assertions + branching) ─────────
     in-out property <string> active-skin:  "tide";
     in-out property <string> active-theme: "dark";
+
+    // ── Torrent-list column defaults ───────────────────────────────
+    // These are not design tokens in the strict sense — they're layout
+    // defaults that Rust's ColumnConfig::from_gui_config may override
+    // at startup. Holding them here keeps literal px values out of the
+    // widget files (enforced by scripts/ci-tokens-drift.sh upstream).
+    in-out property <length> col-default-name:     100px;
+    in-out property <length> col-default-progress: 120px;
+    in-out property <length> col-default-state:     90px;
+    in-out property <length> col-default-rate:      80px;
+    in-out property <length> col-default-count:     50px;
+    in-out property <length> col-default-eta:       70px;
+    in-out property <length> col-default-ratio:     60px;
+    in-out property <length> col-width-threshold:  780px;
+    in-out property <length> col-width-non-name-total: 680px;
 }
 
 // COMPAT SHIM: maps old `Palette.*` property names onto the new

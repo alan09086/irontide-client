@@ -1,5 +1,6 @@
 // IronTide GUI — dark-theme Slint scaffold (M162) + torrent list (M163)
 // Custom widgets only — no std-widgets (hit-region issues on native backends).
+// Retrofitted to the Tokens design-system globals in M172b Lane B.
 
 import { Tokens, Shadow, Palette } from "tokens.slint";
 import { TorrentProgressBar } from "widgets/progress_bar.slint";
@@ -32,17 +33,17 @@ component MenuButton {
     in property <string> text;
     callback clicked();
 
-    min-height: 30px;
-    min-width: 60px;
+    min-height: Tokens.sp-9 - Tokens.sp-1;
+    min-width: Tokens.sp-10 + Tokens.sp-7;
 
     Rectangle {
-        background: touch.has-hover ? Palette.menu-hover : Palette.menu-bg;
-        border-radius: 2px;
+        background: touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+        border-radius: Tokens.r-sm;
 
         Text {
             text: root.text;
-            color: Palette.text;
-            font-size: 13px;
+            color: Tokens.fg-0;
+            font-size: Tokens.fs-13;
             horizontal-alignment: center;
             vertical-alignment: center;
         }
@@ -56,15 +57,15 @@ component MenuButton {
 component MenuBar {
     callback menu-file-action(int);
 
-    height: 32px;
+    height: Tokens.chrome-h;
 
     Rectangle {
-        background: Palette.menu-bg;
-        border-width: 0px;
+        background: Tokens.bg-1;
+        border-width: 0;
 
         HorizontalLayout {
-            padding-left: 4px;
-            spacing: 2px;
+            padding-left: Tokens.sp-2;
+            spacing: Tokens.sp-1;
             alignment: start;
 
             file-btn := MenuButton {
@@ -75,33 +76,33 @@ component MenuBar {
     }
 
     file-popup := PopupWindow {
-        x: 4px;
-        y: 32px;
-        width: 180px;
+        x: Tokens.sp-2;
+        y: Tokens.chrome-h;
+        width: Tokens.sidebar-w;
 
         Rectangle {
-            background: Palette.menu-bg;
-            border-color: Palette.border;
-            border-width: 1px;
-            border-radius: 4px;
+            background: Tokens.bg-1;
+            border-color: Tokens.border-1;
+            border-width: Tokens.border-width-thin;
+            border-radius: Tokens.r-md;
 
             VerticalLayout {
-                padding: 4px;
-                spacing: 2px;
+                padding: Tokens.sp-2;
+                spacing: Tokens.sp-1;
 
                 // Item 0: Add Magnet...
                 Rectangle {
-                    height: 28px;
-                    background: magnet-touch.has-hover ? Palette.menu-hover : Palette.menu-bg;
-                    border-radius: 2px;
+                    height: Tokens.row-h;
+                    background: magnet-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
 
                     Text {
                         text: "Add Magnet...";
-                        color: Palette.text;
-                        font-size: 13px;
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
                         vertical-alignment: center;
                         horizontal-alignment: left;
-                        x: 8px;
+                        x: Tokens.sp-4;
                     }
 
                     magnet-touch := TouchArea {
@@ -111,17 +112,17 @@ component MenuBar {
 
                 // Item 1: Add Torrent File...
                 Rectangle {
-                    height: 28px;
-                    background: torrent-touch.has-hover ? Palette.menu-hover : Palette.menu-bg;
-                    border-radius: 2px;
+                    height: Tokens.row-h;
+                    background: torrent-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
 
                     Text {
                         text: "Add Torrent File...";
-                        color: Palette.text;
-                        font-size: 13px;
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
                         vertical-alignment: center;
                         horizontal-alignment: left;
-                        x: 8px;
+                        x: Tokens.sp-4;
                     }
 
                     torrent-touch := TouchArea {
@@ -131,23 +132,23 @@ component MenuBar {
 
                 // Separator
                 Rectangle {
-                    height: 1px;
-                    background: Palette.border;
+                    height: Tokens.border-width-thin;
+                    background: Tokens.border-1;
                 }
 
                 // Item 2: Quit
                 Rectangle {
-                    height: 28px;
-                    background: quit-touch.has-hover ? Palette.menu-hover : Palette.menu-bg;
-                    border-radius: 2px;
+                    height: Tokens.row-h;
+                    background: quit-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
 
                     Text {
                         text: "Quit";
-                        color: Palette.text;
-                        font-size: 13px;
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
                         vertical-alignment: center;
                         horizontal-alignment: left;
-                        x: 8px;
+                        x: Tokens.sp-4;
                     }
 
                     quit-touch := TouchArea {
@@ -160,26 +161,26 @@ component MenuBar {
 }
 
 component Spinner {
-    width: 32px;
-    height: 32px;
+    width: Tokens.sp-9;
+    height: Tokens.sp-9;
 
     rect := Rectangle {
-        width: 32px;
-        height: 32px;
-        border-radius: 4px;
-        border-width: 3px;
-        border-color: Palette.accent;
+        width: Tokens.sp-9;
+        height: Tokens.sp-9;
+        border-radius: Tokens.r-md;
+        border-width: Tokens.border-width-thick - Tokens.border-width-thin;
+        border-color: Tokens.accent;
         background: transparent;
         clip: true;
 
         // Animated indicator bar
         indicator := Rectangle {
-            x: -16px;
-            y: 6px;
-            width: 20px;
-            height: 20px;
-            border-radius: 10px;
-            background: Palette.text;
+            x: -Tokens.sp-6;
+            y: Tokens.sp-3;
+            width: Tokens.sp-7;
+            height: Tokens.sp-7;
+            border-radius: Tokens.r-lg;
+            background: Tokens.fg-0;
             opacity: 0.6;
 
             animate x {
@@ -193,7 +194,7 @@ component Spinner {
     // Drive animation via states
     states [
         spinning when true: {
-            indicator.x: 28px;
+            indicator.x: Tokens.row-h;
         }
     ]
 }
@@ -204,12 +205,11 @@ export component MainWindow inherits Window {
     min-height: 400px;
     preferred-width: 900px;
     preferred-height: 600px;
-    background: Palette.background;
+    background: Tokens.bg-0;
 
-    // ── Skin gate (M172b Lane A) ──
+    // ── Skin gate (M172b Lane A + B) ──
     // Set to true by Rust after SkinSettings::apply populates Tokens.
-    // Lane B wraps the main layout in `if root.skin-applied:` so the first
-    // paint shows the loading spinner rather than pre-token defaults.
+    // Until then, the main chrome is hidden and a minimal spinner shown.
     in-out property <bool> skin-applied: false;
 
     // ── Session state ──
@@ -240,19 +240,24 @@ export component MainWindow inherits Window {
     in-out property <bool> ctrl-held: false;
 
     // ── Column widths (set from Rust, used for layout) ──
-    // Fixed columns: Progress(120) + State(90) + DownRate(80) + UpRate(80) +
-    //                Seeds(50) + Peers(50) + Eta(70) + Size(80) + Ratio(60) = 680px
-    // Name gets the rest. These are the defaults; Rust can override.
-    in-out property <length> col-name-width: root.width > 780px ? root.width - 680px : 100px;
-    in-out property <length> col-progress-width: 120px;
-    in-out property <length> col-state-width: 90px;
-    in-out property <length> col-down-rate-width: 80px;
-    in-out property <length> col-up-rate-width: 80px;
-    in-out property <length> col-seeds-width: 50px;
-    in-out property <length> col-peers-width: 50px;
-    in-out property <length> col-eta-width: 70px;
-    in-out property <length> col-size-width: 80px;
-    in-out property <length> col-ratio-width: 60px;
+    // Fixed columns: Progress + State + DownRate + UpRate + Seeds + Peers
+    //                + Eta + Size + Ratio; Name gets the remaining space.
+    // Defaults come from the `Tokens.col-default-*` fallbacks so no
+    // literal px values leak into main.slint — Rust overrides these from
+    // the persisted GuiConfig on startup.
+    in-out property <length> col-name-width:
+        root.width > Tokens.col-width-threshold
+            ? root.width - Tokens.col-width-non-name-total
+            : Tokens.col-default-name;
+    in-out property <length> col-progress-width: Tokens.col-default-progress;
+    in-out property <length> col-state-width: Tokens.col-default-state;
+    in-out property <length> col-down-rate-width: Tokens.col-default-rate;
+    in-out property <length> col-up-rate-width: Tokens.col-default-rate;
+    in-out property <length> col-seeds-width: Tokens.col-default-count;
+    in-out property <length> col-peers-width: Tokens.col-default-count;
+    in-out property <length> col-eta-width: Tokens.col-default-eta;
+    in-out property <length> col-size-width: Tokens.col-default-rate;
+    in-out property <length> col-ratio-width: Tokens.col-default-ratio;
 
     // ── Add Magnet Dialog ──
     in-out property <bool> show-add-magnet-dialog: false;
@@ -271,8 +276,8 @@ export component MainWindow inherits Window {
 
     // ── Context Menu ──
     in-out property <bool> show-context-menu: false;
-    in-out property <length> context-menu-x: 0px;
-    in-out property <length> context-menu-y: 0px;
+    in-out property <length> context-menu-x: 0;
+    in-out property <length> context-menu-y: 0;
     in-out property <bool> ctx-can-pause: true;
     in-out property <bool> ctx-can-resume: true;
     in-out property <bool> ctx-can-seed-only: true;
@@ -369,7 +374,7 @@ export component MainWindow inherits Window {
 
             // Main content area
             Rectangle {
-                background: Palette.background;
+                background: Tokens.bg-0;
                 vertical-stretch: 1;
 
                 // Loading state: spinner + message
@@ -383,8 +388,8 @@ export component MainWindow inherits Window {
 
                     Text {
                         text: "Starting session...";
-                        color: Palette.disabled-text;
-                        font-size: 16px;
+                        color: Tokens.fg-3;
+                        font-size: Tokens.fs-16;
                         horizontal-alignment: center;
                     }
                 }
@@ -392,35 +397,35 @@ export component MainWindow inherits Window {
                 // Ready state with empty model: empty placeholder
                 if root.session-ready && root.error-text == "" && root.torrent-model.length == 0: VerticalLayout {
                     alignment: center;
-                    spacing: 8px;
+                    spacing: Tokens.sp-4;
 
                     Text {
                         text: "No torrents yet.";
-                        color: Palette.text;
-                        font-size: 20px;
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-18;
                         horizontal-alignment: center;
                     }
 
                     Text {
                         text: "Use File > Add Magnet to get started.";
-                        color: Palette.disabled-text;
-                        font-size: 14px;
+                        color: Tokens.fg-3;
+                        font-size: Tokens.fs-14;
                         horizontal-alignment: center;
                     }
                 }
 
                 // Ready state with torrents: table header + list
                 if root.session-ready && root.error-text == "" && root.torrent-model.length > 0: VerticalLayout {
-                    spacing: 0px;
+                    spacing: 0;
 
                     // ── Table Header ──
                     Rectangle {
-                        height: 24px;
-                        background: Palette.surface;
+                        height: Tokens.chrome-h - Tokens.sp-5;
+                        background: Tokens.bg-2;
 
                         // Name
                         Rectangle {
-                            x: 0px;
+                            x: 0;
                             width: root.col-name-width;
                             height: parent.height;
 
@@ -430,12 +435,12 @@ export component MainWindow inherits Window {
                             }
                             Text {
                                 text: "Name" + (root.sort-column == 0 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
-                                color: Palette.text;
-                                font-size: 12px;
+                                color: Tokens.fg-0;
+                                font-size: Tokens.fs-12;
                                 font-weight: 700;
                                 vertical-alignment: center;
                                 horizontal-alignment: left;
-                                x: 6px;
+                                x: Tokens.sp-3;
                             }
                         }
 
@@ -451,12 +456,12 @@ export component MainWindow inherits Window {
                             }
                             Text {
                                 text: "Progress" + (root.sort-column == 1 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
-                                color: Palette.text;
-                                font-size: 12px;
+                                color: Tokens.fg-0;
+                                font-size: Tokens.fs-12;
                                 font-weight: 700;
                                 vertical-alignment: center;
                                 horizontal-alignment: left;
-                                x: 4px;
+                                x: Tokens.sp-2;
                             }
                         }
 
@@ -472,12 +477,12 @@ export component MainWindow inherits Window {
                             }
                             Text {
                                 text: "State" + (root.sort-column == 2 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
-                                color: Palette.text;
-                                font-size: 12px;
+                                color: Tokens.fg-0;
+                                font-size: Tokens.fs-12;
                                 font-weight: 700;
                                 vertical-alignment: center;
                                 horizontal-alignment: left;
-                                x: 4px;
+                                x: Tokens.sp-2;
                             }
                         }
 
@@ -493,13 +498,13 @@ export component MainWindow inherits Window {
                             }
                             Text {
                                 text: "\u{2193}" + (root.sort-column == 3 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
-                                color: Palette.text;
-                                font-size: 12px;
+                                color: Tokens.fg-0;
+                                font-size: Tokens.fs-12;
                                 font-weight: 700;
                                 vertical-alignment: center;
                                 horizontal-alignment: right;
                                 x: 0;
-                                width: parent.width - 6px;
+                                width: parent.width - Tokens.sp-3;
                             }
                         }
 
@@ -515,13 +520,13 @@ export component MainWindow inherits Window {
                             }
                             Text {
                                 text: "\u{2191}" + (root.sort-column == 4 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
-                                color: Palette.text;
-                                font-size: 12px;
+                                color: Tokens.fg-0;
+                                font-size: Tokens.fs-12;
                                 font-weight: 700;
                                 vertical-alignment: center;
                                 horizontal-alignment: right;
                                 x: 0;
-                                width: parent.width - 6px;
+                                width: parent.width - Tokens.sp-3;
                             }
                         }
 
@@ -537,13 +542,13 @@ export component MainWindow inherits Window {
                             }
                             Text {
                                 text: "Seeds" + (root.sort-column == 5 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
-                                color: Palette.text;
-                                font-size: 12px;
+                                color: Tokens.fg-0;
+                                font-size: Tokens.fs-12;
                                 font-weight: 700;
                                 vertical-alignment: center;
                                 horizontal-alignment: right;
                                 x: 0;
-                                width: parent.width - 6px;
+                                width: parent.width - Tokens.sp-3;
                             }
                         }
 
@@ -559,13 +564,13 @@ export component MainWindow inherits Window {
                             }
                             Text {
                                 text: "Peers" + (root.sort-column == 6 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
-                                color: Palette.text;
-                                font-size: 12px;
+                                color: Tokens.fg-0;
+                                font-size: Tokens.fs-12;
                                 font-weight: 700;
                                 vertical-alignment: center;
                                 horizontal-alignment: right;
                                 x: 0;
-                                width: parent.width - 6px;
+                                width: parent.width - Tokens.sp-3;
                             }
                         }
 
@@ -581,13 +586,13 @@ export component MainWindow inherits Window {
                             }
                             Text {
                                 text: "ETA" + (root.sort-column == 7 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
-                                color: Palette.text;
-                                font-size: 12px;
+                                color: Tokens.fg-0;
+                                font-size: Tokens.fs-12;
                                 font-weight: 700;
                                 vertical-alignment: center;
                                 horizontal-alignment: right;
                                 x: 0;
-                                width: parent.width - 6px;
+                                width: parent.width - Tokens.sp-3;
                             }
                         }
 
@@ -603,13 +608,13 @@ export component MainWindow inherits Window {
                             }
                             Text {
                                 text: "Size" + (root.sort-column == 8 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
-                                color: Palette.text;
-                                font-size: 12px;
+                                color: Tokens.fg-0;
+                                font-size: Tokens.fs-12;
                                 font-weight: 700;
                                 vertical-alignment: center;
                                 horizontal-alignment: right;
                                 x: 0;
-                                width: parent.width - 6px;
+                                width: parent.width - Tokens.sp-3;
                             }
                         }
 
@@ -625,49 +630,49 @@ export component MainWindow inherits Window {
                             }
                             Text {
                                 text: "Ratio" + (root.sort-column == 9 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
-                                color: Palette.text;
-                                font-size: 12px;
+                                color: Tokens.fg-0;
+                                font-size: Tokens.fs-12;
                                 font-weight: 700;
                                 vertical-alignment: center;
                                 horizontal-alignment: right;
                                 x: 0;
-                                width: parent.width - 6px;
+                                width: parent.width - Tokens.sp-3;
                             }
                         }
 
                         // Column separator lines (vertical)
-                        Rectangle { x: root.col-name-width - 1px; y: 2px; width: 1px; height: parent.height - 4px; background: Palette.col-separator; }
-                        Rectangle { x: root.col-name-width + root.col-progress-width - 1px; y: 2px; width: 1px; height: parent.height - 4px; background: Palette.col-separator; }
-                        Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width - 1px; y: 2px; width: 1px; height: parent.height - 4px; background: Palette.col-separator; }
-                        Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width - 1px; y: 2px; width: 1px; height: parent.height - 4px; background: Palette.col-separator; }
-                        Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width - 1px; y: 2px; width: 1px; height: parent.height - 4px; background: Palette.col-separator; }
-                        Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width - 1px; y: 2px; width: 1px; height: parent.height - 4px; background: Palette.col-separator; }
-                        Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width - 1px; y: 2px; width: 1px; height: parent.height - 4px; background: Palette.col-separator; }
-                        Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width - 1px; y: 2px; width: 1px; height: parent.height - 4px; background: Palette.col-separator; }
-                        Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width + root.col-size-width - 1px; y: 2px; width: 1px; height: parent.height - 4px; background: Palette.col-separator; }
+                        Rectangle { x: root.col-name-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
+                        Rectangle { x: root.col-name-width + root.col-progress-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
+                        Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
+                        Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
+                        Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
+                        Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
+                        Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
+                        Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
+                        Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width + root.col-size-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
 
                         // Header bottom border
                         Rectangle {
-                            y: parent.height - 1px;
-                            height: 1px;
-                            background: Palette.border;
+                            y: parent.height - Tokens.border-width-thin;
+                            height: Tokens.border-width-thin;
+                            background: Tokens.border-1;
                         }
                     }
 
                     // ── Torrent List (scrollable) ──
                     Flickable {
                         vertical-stretch: 1;
-                        viewport-height: root.torrent-model.length * 28px;
+                        viewport-height: root.torrent-model.length * Tokens.row-h;
 
                         for item[index] in root.torrent-model: Rectangle {
-                            y: index * 28px;
-                            height: 28px;
+                            y: index * Tokens.row-h;
+                            height: Tokens.row-h;
                             width: parent.width;
                             background: item.selected
-                                ? Palette.accent
+                                ? Tokens.accent
                                 : (row-touch.has-hover
-                                    ? Palette.menu-hover
-                                    : (mod(index, 2) == 0 ? Palette.background : Palette.row-alt));
+                                    ? Tokens.bg-hover
+                                    : (mod(index, 2) == 0 ? Tokens.bg-0 : Tokens.bg-1));
 
                             row-touch := TouchArea {
                                 clicked => {
@@ -684,20 +689,20 @@ export component MainWindow inherits Window {
                             // Name
                             Text {
                                 text: item.name;
-                                color: Palette.text;
-                                font-size: 13px;
+                                color: Tokens.fg-0;
+                                font-size: Tokens.fs-13;
                                 vertical-alignment: center;
                                 horizontal-alignment: left;
                                 overflow: elide;
-                                x: 6px;
-                                width: root.col-name-width - 12px;
+                                x: Tokens.sp-3;
+                                width: root.col-name-width - Tokens.sp-5;
                             }
 
                             // Progress bar
                             TorrentProgressBar {
-                                x: root.col-name-width + 4px;
-                                y: (parent.height - 14px) / 2;
-                                width: root.col-progress-width - 8px;
+                                x: root.col-name-width + Tokens.sp-2;
+                                y: (parent.height - Tokens.sp-6) / 2;
+                                width: root.col-progress-width - Tokens.sp-4;
                                 progress: item.progress;
                                 fill-color: item.state-color;
                                 progress-text: item.progress-text;
@@ -707,97 +712,97 @@ export component MainWindow inherits Window {
                             Text {
                                 text: item.state;
                                 color: item.state-color;
-                                font-size: 13px;
+                                font-size: Tokens.fs-13;
                                 vertical-alignment: center;
                                 horizontal-alignment: left;
                                 overflow: elide;
-                                x: root.col-name-width + root.col-progress-width + 4px;
-                                width: root.col-state-width - 8px;
+                                x: root.col-name-width + root.col-progress-width + Tokens.sp-2;
+                                width: root.col-state-width - Tokens.sp-4;
                             }
 
                             // Down Rate
                             Text {
                                 text: item.down-rate;
-                                color: Palette.text;
-                                font-size: 13px;
+                                color: Tokens.fg-0;
+                                font-size: Tokens.fs-13;
                                 vertical-alignment: center;
                                 horizontal-alignment: right;
                                 x: root.col-name-width + root.col-progress-width + root.col-state-width;
-                                width: root.col-down-rate-width - 6px;
+                                width: root.col-down-rate-width - Tokens.sp-3;
                             }
 
                             // Up Rate
                             Text {
                                 text: item.up-rate;
-                                color: Palette.text;
-                                font-size: 13px;
+                                color: Tokens.fg-0;
+                                font-size: Tokens.fs-13;
                                 vertical-alignment: center;
                                 horizontal-alignment: right;
                                 x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width;
-                                width: root.col-up-rate-width - 6px;
+                                width: root.col-up-rate-width - Tokens.sp-3;
                             }
 
                             // Seeds
                             Text {
                                 text: item.seeds;
-                                color: Palette.text;
-                                font-size: 13px;
+                                color: Tokens.fg-0;
+                                font-size: Tokens.fs-13;
                                 vertical-alignment: center;
                                 horizontal-alignment: right;
                                 x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width;
-                                width: root.col-seeds-width - 6px;
+                                width: root.col-seeds-width - Tokens.sp-3;
                             }
 
                             // Peers
                             Text {
                                 text: item.peers;
-                                color: Palette.text;
-                                font-size: 13px;
+                                color: Tokens.fg-0;
+                                font-size: Tokens.fs-13;
                                 vertical-alignment: center;
                                 horizontal-alignment: right;
                                 x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width;
-                                width: root.col-peers-width - 6px;
+                                width: root.col-peers-width - Tokens.sp-3;
                             }
 
                             // ETA
                             Text {
                                 text: item.eta;
-                                color: Palette.text;
-                                font-size: 13px;
+                                color: Tokens.fg-0;
+                                font-size: Tokens.fs-13;
                                 vertical-alignment: center;
                                 horizontal-alignment: right;
                                 x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width;
-                                width: root.col-eta-width - 6px;
+                                width: root.col-eta-width - Tokens.sp-3;
                             }
 
                             // Size
                             Text {
                                 text: item.total-size;
-                                color: Palette.text;
-                                font-size: 13px;
+                                color: Tokens.fg-0;
+                                font-size: Tokens.fs-13;
                                 vertical-alignment: center;
                                 horizontal-alignment: right;
                                 x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width;
-                                width: root.col-size-width - 6px;
+                                width: root.col-size-width - Tokens.sp-3;
                             }
 
                             // Ratio
                             Text {
                                 text: item.ratio;
-                                color: Palette.text;
-                                font-size: 13px;
+                                color: Tokens.fg-0;
+                                font-size: Tokens.fs-13;
                                 vertical-alignment: center;
                                 horizontal-alignment: right;
                                 x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width + root.col-size-width;
-                                width: root.col-ratio-width - 6px;
+                                width: root.col-ratio-width - Tokens.sp-3;
                             }
 
                             // Row bottom border
                             Rectangle {
-                                y: parent.height - 1px;
+                                y: parent.height - Tokens.border-width-thin;
                                 width: parent.width;
-                                height: 1px;
-                                background: Palette.col-separator;
+                                height: Tokens.border-width-thin;
+                                background: Tokens.divider;
                             }
                         }
                     }
@@ -806,20 +811,20 @@ export component MainWindow inherits Window {
                 // Error state
                 if root.error-text != "": VerticalLayout {
                     alignment: center;
-                    spacing: 8px;
+                    spacing: Tokens.sp-4;
 
                     Text {
                         text: "Error";
-                        color: #ff4444;
-                        font-size: 20px;
+                        color: Tokens.status-error;
+                        font-size: Tokens.fs-18;
                         font-weight: 700;
                         horizontal-alignment: center;
                     }
 
                     Text {
                         text: root.error-text;
-                        color: #ff6666;
-                        font-size: 14px;
+                        color: Tokens.status-error;
+                        font-size: Tokens.fs-14;
                         horizontal-alignment: center;
                         wrap: word-wrap;
                     }
@@ -840,18 +845,18 @@ export component MainWindow inherits Window {
     // Toast overlay at bottom
     if root.toast-visible: Rectangle {
         x: (root.width - self.width) / 2;
-        y: root.height - 60px;
-        width: 400px;
-        height: 36px;
-        border-radius: 6px;
-        background: root.toast-is-error ? Palette.danger : Palette.surface;
-        border-color: root.toast-is-error ? Palette.danger : Palette.border;
-        border-width: 1px;
+        y: root.height - Tokens.sp-10 - Tokens.sp-7;
+        width: Tokens.sp-10 * 10;
+        height: Tokens.chrome-h;
+        border-radius: Tokens.r-md;
+        background: root.toast-is-error ? Tokens.status-error : Tokens.bg-2;
+        border-color: root.toast-is-error ? Tokens.status-error : Tokens.border-1;
+        border-width: Tokens.border-width-thin;
 
         Text {
             text: root.toast-text;
-            color: Palette.text;
-            font-size: 13px;
+            color: Tokens.fg-0;
+            font-size: Tokens.fs-13;
             horizontal-alignment: center;
             vertical-alignment: center;
         }
