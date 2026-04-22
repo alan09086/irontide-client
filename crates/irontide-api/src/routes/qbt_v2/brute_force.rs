@@ -632,4 +632,162 @@ mod tests {
         let _g = reg.check_and_admit(b, 5, 60).expect("b admit");
         reg.record_failure(b, 5, 60);
     }
+
+    // ── D3.2 (M173 Lane C) supplementary coverage ────────────────────
+    //
+    // The tests above already cover the canonical admit / fail / ban /
+    // LRU / prune paths. This section fills in gaps the plan's audit
+    // called out as under-covered: inspector correctness, construction
+    // edge cases, no-op operations on unknown IPs, and AdmissionDenied
+    // opaqueness.
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn fresh_registry_inspectors_report_empty_state() {
+        // `len` / `is_empty` / `capacity` are part of the public surface —
+        // regression-guard against a future refactor that confuses the
+        // map len with the LRU len.
+        let reg = BruteForceRegistry::new(100);
+        assert!(reg.is_empty(), "fresh registry must be empty");
+        assert_eq!(reg.len(), 0);
+        assert_eq!(reg.capacity(), 100);
+        let addr = ip(10, 0, 0, 1);
+        assert_eq!(reg.attempts_for(addr), 0, "unknown IP reports zero");
+        assert_eq!(reg.pending_for(addr), 0);
+        assert!(!reg.is_banned(addr));
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn capacity_below_one_clamps_to_one() {
+        // The constructor clamps to a minimum of 1 to avoid a
+        // division-by-zero during eviction; validation at the Settings
+        // layer rejects values `< 100`, but belt-and-braces matters
+        // because a misconfig would otherwise crash the login path.
+        let reg = BruteForceRegistry::new(0);
+        assert_eq!(reg.capacity(), 1, "capacity 0 must be clamped to 1");
+        // And it must still accept an admit.
+        let addr = ip(10, 0, 0, 1);
+        let _g = reg.check_and_admit(addr, 5, 60).expect("admit on clamped reg");
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn record_failure_on_unknown_ip_is_silent_noop() {
+        // The record_* paths intentionally ignore missing entries so a
+        // guard that's been LRU-evicted between admit and record doesn't
+        // crash the handler. Regression-guard against a future refactor
+        // that treats the missing entry as an error.
+        let reg = BruteForceRegistry::new(100);
+        let addr = ip(10, 0, 0, 99);
+        reg.record_failure(addr, 5, 60);
+        reg.record_success(addr);
+        assert!(reg.is_empty(), "record_* on unknown IP must not create entry");
+        assert_eq!(reg.attempts_for(addr), 0);
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn guard_drop_without_record_decrements_pending_only() {
+        // A `check_and_admit` that is dropped without a paired record_*
+        // call (e.g. the handler short-circuits on shutdown) must
+        // release the pending slot but leave `attempts` at its prior
+        // value.
+        let reg = BruteForceRegistry::new(100);
+        let addr = ip(10, 0, 0, 1);
+        {
+            let _g = reg.check_and_admit(addr, 5, 60).expect("admit");
+            reg.record_failure(addr, 5, 60);
+        }
+        assert_eq!(reg.attempts_for(addr), 1);
+        // Second admit that is dropped without record — attempts stays
+        // at 1, pending returns to 0.
+        {
+            let _g = reg
+                .check_and_admit(addr, 5, 60)
+                .expect("second admit (attempts 1 + pending 1 < 5)");
+            assert_eq!(reg.pending_for(addr), 1);
+        }
+        assert_eq!(reg.attempts_for(addr), 1, "attempts must not advance without record_failure");
+        assert_eq!(reg.pending_for(addr), 0, "pending must drop on guard release");
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn admission_denied_is_opaque_and_copy_comparable() {
+        // AdmissionDenied deliberately carries no data (the login handler
+        // maps all denials to the same 403 "Fails." string), so consumers
+        // must be able to compare two denial tokens cheaply without
+        // caring about provenance.
+        let a = AdmissionDenied;
+        let b = AdmissionDenied;
+        assert_eq!(a, b);
+        // Copy / Clone check — if a future refactor widened this type,
+        // the downstream handler's `Result<AdmitGuard, AdmissionDenied>`
+        // would stop being `Copy`-friendly and the login path would need
+        // to be audited.
+        let _c: AdmissionDenied = a;
+        let _d: AdmissionDenied = a;
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn record_failure_starts_fresh_window_after_record_success() {
+        // Mirrors qBt parity: a successful login wipes the failure
+        // counter. A subsequent failure is attempt #1, not #N+1.
+        let reg = BruteForceRegistry::new(100);
+        let addr = ip(10, 0, 0, 1);
+        for _ in 0..3 {
+            let _g = reg.check_and_admit(addr, 5, 60).expect("admit");
+            reg.record_failure(addr, 5, 60);
+        }
+        assert_eq!(reg.attempts_for(addr), 3);
+        {
+            let _g = reg.check_and_admit(addr, 5, 60).expect("admit success");
+            reg.record_success(addr);
+        }
+        assert_eq!(reg.attempts_for(addr), 0);
+        {
+            let _g = reg.check_and_admit(addr, 5, 60).expect("admit post-success");
+            reg.record_failure(addr, 5, 60);
+        }
+        assert_eq!(
+            reg.attempts_for(addr),
+            1,
+            "first failure after success must be attempt #1"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn capacity_of_one_evicts_every_previous_entry() {
+        // Stress-test the LRU path with capacity = 1 — every new IP
+        // must evict the previous one. This is a hot path in the
+        // cold-start case where the registry starts empty.
+        let reg = BruteForceRegistry::new(1);
+        for i in 0..5_u8 {
+            let addr = ip(10, 0, 0, i);
+            {
+                let _g = reg.check_and_admit(addr, 5, 60).expect("admit");
+                reg.record_failure(addr, 5, 60);
+            }
+            assert_eq!(reg.len(), 1, "capacity=1 must never exceed one entry");
+        }
+        // Only the last IP survives.
+        let last = ip(10, 0, 0, 4);
+        assert_eq!(reg.attempts_for(last), 1);
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn prune_expired_preserves_active_bans() {
+        // prune_expired must only drop entries whose ban has expired
+        // by the full `ban_secs` hysteresis window. A freshly-banned IP
+        // must survive a prune call.
+        let reg = BruteForceRegistry::new(100);
+        let addr = ip(10, 0, 0, 1);
+        for _ in 0..5 {
+            let _g = reg.check_and_admit(addr, 5, 60).expect("admit");
+            reg.record_failure(addr, 5, 60);
+        }
+        assert!(reg.is_banned(addr));
+        reg.prune_expired(60);
+        assert_eq!(
+            reg.len(),
+            1,
+            "active ban must survive a prune; dropping it would reset the attacker's counter"
+        );
+    }
 }

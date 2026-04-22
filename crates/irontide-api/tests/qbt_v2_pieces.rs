@@ -5,9 +5,10 @@
 //! both endpoints must return 404 for it. A `.torrent`-sourced add
 //! yields metadata immediately; that's the happy-path case.
 
+mod common;
+
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Duration;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
@@ -17,6 +18,7 @@ use serde_bytes::ByteBuf;
 use serde_json::Value;
 use tower::ServiceExt;
 
+use common::add_and_wait;
 use irontide::session::{SessionAddTorrentParams, SessionHandle, Settings};
 use irontide_api::routes::build_router;
 
@@ -122,19 +124,6 @@ fn make_torrent(name: &str, piece_length: u64, num_pieces: u32) -> Vec<u8> {
         },
     };
     irontide::bencode::to_bytes(&t).expect("bencode")
-}
-
-async fn add_and_wait(session: &SessionHandle, params: SessionAddTorrentParams) -> String {
-    let hash = session.add_torrent(params).await.expect("add torrent");
-    for _ in 0..50 {
-        if let Ok(stats) = session.torrent_stats(hash).await {
-            if stats.has_metadata {
-                return hash.to_hex();
-            }
-        }
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
-    panic!("torrent stats never became queryable");
 }
 
 async fn get_json(router: &axum::Router, uri: &str, cookie: &str) -> (StatusCode, Value) {
