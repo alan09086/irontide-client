@@ -66,8 +66,8 @@ pub struct TokenValues {
     pub status_checking: [u8; 3],
     /// `--st-stalled` (shared status colour).
     pub status_stalled: [u8; 3],
-    /// `--st-complete` (shared status colour).
-    pub status_complete: [u8; 3],
+    /// `--st-metadata` (shared status colour).
+    pub status_metadata: [u8; 3],
 }
 
 /// Palette for `tide` skin in `dark` theme.
@@ -97,7 +97,7 @@ pub const TIDE_DARK: TokenValues = TokenValues {
     status_error: [0xe8, 0x58, 0x54],
     status_checking: [0xa4, 0x97, 0xea],
     status_stalled: [0x6e, 0x83, 0x98],
-    status_complete: [0x63, 0xb3, 0x76],
+    status_metadata: [0xb9, 0x8d, 0xff],
 };
 
 /// Palette for `tide` skin in `light` theme.
@@ -127,7 +127,7 @@ pub const TIDE_LIGHT: TokenValues = TokenValues {
     status_error: [0xe8, 0x58, 0x54],
     status_checking: [0xa4, 0x97, 0xea],
     status_stalled: [0x6e, 0x83, 0x98],
-    status_complete: [0x63, 0xb3, 0x76],
+    status_metadata: [0xb9, 0x8d, 0xff],
 };
 
 /// Palette for `forge` skin in `dark` theme.
@@ -157,7 +157,7 @@ pub const FORGE_DARK: TokenValues = TokenValues {
     status_error: [0xe8, 0x58, 0x54],
     status_checking: [0xa4, 0x97, 0xea],
     status_stalled: [0x6e, 0x83, 0x98],
-    status_complete: [0x63, 0xb3, 0x76],
+    status_metadata: [0xb9, 0x8d, 0xff],
 };
 
 /// Palette for `forge` skin in `light` theme.
@@ -187,7 +187,7 @@ pub const FORGE_LIGHT: TokenValues = TokenValues {
     status_error: [0xe8, 0x58, 0x54],
     status_checking: [0xa4, 0x97, 0xea],
     status_stalled: [0x6e, 0x83, 0x98],
-    status_complete: [0x63, 0xb3, 0x76],
+    status_metadata: [0xb9, 0x8d, 0xff],
 };
 
 /// Palette for `abyss` skin in `dark` theme.
@@ -217,7 +217,7 @@ pub const ABYSS_DARK: TokenValues = TokenValues {
     status_error: [0xe8, 0x58, 0x54],
     status_checking: [0xa4, 0x97, 0xea],
     status_stalled: [0x6e, 0x83, 0x98],
-    status_complete: [0x63, 0xb3, 0x76],
+    status_metadata: [0xb9, 0x8d, 0xff],
 };
 
 /// Palette for `abyss` skin in `light` theme.
@@ -247,5 +247,5 @@ pub const ABYSS_LIGHT: TokenValues = TokenValues {
     status_error: [0xe8, 0x58, 0x54],
     status_checking: [0xa4, 0x97, 0xea],
     status_stalled: [0x6e, 0x83, 0x98],
-    status_complete: [0x63, 0xb3, 0x76],
+    status_metadata: [0xb9, 0x8d, 0xff],
 };
