@@ -428,6 +428,9 @@ fn urlencoding_encode(s: &str) -> String {
 }
 
 // ── D3.5 — X-IronTide-Restart-Pending header ─────────────────────────
+// M173 Lane B (B10): listen_port, dht, lsd graduated from
+// restart_required → immediate. Pin tests below confirm these no
+// longer appear in the header.
 
 #[tokio::test]
 async fn set_preferences_only_rate_limits_no_restart_header() {
@@ -445,26 +448,24 @@ async fn set_preferences_only_rate_limits_no_restart_header() {
     );
 }
 
+/// M173 Lane B (B10) graduation: changing listen_port must NOT emit
+/// the restart header anymore. The transactional apply pipeline
+/// performs the live rebind.
 #[tokio::test]
-async fn set_preferences_listen_port_flags_restart_required() {
-    // Fixture starts with listen_port=0; patching to 6881 is a real change
-    // and must flag the port rebind as restart-required.
+async fn set_preferences_listen_port_no_longer_flags_restart_required() {
     let (router, sid) = enabled_router_with(|_| {}).await;
     let resp = post_json(&router, &sid, serde_json::json!({"listen_port": 6881})).await;
     assert_eq!(resp.status(), StatusCode::OK);
-    let header = resp
-        .headers()
-        .get("x-irontide-restart-pending")
-        .expect("listen_port change must flag a restart")
-        .to_str()
-        .expect("header value is ASCII");
-    assert_eq!(header, "listen_port");
+    assert!(
+        resp.headers().get("x-irontide-restart-pending").is_none(),
+        "M173 graduation: listen_port must NOT flag a restart anymore"
+    );
 }
 
+/// M173 Lane B (B10) graduation: changing listen_port + dht together
+/// must NOT emit the restart header. Both fields are now immediate.
 #[tokio::test]
-async fn set_preferences_multi_restart_fields_header_comma_joined() {
-    // Fixture starts with enable_dht=false and listen_port=0. Flipping both
-    // via one patch must emit both field names, comma-joined, in the header.
+async fn set_preferences_listen_port_and_dht_no_longer_flag_restart() {
     let (router, sid) = enabled_router_with(|s| {
         s.enable_dht = false;
     })
@@ -476,21 +477,115 @@ async fn set_preferences_multi_restart_fields_header_comma_joined() {
     )
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
+    assert!(
+        resp.headers().get("x-irontide-restart-pending").is_none(),
+        "M173 graduation: listen_port + dht must NOT flag a restart"
+    );
+}
+
+/// M173 Lane B (B10) graduation: lsd is now immediate.
+#[tokio::test]
+async fn set_preferences_lsd_no_longer_flags_restart_required() {
+    let (router, sid) = enabled_router_with(|s| {
+        s.enable_lsd = false;
+    })
+    .await;
+    let resp = post_json(&router, &sid, serde_json::json!({"lsd": true})).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(
+        resp.headers().get("x-irontide-restart-pending").is_none(),
+        "M173 graduation: lsd must NOT flag a restart anymore"
+    );
+}
+
+/// M173 Lane B (B10) `[REGRESSION CRITICAL]`: pin the EXACT field-name
+/// set in `X-IronTide-Restart-Pending` for fields that REMAIN in the
+/// restart_required pool post-graduation: pex, encryption,
+/// anonymous_mode, save_path. Downstream *arr clients parse this
+/// header — silent rename = downstream regression.
+#[tokio::test]
+async fn set_preferences_remaining_restart_required_fields_pinned() {
+    let (router, sid) = enabled_router_with(|s| {
+        s.enable_pex = false;
+        s.anonymous_mode = false;
+    })
+    .await;
+    let resp = post_json(
+        &router,
+        &sid,
+        serde_json::json!({"pex": true, "anonymous_mode": true}),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
     let header = resp
         .headers()
         .get("x-irontide-restart-pending")
-        .expect("multi-field restart change must flag a restart")
+        .expect("pex + anonymous_mode change must still flag a restart")
         .to_str()
         .expect("header value is ASCII");
-    // Order is deterministic (listen_port classifier runs before dht), but
-    // we parse defensively so the test survives a future reclassification.
     let fields: std::collections::HashSet<&str> = header.split(',').collect();
-    assert!(
-        fields.contains("listen_port"),
-        "listen_port missing from {header:?}"
+
+    // Pin the EXACT expected set. Adding/renaming these breaks
+    // downstream *arr clients.
+    let mut expected = std::collections::HashSet::new();
+    expected.insert("pex");
+    expected.insert("anonymous_mode");
+
+    assert_eq!(
+        fields, expected,
+        "restart-pending header field set drifted: got {fields:?}, expected {expected:?}"
     );
-    assert!(fields.contains("dht"), "dht missing from {header:?}");
-    assert_eq!(fields.len(), 2, "no spurious fields in {header:?}");
+}
+
+/// M173 Lane B (B10) `[REGRESSION CRITICAL]`: changing ALL graduated
+/// fields plus a non-graduated one (encryption) — the header must
+/// contain ONLY encryption, never the graduated fields.
+#[tokio::test]
+async fn set_preferences_graduated_fields_never_appear_in_header() {
+    use irontide::prelude::EncryptionMode;
+    let (router, sid) = enabled_router_with(|s| {
+        s.enable_dht = false;
+        s.enable_lsd = false;
+        s.encryption_mode = EncryptionMode::Disabled;
+    })
+    .await;
+    let resp = post_json(
+        &router,
+        &sid,
+        // qBt encryption code 1 = Force (matches IronTide's Required).
+        serde_json::json!({"listen_port": 6881, "dht": true, "lsd": true, "encryption": 1}),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let header = resp
+        .headers()
+        .get("x-irontide-restart-pending")
+        .expect("encryption change must still flag a restart")
+        .to_str()
+        .expect("header value is ASCII");
+    let fields: std::collections::HashSet<&str> = header.split(',').collect();
+
+    // Graduated fields must NOT appear.
+    assert!(
+        !fields.contains("listen_port"),
+        "listen_port leaked into restart header: {fields:?}"
+    );
+    assert!(
+        !fields.contains("dht"),
+        "dht leaked into restart header: {fields:?}"
+    );
+    assert!(
+        !fields.contains("lsd"),
+        "lsd leaked into restart header: {fields:?}"
+    );
+
+    // Only encryption should remain.
+    let mut expected = std::collections::HashSet::new();
+    expected.insert("encryption");
+    assert_eq!(
+        fields, expected,
+        "restart header should contain only `encryption`: {fields:?}"
+    );
 }
 
 // ── Auth gate ─────────────────────────────────────────────────────────
