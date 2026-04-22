@@ -42,9 +42,9 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 
-use irontide::session::{TorrentState, TorrentSummary, TrackerInfo, TrackerStatus};
+use irontide::session::{TorrentState, TorrentStats, TorrentSummary, TrackerInfo, TrackerStatus};
 
 // ── Library filters ─────────────────────────────────────────────────────────
 
@@ -53,8 +53,9 @@ use irontide::session::{TorrentState, TorrentSummary, TrackerInfo, TrackerStatus
 /// Each variant maps onto a single boolean predicate over a [`RowView`].
 /// Variants are ordered to match the design spec §3 sidebar listing so
 /// that `LibraryFilter::iter()` produces the document order used by
-/// `Ctrl+1..9` keybinds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// `Ctrl+1..9` keybinds. `Ord` follows declaration order so a `BTreeMap<
+/// LibraryFilter, _>` snapshot iterates in the same document order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum LibraryFilter {
     /// All torrents — predicate is constant `true`.
     All,
@@ -163,8 +164,10 @@ pub enum SidebarSection {
 /// `Unreachable` → `NotContacted` (no successful announce yet),
 /// `Error` → `Error`. `NotContacted` is intentionally surfaced as
 /// `Unreachable` in the UI because users think of "haven't heard back" as
-/// unreachable, not "we haven't tried."
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// unreachable, not "we haven't tried." `Ord` follows declaration order so
+/// a `BTreeMap<TrackerBucket, _>` snapshot iterates Working → Unreachable
+/// → Error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum TrackerBucket {
     /// Last announce succeeded.
     Working,
@@ -302,6 +305,32 @@ impl RowView {
             error: String::new(),
             category: None,
             tags: Vec::new(),
+            tracker_hosts: Vec::new(),
+            tracker_buckets: Vec::new(),
+        }
+    }
+
+    /// Build a `RowView` from a [`TorrentStats`] — the rich source the GUI
+    /// poll loop reaches for once per tick when the predicate or the
+    /// sidebar needs the engine's `error` / `category` / `tags` fields.
+    /// Tracker buckets are still applied via [`Self::with_trackers`] from
+    /// a separate `tracker_list` call, since `TorrentStats` only carries
+    /// `current_tracker: String` (the most recently announced URL).
+    #[must_use]
+    pub fn from_stats(stats: &TorrentStats) -> Self {
+        Self {
+            info_hash: stats
+                .info_hashes
+                .v1
+                .map(|h| h.to_hex())
+                .unwrap_or_default(),
+            state: stats.state,
+            progress: f64::from(stats.progress),
+            download_rate: stats.download_rate,
+            upload_rate: stats.upload_rate,
+            error: stats.error.clone(),
+            category: stats.category.clone(),
+            tags: stats.tags.clone(),
             tracker_hosts: Vec::new(),
             tracker_buckets: Vec::new(),
         }
@@ -502,6 +531,261 @@ pub fn tag_counts(rows: &[RowView]) -> HashMap<String, usize> {
         }
     }
     counts
+}
+
+/// Aggregate per-tracker-bucket counts across a slice of [`RowView`]s.
+///
+/// A torrent that has trackers in multiple buckets (e.g. one Working +
+/// one Errored) contributes one to each bucket (multi-set semantics).
+/// The `Working` / `Unreachable` / `Error` keys are always present,
+/// with a value of zero when no torrent reports that bucket.
+#[must_use]
+pub fn tracker_bucket_counts(rows: &[RowView]) -> HashMap<TrackerBucket, usize> {
+    let mut counts: HashMap<TrackerBucket, usize> =
+        TrackerBucket::ORDER.iter().map(|b| (*b, 0)).collect();
+    for row in rows {
+        for bucket in &row.tracker_buckets {
+            if let Some(count) = counts.get_mut(bucket) {
+                *count = count.saturating_add(1);
+            }
+        }
+    }
+    counts
+}
+
+// ── TrackerIndex (M173 Lane A task A4) ─────────────────────────────────────
+
+/// Snapshot of every sidebar count for one poll tick.
+///
+/// The GUI maintains a [`TrackerIndex`] across ticks so it can diff this
+/// snapshot against the previous one — `row_changed` signals fire only for
+/// rows whose count actually moved. The sorted `BTreeMap` keys for
+/// categories / tags keep the rendered list deterministic across rebuilds
+/// (qBt-parity: alphabetical).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SectionCounts {
+    /// Library counts keyed by [`LibraryFilter`]. Always contains all
+    /// eight variants (zero-valued when nothing matches).
+    pub library: BTreeMap<LibraryFilter, usize>,
+    /// Per-category counts. Excludes uncategorised torrents (those are
+    /// rendered as a separate row by the sidebar layout, not under any
+    /// named category).
+    pub categories: BTreeMap<String, usize>,
+    /// Per-tag counts (multi-set membership, qBt-parity).
+    pub tags: BTreeMap<String, usize>,
+    /// Tracker bucket counts. Always contains all three buckets.
+    pub trackers: BTreeMap<TrackerBucket, usize>,
+}
+
+impl SectionCounts {
+    /// Build a `SectionCounts` snapshot from a slice of [`RowView`]s.
+    #[must_use]
+    pub fn from_rows(rows: &[RowView]) -> Self {
+        let library = library_counts(rows).into_iter().collect();
+        let categories = category_counts(rows).into_iter().collect();
+        let tags = tag_counts(rows).into_iter().collect();
+        let trackers = tracker_bucket_counts(rows).into_iter().collect();
+        Self {
+            library,
+            categories,
+            tags,
+            trackers,
+        }
+    }
+}
+
+/// One discrete count change between two consecutive [`SectionCounts`]
+/// snapshots.
+///
+/// The Slint bridge translates each `Changed` into a `row_changed` call on
+/// the matching sidebar list model, so the runtime only re-renders the
+/// rows that actually moved. `Added` / `Removed` accompany Categories /
+/// Tags whose row appears or disappears entirely between ticks.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SectionChange {
+    /// The given section's count changed from `old` to `new`. Used for
+    /// the always-present Library and Tracker rows.
+    Changed {
+        /// Which sidebar row moved.
+        section: SidebarSection,
+        /// Previous count.
+        old: usize,
+        /// New count.
+        new: usize,
+    },
+    /// A new Category or Tag row appeared with `count`.
+    Added {
+        /// Which sidebar row appeared.
+        section: SidebarSection,
+        /// Initial count.
+        count: usize,
+    },
+    /// A previously-present Category or Tag row dropped to zero (or the
+    /// underlying registry removed it).
+    Removed {
+        /// Which sidebar row vanished.
+        section: SidebarSection,
+    },
+}
+
+/// Stateful aggregator that turns a stream of per-tick [`RowView`]
+/// snapshots into a list of [`SectionChange`] deltas.
+///
+/// Architectural notes:
+///
+/// - Lives in `irontide-gui` and never mutates session state. Decision 4
+///   in the master plan: trackers are auto-aggregated GUI-side, no
+///   session-actor change.
+/// - On the very first call to [`Self::update`], every Category / Tag /
+///   Tracker bucket emits an `Added` event so the sidebar can populate
+///   from a cold start.
+/// - Empty-count Library and Tracker rows are still represented (they
+///   are always-present rows). Empty-count Category and Tag rows are
+///   not — they appear via `Added` and disappear via `Removed`.
+#[derive(Debug, Default)]
+pub struct TrackerIndex {
+    last: Option<SectionCounts>,
+}
+
+impl TrackerIndex {
+    /// Construct a fresh aggregator with no prior tick.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Borrow the most recent snapshot if any tick has run.
+    #[must_use]
+    pub fn snapshot(&self) -> Option<&SectionCounts> {
+        self.last.as_ref()
+    }
+
+    /// Ingest a new set of rows and return the diff against the previous
+    /// snapshot.
+    pub fn update(&mut self, rows: &[RowView]) -> Vec<SectionChange> {
+        let next = SectionCounts::from_rows(rows);
+        let changes = match &self.last {
+            None => initial_changes(&next),
+            Some(prev) => diff_counts(prev, &next),
+        };
+        self.last = Some(next);
+        changes
+    }
+
+    /// Reset the aggregator to its cold-start state. The next call to
+    /// [`Self::update`] will emit the full set of `Added` events.
+    pub fn reset(&mut self) {
+        self.last = None;
+    }
+}
+
+fn initial_changes(next: &SectionCounts) -> Vec<SectionChange> {
+    let mut out = Vec::new();
+    for (filter, &count) in &next.library {
+        out.push(SectionChange::Changed {
+            section: SidebarSection::Library(*filter),
+            old: 0,
+            new: count,
+        });
+    }
+    for (cat, &count) in &next.categories {
+        out.push(SectionChange::Added {
+            section: SidebarSection::Category(cat.clone()),
+            count,
+        });
+    }
+    for (tag, &count) in &next.tags {
+        out.push(SectionChange::Added {
+            section: SidebarSection::Tag(tag.clone()),
+            count,
+        });
+    }
+    for (bucket, &count) in &next.trackers {
+        out.push(SectionChange::Changed {
+            section: SidebarSection::Tracker(*bucket),
+            old: 0,
+            new: count,
+        });
+    }
+    out
+}
+
+fn diff_counts(prev: &SectionCounts, next: &SectionCounts) -> Vec<SectionChange> {
+    let mut out = Vec::new();
+
+    // Library: always-present rows; emit `Changed` only on movement.
+    for filter in LibraryFilter::ORDER {
+        let old = prev.library.get(&filter).copied().unwrap_or(0);
+        let new = next.library.get(&filter).copied().unwrap_or(0);
+        if old != new {
+            out.push(SectionChange::Changed {
+                section: SidebarSection::Library(filter),
+                old,
+                new,
+            });
+        }
+    }
+
+    // Categories: union of prev + next keys, classify per change kind.
+    let cat_keys: HashSet<&String> = prev.categories.keys().chain(next.categories.keys()).collect();
+    for cat in cat_keys {
+        let old = prev.categories.get(cat).copied().unwrap_or(0);
+        let new = next.categories.get(cat).copied().unwrap_or(0);
+        match (old, new) {
+            (0, 0) => {}
+            (0, _) => out.push(SectionChange::Added {
+                section: SidebarSection::Category(cat.clone()),
+                count: new,
+            }),
+            (_, 0) => out.push(SectionChange::Removed {
+                section: SidebarSection::Category(cat.clone()),
+            }),
+            (o, n) if o != n => out.push(SectionChange::Changed {
+                section: SidebarSection::Category(cat.clone()),
+                old: o,
+                new: n,
+            }),
+            _ => {}
+        }
+    }
+
+    // Tags: same logic as categories.
+    let tag_keys: HashSet<&String> = prev.tags.keys().chain(next.tags.keys()).collect();
+    for tag in tag_keys {
+        let old = prev.tags.get(tag).copied().unwrap_or(0);
+        let new = next.tags.get(tag).copied().unwrap_or(0);
+        match (old, new) {
+            (0, 0) => {}
+            (0, _) => out.push(SectionChange::Added {
+                section: SidebarSection::Tag(tag.clone()),
+                count: new,
+            }),
+            (_, 0) => out.push(SectionChange::Removed {
+                section: SidebarSection::Tag(tag.clone()),
+            }),
+            (o, n) if o != n => out.push(SectionChange::Changed {
+                section: SidebarSection::Tag(tag.clone()),
+                old: o,
+                new: n,
+            }),
+            _ => {}
+        }
+    }
+
+    // Tracker buckets: always-present rows, same as Library.
+    for bucket in TrackerBucket::ORDER {
+        let old = prev.trackers.get(&bucket).copied().unwrap_or(0);
+        let new = next.trackers.get(&bucket).copied().unwrap_or(0);
+        if old != new {
+            out.push(SectionChange::Changed {
+                section: SidebarSection::Tracker(bucket),
+                old,
+                new,
+            });
+        }
+    }
+
+    out
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -829,6 +1113,218 @@ mod tests {
             next_announce_secs: 0,
             consecutive_failures: 0,
         }
+    }
+
+    // ── RowView::from_stats ──
+
+    #[test]
+    fn row_view_from_stats_carries_error_category_tags() {
+        use irontide::session::TorrentStats;
+        let stats = TorrentStats {
+            error: "disk full".into(),
+            category: Some("Music".into()),
+            tags: vec!["mp3".into()],
+            state: TorrentState::Paused,
+            progress: 0.42,
+            download_rate: 100,
+            upload_rate: 50,
+            ..TorrentStats::default()
+        };
+
+        let view = RowView::from_stats(&stats);
+        assert_eq!(view.error, "disk full");
+        assert_eq!(view.category.as_deref(), Some("Music"));
+        assert_eq!(view.tags, vec!["mp3".to_string()]);
+        assert_eq!(view.state, TorrentState::Paused);
+        assert!((view.progress - 0.42).abs() < 1e-6);
+        assert_eq!(view.download_rate, 100);
+        assert_eq!(view.upload_rate, 50);
+        // Tracker fields are populated separately via with_trackers().
+        assert!(view.tracker_hosts.is_empty());
+        assert!(view.tracker_buckets.is_empty());
+    }
+
+    // ── TrackerIndex (M173 Lane A task A4) ──
+
+    #[test]
+    fn tracker_index_initial_emits_added_for_categories_and_tags() {
+        let mut r1 = row(TorrentState::Downloading, 0.5);
+        r1.category = Some("Linux".into());
+        r1.tags = vec!["hd".into()];
+        r1.tracker_buckets = vec![TrackerBucket::Working];
+        let mut r2 = row(TorrentState::Seeding, 1.0);
+        r2.category = Some("Linux".into());
+        let rows = vec![r1, r2];
+
+        let mut idx = TrackerIndex::new();
+        let changes = idx.update(&rows);
+
+        // Library + Tracker rows always present, emitted as Changed{old:0,..}.
+        assert!(changes.iter().any(|c| matches!(
+            c,
+            SectionChange::Changed {
+                section: SidebarSection::Library(LibraryFilter::All),
+                old: 0,
+                new: 2,
+            }
+        )));
+        assert!(changes.iter().any(|c| matches!(
+            c,
+            SectionChange::Changed {
+                section: SidebarSection::Tracker(TrackerBucket::Working),
+                old: 0,
+                new: 1,
+            }
+        )));
+
+        // Categories/Tags emit Added on the first tick.
+        assert!(changes.iter().any(|c| matches!(
+            c,
+            SectionChange::Added {
+                section: SidebarSection::Category(name),
+                count: 2,
+            } if name == "Linux"
+        )));
+        assert!(changes.iter().any(|c| matches!(
+            c,
+            SectionChange::Added {
+                section: SidebarSection::Tag(name),
+                count: 1,
+            } if name == "hd"
+        )));
+    }
+
+    #[test]
+    fn tracker_index_no_movement_no_changes() {
+        let mut r = row(TorrentState::Downloading, 0.5);
+        r.category = Some("Linux".into());
+        let rows = vec![r];
+
+        let mut idx = TrackerIndex::new();
+        let _ = idx.update(&rows); // prime
+        let second = idx.update(&rows);
+        // Identical inputs → empty diff.
+        assert!(second.is_empty(), "expected no-op tick to emit zero changes, got: {second:?}");
+    }
+
+    #[test]
+    fn tracker_index_emits_only_moved_library_rows() {
+        // Initial state: r1 = Downloading + dl_rate=1024 (counts under
+        // All=2, Downloading=1, Active=1); r2 = Paused (counts under
+        // All=2, Paused=1). Inactive stays 0 throughout because
+        // (r1: Active, r2: Paused — Paused excluded from Inactive).
+        let mut r1 = row(TorrentState::Downloading, 0.5);
+        r1.download_rate = 1024;
+        let mut r2 = row(TorrentState::Paused, 0.5);
+        r2.tags = vec!["a".into()];
+        let mut idx = TrackerIndex::new();
+        let _ = idx.update(&[r1.clone(), r2.clone()]);
+
+        // r1 transitions Downloading → Paused with rate dropping to 0.
+        // After: All=2 (unchanged), Downloading 1→0, Paused 1→2,
+        // Active 1→0, Inactive 0→0, Seeding/Completed/Errored unchanged.
+        let mut r1_paused = r1.clone();
+        r1_paused.state = TorrentState::Paused;
+        r1_paused.download_rate = 0;
+        let changes = idx.update(&[r1_paused, r2]);
+
+        let library_movers: Vec<&SectionChange> = changes
+            .iter()
+            .filter(|c| matches!(c, SectionChange::Changed { section: SidebarSection::Library(_), .. }))
+            .collect();
+        // Exactly three library moves: Downloading, Paused, Active.
+        assert_eq!(library_movers.len(), 3, "expected 3 library moves, got: {library_movers:?}");
+        let moved_filters: HashSet<LibraryFilter> = library_movers
+            .iter()
+            .filter_map(|c| match c {
+                SectionChange::Changed { section: SidebarSection::Library(f), .. } => Some(*f),
+                _ => None,
+            })
+            .collect();
+        assert!(moved_filters.contains(&LibraryFilter::Downloading));
+        assert!(moved_filters.contains(&LibraryFilter::Paused));
+        assert!(moved_filters.contains(&LibraryFilter::Active));
+        assert!(!moved_filters.contains(&LibraryFilter::Inactive));
+        assert!(!moved_filters.contains(&LibraryFilter::All));
+        assert!(!moved_filters.contains(&LibraryFilter::Errored));
+    }
+
+    #[test]
+    fn tracker_index_added_then_removed_category() {
+        let mut idx = TrackerIndex::new();
+        // Tick 1: empty.
+        let _ = idx.update(&[]);
+        // Tick 2: one categorised torrent appears.
+        let mut r = row(TorrentState::Downloading, 0.5);
+        r.category = Some("Linux".into());
+        let changes = idx.update(&[r.clone()]);
+        assert!(changes.iter().any(|c| matches!(
+            c,
+            SectionChange::Added {
+                section: SidebarSection::Category(name),
+                count: 1,
+            } if name == "Linux"
+        )));
+        // Tick 3: it disappears (deleted by the user).
+        let changes = idx.update(&[]);
+        assert!(changes.iter().any(|c| matches!(
+            c,
+            SectionChange::Removed {
+                section: SidebarSection::Category(name),
+            } if name == "Linux"
+        )));
+    }
+
+    #[test]
+    fn tracker_index_changed_event_carries_old_and_new() {
+        let mut r = row(TorrentState::Downloading, 0.5);
+        r.tracker_buckets = vec![TrackerBucket::Working];
+        let mut idx = TrackerIndex::new();
+        let _ = idx.update(&[r.clone()]); // prime: Working = 1
+        // Add a second torrent with a Working tracker.
+        let r2 = r.clone();
+        let changes = idx.update(&[r, r2]);
+        let working_change = changes
+            .iter()
+            .find(|c| matches!(
+                c,
+                SectionChange::Changed {
+                    section: SidebarSection::Tracker(TrackerBucket::Working),
+                    ..
+                }
+            ))
+            .expect("Working tracker should have moved");
+        let SectionChange::Changed { old, new, .. } = working_change else {
+            unreachable!()
+        };
+        assert_eq!(*old, 1);
+        assert_eq!(*new, 2);
+    }
+
+    #[test]
+    fn tracker_index_reset_replays_initial_state() {
+        let mut r = row(TorrentState::Downloading, 0.0);
+        r.category = Some("Linux".into());
+        let mut idx = TrackerIndex::new();
+        let _ = idx.update(&[r.clone()]); // initial Added
+        // Same input again — no diff.
+        let no_op = idx.update(&[r.clone()]);
+        assert!(no_op.is_empty());
+        idx.reset();
+        let after_reset = idx.update(&[r]);
+        // After reset the next update treats it as a cold start again.
+        assert!(after_reset.iter().any(|c| matches!(
+            c,
+            SectionChange::Added { section: SidebarSection::Category(_), count: 1 }
+        )));
+    }
+
+    #[test]
+    fn tracker_bucket_counts_zero_buckets_present() {
+        let counts = tracker_bucket_counts(&[]);
+        assert_eq!(counts.get(&TrackerBucket::Working).copied(), Some(0));
+        assert_eq!(counts.get(&TrackerBucket::Unreachable).copied(), Some(0));
+        assert_eq!(counts.get(&TrackerBucket::Error).copied(), Some(0));
     }
 
     #[test]
