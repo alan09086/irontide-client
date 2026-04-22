@@ -164,6 +164,33 @@ struct QbtPreferencesPatch {
     web_ui_reverse_proxy_enabled: Option<bool>,
     #[serde(default)]
     web_ui_reverse_proxies_list: Option<String>,
+
+    // ── M172a Lane C: brute-force ban ─────────────────────────────────
+    /// qBt wire field for [`QbtCompatSettings::max_failed_auth_count`].
+    /// Forwarded verbatim, no unit conversion.
+    #[serde(default)]
+    web_ui_max_auth_fail_count: Option<u32>,
+    /// qBt wire field for [`QbtCompatSettings::ban_duration_secs`].
+    /// Wire semantics: `-1` = "leave unchanged" sentinel (qBt uses this
+    /// to distinguish "not set in UI" from "set to zero"); values `< -1`
+    /// are ignored; positive values are forwarded verbatim after a
+    /// `try_into::<u64>` cast.
+    #[serde(default)]
+    web_ui_ban_duration: Option<i64>,
+    /// qBt wire field for [`QbtCompatSettings::bypass_local_auth`].
+    #[serde(default)]
+    bypass_local_auth: Option<bool>,
+    /// qBt wire field: `true` enables the subnet whitelist, `false`
+    /// clears it. Applied BEFORE [`Self::bypass_auth_subnet_whitelist`]
+    /// so the list survives a disable-then-enable round trip within a
+    /// single patch.
+    #[serde(default)]
+    bypass_auth_subnet_whitelist_enabled: Option<bool>,
+    /// qBt wire field: newline-separated CIDR strings. Replaces the
+    /// entire list on each patch (matches qBt UX — the textarea is the
+    /// authoritative source). Empty string clears the list.
+    #[serde(default)]
+    bypass_auth_subnet_whitelist: Option<String>,
 }
 
 /// `POST /api/v2/app/setPreferences` (M171 D3 + D3.5).
@@ -207,6 +234,24 @@ pub async fn set_preferences(
 
     let proxies_changed = settings.qbt_compat.web_ui_reverse_proxies_list != prev_proxies;
     let new_proxies_raw = settings.qbt_compat.web_ui_reverse_proxies_list.clone();
+
+    // M172a Lane C: sync the shared bypass-whitelist RwLock BEFORE the
+    // engine applies the settings. Failing validation above aborts early
+    // so we only write the lock on a patch that's about to land; the
+    // write happens before `apply_settings_classified` so that on a rare
+    // timeout between validate and apply, any login that races the
+    // settings apply consults the new whitelist. Settings::validate
+    // rejected any malformed CIDR, so unwrap_or retains unchanged
+    // entries on the impossible "was fine a moment ago" branch.
+    {
+        let parsed: Vec<ipnet::IpNet> = settings
+            .qbt_compat
+            .bypass_auth_subnet_whitelist
+            .iter()
+            .filter_map(|s| s.parse().ok())
+            .collect();
+        *state.bypass_auth_subnet_whitelist.write() = parsed;
+    }
 
     let applied = state
         .session
@@ -430,6 +475,51 @@ fn apply_preferences_patch(
             }
         }
         settings.qbt_compat.web_ui_reverse_proxies_list = parsed;
+    }
+
+    // M172a Lane C: brute-force ban fields.
+    if let Some(v) = patch.web_ui_max_auth_fail_count {
+        settings.qbt_compat.max_failed_auth_count = v;
+    }
+    if let Some(v) = patch.web_ui_ban_duration {
+        // qBt -1 sentinel = "leave unchanged"; `< -1` same handling
+        // (matches qBt: any negative value means "ignore"). Positive
+        // values must fit u64, which they always do for i64-positive.
+        if v >= 0 {
+            settings.qbt_compat.ban_duration_secs =
+                u64::try_from(v).unwrap_or(settings.qbt_compat.ban_duration_secs);
+        }
+    }
+    if let Some(v) = patch.bypass_local_auth {
+        settings.qbt_compat.bypass_local_auth = v;
+    }
+    // Order: `_enabled` applied first so a patch that sets
+    // `_enabled=false` + `_whitelist=..` produces a disabled list, and
+    // `_enabled=true` + `_whitelist=..` produces the new list.
+    if let Some(v) = patch.bypass_auth_subnet_whitelist_enabled
+        && !v
+    {
+        settings.qbt_compat.bypass_auth_subnet_whitelist.clear();
+    }
+    if let Some(v) = patch.bypass_auth_subnet_whitelist {
+        let parsed: Vec<String> = v
+            .lines()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+            .collect();
+        // Validate each CIDR so we fail the patch loudly rather than
+        // silently-stripping a typo. Settings::validate also checks
+        // this post-merge, but failing here keeps the BadRequest body
+        // specific to the offending line.
+        for cidr in &parsed {
+            if cidr.parse::<ipnet::IpNet>().is_err() {
+                return Err(QbtError::BadRequest(format!(
+                    "invalid CIDR in bypass_auth_subnet_whitelist: {cidr}"
+                )));
+            }
+        }
+        settings.qbt_compat.bypass_auth_subnet_whitelist = parsed;
     }
 
     Ok(())

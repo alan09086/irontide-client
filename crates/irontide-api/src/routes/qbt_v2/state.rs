@@ -15,6 +15,7 @@ use tokio::sync::Semaphore;
 
 use irontide::session::SessionHandle;
 
+use super::brute_force::BruteForceRegistry;
 use super::session_store::SessionStore;
 
 /// Cheap-to-clone state for every qBt v2 handler and middleware.
@@ -32,23 +33,39 @@ pub struct QbtState {
     /// / `webUiReverseProxiesList`) — Lane A ships this empty.
     /// FIXME(M172b Lane B): populate from `Settings.qbt_compat.web_ui_reverse_proxies_list`.
     pub reverse_proxies_list: Arc<RwLock<Vec<IpNet>>>,
-    /// M172a A7 scaffold: CIDRs that bypass qBt v2 authentication entirely.
-    /// FIXME(M172b Lane B): populate from `Settings.qbt_compat.bypass_auth_subnet_whitelist`.
+    /// M172a Lane C: CIDRs that bypass qBt v2 authentication entirely.
+    /// Populated at router construction from
+    /// `Settings.qbt_compat.bypass_auth_subnet_whitelist` (best-effort, via a
+    /// fire-and-forget startup task — `build_router` is sync, see
+    /// [`super::build_router`]) and kept in sync by the `setPreferences`
+    /// apply path (see `classify_immediate` in irontide-session).
     pub bypass_auth_subnet_whitelist: Arc<RwLock<Vec<IpNet>>>,
-    // FIXME(M172b Lane C): add `brute_force: Arc<BruteForceRegistry>` here —
-    // Lane C owns that file diff. Lane A reserves the field name via comment.
+    /// M172a Lane C: per-IP brute-force-ban registry. Shared across the
+    /// auth handler and the `setPreferences` apply path so runtime-reconfig
+    /// of `max_failed_auth_count` / `ban_duration_secs` takes effect on the
+    /// next login attempt. The registry's *capacity* is fixed at router
+    /// construction — runtime changes to
+    /// `qbt_compat.brute_force_registry_capacity` only affect the daemon
+    /// on next restart (documented in `classify_immediate`).
+    pub brute_force: Arc<BruteForceRegistry>,
 }
 
 impl QbtState {
-    /// Construct a cheap-to-clone state bundle. Lane A ships the CIDR lists
-    /// empty (Lane B populates them) and sizes the argon2 semaphore from
+    /// Construct a cheap-to-clone state bundle. The CIDR lists ship empty;
+    /// they are populated from `Settings.qbt_compat` either by the async
+    /// startup task in [`super::build_router`] or by the
+    /// `setPreferences` apply path. The argon2 semaphore is sized from
     /// `num_cpus::get() * 2` clamped to `[2, 16]`, with an optional override
-    /// from `qbt_compat.max_concurrent_argon2_ops`.
+    /// from `qbt_compat.max_concurrent_argon2_ops`. The brute-force registry
+    /// uses `brute_force_capacity` (typically
+    /// `Settings.qbt_compat.brute_force_registry_capacity` or the
+    /// `DEFAULT_REGISTRY_CAPACITY` fallback).
     #[must_use]
     pub fn new(
         session: Arc<SessionHandle>,
         store: Arc<SessionStore>,
         argon2_permits: usize,
+        brute_force_capacity: usize,
     ) -> Self {
         Self {
             session,
@@ -56,6 +73,7 @@ impl QbtState {
             argon2_semaphore: Arc::new(Semaphore::new(argon2_permits)),
             reverse_proxies_list: Arc::new(RwLock::new(Vec::new())),
             bypass_auth_subnet_whitelist: Arc::new(RwLock::new(Vec::new())),
+            brute_force: BruteForceRegistry::new(brute_force_capacity),
         }
     }
 }
@@ -91,8 +109,20 @@ pub fn resolve_client_ip(req: &Request, state: &QbtState) -> IpAddr {
         .extensions()
         .get::<axum::extract::ConnectInfo<SocketAddr>>()
         .map(|ci| ci.0.ip());
+    resolve_client_ip_from_parts(peer, req.headers(), state)
+}
 
-    let xff_entries = parse_xff_header(req.headers());
+/// Same XFF trust-hop algorithm as [`resolve_client_ip`], but callable
+/// from a handler that has already destructured the request (no `&Request`
+/// available). Used by the qBt v2 login handler (Lane C) which receives
+/// `ConnectInfo<SocketAddr>` + `HeaderMap` directly.
+#[must_use]
+pub fn resolve_client_ip_from_parts(
+    peer: Option<IpAddr>,
+    headers: &HeaderMap,
+    state: &QbtState,
+) -> IpAddr {
+    let xff_entries = parse_xff_header(headers);
     let trusted = state.reverse_proxies_list.read();
 
     // chain = [XFF entries..., peer]
