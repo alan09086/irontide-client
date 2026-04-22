@@ -1,18 +1,18 @@
 // Custom progress bar widget for torrent list rows.
 
-import { Palette } from "../tokens.slint";
+import { Tokens } from "../tokens.slint";
 
 export component TorrentProgressBar {
     in property <float> progress: 0.0;
-    in property <color> fill-color: #4caf50;
+    in property <color> fill-color: Tokens.status-seeding;
     in property <string> progress-text: "";
 
-    height: 14px;
+    height: Tokens.sp-6 - Tokens.sp-1;
 
     // Track
     Rectangle {
-        background: Palette.surface;
-        border-radius: 3px;
+        background: Tokens.bg-2;
+        border-radius: Tokens.r-sm;
 
         // Fill
         Rectangle {
@@ -21,14 +21,14 @@ export component TorrentProgressBar {
             width: parent.width * clamp(root.progress, 0.0, 1.0);
             height: parent.height;
             background: root.fill-color;
-            border-radius: 3px;
+            border-radius: Tokens.r-sm;
         }
 
         // Percentage text overlay
         Text {
             text: root.progress-text;
-            color: Palette.text;
-            font-size: 10px;
+            color: Tokens.fg-0;
+            font-size: Tokens.fs-10;
             horizontal-alignment: center;
             vertical-alignment: center;
         }
