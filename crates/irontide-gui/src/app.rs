@@ -167,6 +167,23 @@ pub struct AppState {
     /// Set by the Tweaks overlay callbacks; inspected at shutdown to
     /// persist a `GuiConfig` update via `save_gui_config`.
     pub skin_dirty: bool,
+    /// Active sidebar predicate (M173 Lane A).
+    ///
+    /// Read by the poll loop on every tick to filter the torrent list
+    /// before sorting + diffing. Mutated by sidebar row-click callbacks
+    /// (task A8). The default is `SidebarPredicate::All` so the list
+    /// matches the M163 behaviour until the user clicks a sidebar row.
+    pub predicate: crate::sidebar::SidebarPredicate,
+    /// Whether the sidebar selection has unsaved changes.
+    ///
+    /// Set by the sidebar row-click callback when [`Self::predicate`] or
+    /// the persisted selected section moves; inspected at shutdown to
+    /// persist a `GuiConfig` update via `save_gui_config`.
+    ///
+    /// Currently set by `set_predicate` and read by tests; the production
+    /// reader lands in task A9 (`[gui.sidebar]` config persistence).
+    #[allow(dead_code)]
+    pub sidebar_dirty: bool,
 }
 
 impl AppState {
@@ -188,6 +205,8 @@ impl AppState {
             columns_dirty: false,
             skin,
             skin_dirty: false,
+            predicate: crate::sidebar::SidebarPredicate::default(),
+            sidebar_dirty: false,
         }
     }
 
@@ -214,6 +233,27 @@ impl AppState {
             self.selected.insert(info_hash.to_owned());
         }
         self.last_clicked = Some(info_hash.to_owned());
+    }
+
+    /// Replace the active sidebar predicate.
+    ///
+    /// Returns `true` when the predicate actually changed (the next poll
+    /// tick will rebuild the visible model). Idempotent updates do nothing
+    /// and return `false` so callers can suppress UI churn.
+    ///
+    /// The selection set is left intact; the rebuild will hide rows that
+    /// no longer match but a subsequent navigation back to the previous
+    /// predicate restores the visible-row selection in place.
+    ///
+    /// Production callers land in task A8; tests cover the helper here.
+    #[allow(dead_code)]
+    pub fn set_predicate(&mut self, predicate: crate::sidebar::SidebarPredicate) -> bool {
+        if self.predicate == predicate {
+            return false;
+        }
+        self.predicate = predicate;
+        self.sidebar_dirty = true;
+        true
     }
 
     /// Shift+click: select range from last_clicked to this hash.
@@ -613,6 +653,48 @@ mod tests {
         assert!(state.can_seed_only);
         assert!(!state.can_resume_download);
         assert!(state.can_recheck);
+    }
+
+    // ── M173 Lane A: set_predicate ────────────────────────────────────
+
+    #[test]
+    fn set_predicate_changes_state_and_marks_dirty() {
+        let (tx, _rx) = tokio::sync::oneshot::channel();
+        let mut state = AppState::new(
+            tx,
+            crate::columns::ColumnConfig::default(),
+            crate::skin::SkinSettings::default(),
+        );
+        // Default predicate is `All`, dirty flag starts clean.
+        assert_eq!(state.predicate, crate::sidebar::SidebarPredicate::All);
+        assert!(!state.sidebar_dirty);
+
+        let new_pred = crate::sidebar::SidebarPredicate::Library(
+            crate::sidebar::LibraryFilter::Paused,
+        );
+        let changed = state.set_predicate(new_pred.clone());
+        assert!(changed);
+        assert_eq!(state.predicate, new_pred);
+        assert!(state.sidebar_dirty);
+    }
+
+    #[test]
+    fn set_predicate_idempotent_change_returns_false() {
+        let (tx, _rx) = tokio::sync::oneshot::channel();
+        let mut state = AppState::new(
+            tx,
+            crate::columns::ColumnConfig::default(),
+            crate::skin::SkinSettings::default(),
+        );
+        let pred = crate::sidebar::SidebarPredicate::Category("Linux".into());
+        assert!(state.set_predicate(pred.clone()));
+        assert!(state.sidebar_dirty);
+        // Reset dirty flag — the next call should not flip it back on
+        // because the predicate did not change.
+        state.sidebar_dirty = false;
+        let changed = state.set_predicate(pred);
+        assert!(!changed);
+        assert!(!state.sidebar_dirty);
     }
 
     #[test]

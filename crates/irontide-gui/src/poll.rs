@@ -14,6 +14,7 @@ use slint::{Model, ModelRc, SharedString, VecModel};
 use irontide::session::{SessionHandle, TorrentState, TorrentSummary};
 
 use crate::columns::ColumnId;
+use crate::sidebar::{RowView, SidebarPredicate};
 
 // Thread-local storage for the VecModel so the upgrade_in_event_loop
 // closure can access it without moving it into each closure.
@@ -119,14 +120,16 @@ pub async fn poll_loop(
             }
         };
 
-        // Read sort + selection state.
-        let (sort, selected) = {
+        // Read sort + selection + predicate state.
+        let (sort, selected, predicate) = {
             let st = state.lock();
-            (st.sort, st.selected.clone())
+            (st.sort, st.selected.clone(), st.predicate.clone())
         };
 
-        // Sort raw summaries.
-        let mut sorted = summaries;
+        // Filter (M173 Lane A) then sort. Default predicate (`All`) is a
+        // pass-through, so the M163 behaviour is preserved exactly until the
+        // user clicks a sidebar row.
+        let mut sorted = apply_predicate(&summaries, &predicate, enrich_summary_only);
         sort_summaries(&mut sorted, &sort);
 
         // Convert to Slint rows.
@@ -198,6 +201,51 @@ pub async fn poll_loop(
             win.set_sort_ascending(sort_asc);
         });
     }
+}
+
+// ── Filtering (M173 Lane A) ─────────────────────────────────────────────────
+
+/// Apply a sidebar predicate to a list of summaries, returning a new vec
+/// containing only the rows that match.
+///
+/// `enrich` is the GUI-side hook that augments each summary with the
+/// per-tick fields the sidebar needs (`error`, `category`, `tags`,
+/// tracker buckets) — see `crate::sidebar::RowView`. The poll loop owns
+/// the enrichment because it has access to the session handle (M173 Lane A
+/// task A4 plugs in the real implementation; until then the default hook
+/// returns the bare-summary `RowView`, which lets `Library::All` /
+/// `Library::Active` / `Library::Inactive` / `Library::Paused` /
+/// `Library::Seeding` / `Library::Downloading` / `Library::Completed`
+/// behave correctly out of the box).
+///
+/// **Sort-after-filter semantics**: this function only filters. The caller
+/// must run [`sort_summaries`] on the returned vec before pushing to the
+/// model. A predicate of [`SidebarPredicate::All`] — the default — passes
+/// through every row, so the M163 behaviour is preserved unchanged.
+pub fn apply_predicate<F>(
+    summaries: &[TorrentSummary],
+    predicate: &SidebarPredicate,
+    enrich: F,
+) -> Vec<TorrentSummary>
+where
+    F: Fn(&TorrentSummary) -> RowView,
+{
+    if matches!(predicate, SidebarPredicate::All) {
+        return summaries.to_vec();
+    }
+    summaries
+        .iter()
+        .filter(|s| predicate.matches(&enrich(s)))
+        .cloned()
+        .collect()
+}
+
+/// The minimal `enrich` hook used by `apply_predicate` when no richer data
+/// has been wired yet (task A3 baseline; task A4 replaces this with a
+/// closure that consults `TorrentStats` / `tracker_list`).
+#[must_use]
+pub fn enrich_summary_only(s: &TorrentSummary) -> RowView {
+    RowView::from_summary(s)
 }
 
 // ── Sorting ─────────────────────────────────────────────────────────────────
@@ -550,6 +598,100 @@ mod tests {
         let (down, up) = aggregate_rates(&summaries);
         assert_eq!(down, 600);
         assert_eq!(up, 60);
+    }
+
+    // ── M173 Lane A: apply_predicate (sort-after-filter rebuild) ───────
+
+    use crate::sidebar::{LibraryFilter, SidebarPredicate};
+
+    #[test]
+    fn apply_predicate_all_is_passthrough() {
+        let summaries = vec![
+            test_summary("A", "aaa"),
+            test_summary("B", "bbb"),
+            test_summary("C", "ccc"),
+        ];
+        let out = apply_predicate(&summaries, &SidebarPredicate::All, enrich_summary_only);
+        assert_eq!(out.len(), 3);
+        // Rebuild preserves input order — sorting happens AFTER filter.
+        assert_eq!(out[0].info_hash, "aaa");
+        assert_eq!(out[1].info_hash, "bbb");
+        assert_eq!(out[2].info_hash, "ccc");
+    }
+
+    #[test]
+    fn apply_predicate_paused_filters_out_downloading() {
+        let mut a = test_summary("A", "aaa");
+        a.state = TorrentState::Downloading;
+        let mut b = test_summary("B", "bbb");
+        b.state = TorrentState::Paused;
+        let mut c = test_summary("C", "ccc");
+        c.state = TorrentState::Paused;
+        let summaries = vec![a, b, c];
+        let pred = SidebarPredicate::Library(LibraryFilter::Paused);
+        let out = apply_predicate(&summaries, &pred, enrich_summary_only);
+        assert_eq!(out.len(), 2);
+        assert!(out.iter().all(|s| s.state == TorrentState::Paused));
+    }
+
+    #[test]
+    fn apply_predicate_active_uses_rates() {
+        let mut a = test_summary("A", "aaa");
+        a.download_rate = 1024;
+        let b = test_summary("B", "bbb"); // both rates 0
+        let mut c = test_summary("C", "ccc");
+        c.upload_rate = 512;
+        let summaries = vec![a, b, c];
+        let pred = SidebarPredicate::Library(LibraryFilter::Active);
+        let out = apply_predicate(&summaries, &pred, enrich_summary_only);
+        assert_eq!(out.len(), 2);
+        let hashes: Vec<&str> = out.iter().map(|s| s.info_hash.as_str()).collect();
+        assert!(hashes.contains(&"aaa"));
+        assert!(hashes.contains(&"ccc"));
+    }
+
+    #[test]
+    fn apply_predicate_custom_enricher_drives_category_filter() {
+        let summaries = vec![
+            test_summary("A", "aaa"),
+            test_summary("B", "bbb"),
+            test_summary("C", "ccc"),
+        ];
+        let pred = SidebarPredicate::Category("Linux".into());
+        // Enricher fakes the category via a simple lookup — proves task A4
+        // can plug richer data through without changing apply_predicate.
+        let out = apply_predicate(&summaries, &pred, |s| {
+            let cat = if s.info_hash == "bbb" {
+                Some("Linux".to_owned())
+            } else {
+                None
+            };
+            crate::sidebar::RowView::from_summary(s).with_category(cat)
+        });
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].info_hash, "bbb");
+    }
+
+    #[test]
+    fn apply_predicate_filter_then_sort_preserves_only_match() {
+        let mut a = test_summary("Charlie", "ccc");
+        a.state = TorrentState::Paused;
+        let mut b = test_summary("Alpha", "aaa");
+        b.state = TorrentState::Downloading;
+        let mut c = test_summary("Bravo", "bbb");
+        c.state = TorrentState::Paused;
+        let summaries = vec![a, b, c];
+        let pred = SidebarPredicate::Library(LibraryFilter::Paused);
+        let mut out = apply_predicate(&summaries, &pred, enrich_summary_only);
+        // Verify that callers can sort the filter output correctly.
+        let sort = SortState {
+            column: ColumnId::Name,
+            ascending: true,
+        };
+        sort_summaries(&mut out, &sort);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].name, "Bravo");
+        assert_eq!(out[1].name, "Charlie");
     }
 
     #[test]
