@@ -367,6 +367,29 @@ fn main() -> Result<(), error::GuiError> {
             bridge::show_toast(&weak, "Details panel: coming in M172", false);
         });
     }
+    {
+        // M173 Lane A task A7: Ctrl+1..9 / Cmd+1..9 sidebar shortcut.
+        // Slint forwards the raw digit text plus the focus-scope guard
+        // already blocked any open dialog/menu. The Rust side validates
+        // the platform accelerator via `accel::parse_sidebar_shortcut`
+        // and resolves the slot. Task A8 will wire this through to a
+        // real predicate change against the visible sidebar order; for
+        // now we surface the chosen slot via a toast so the keybind
+        // plumbing is observable end-to-end.
+        let weak = main_window.as_weak();
+        main_window.on_sidebar_shortcut(move |digit| {
+            let Some(win) = weak.upgrade() else { return };
+            let ctrl = win.get_ctrl_held();
+            let meta = win.get_meta_held();
+            let Some(slot) = accel::parse_sidebar_shortcut(digit.as_str(), ctrl, meta)
+            else {
+                return;
+            };
+            let label = accel::sidebar_shortcut_label(slot);
+            let msg = format!("Sidebar shortcut {label} (slot {slot})");
+            bridge::show_toast(&weak, &msg, false);
+        });
+    }
 
     // 6j. Wire Tweaks overlay callbacks (M172b Lane B).
     {

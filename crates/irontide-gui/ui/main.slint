@@ -304,6 +304,14 @@ export component MainWindow inherits Window {
     callback delete-selected();
     callback select-all();
     callback show-details-stub();
+    // M173 Lane A: Ctrl+1..9 / Cmd+1..9 sidebar shortcuts. The payload
+    // is the raw digit text (`"1"`..`"9"`); Rust validates the
+    // platform accelerator via `accel::parse_sidebar_shortcut` against
+    // `ctrl-held` / `meta-held` and resolves the slot against the
+    // visible sidebar order in `AppState`. Fires only when no
+    // modal/menu has focus (focus-scope isolation — see the gate in
+    // the FocusScope handler below).
+    callback sidebar-shortcut(/* digit text "1".."9" */ string);
 
     // ── Tweaks overlay (M172b Lane B) ──
     in-out property <bool> show-tweaks: false;
@@ -338,8 +346,11 @@ export component MainWindow inherits Window {
                 root.show-tweaks = !root.show-tweaks;
                 return accept;
             }
-            // Keyboard shortcuts (only when no dialog/menu is open)
-            if !root.show-add-magnet-dialog && !root.show-add-torrent-dialog && !root.show-delete-dialog && !root.show-context-menu {
+            // Keyboard shortcuts (only when no dialog/menu is open).
+            // The Tweaks overlay is treated as modal too — it absorbs
+            // its own keys above, so any leftover key event with
+            // root.show-tweaks should not trigger sidebar shortcuts.
+            if !root.show-add-magnet-dialog && !root.show-add-torrent-dialog && !root.show-delete-dialog && !root.show-context-menu && !root.show-tweaks {
                 if event.text == " " {
                     root.toggle-pause-resume();
                     return accept;
@@ -354,6 +365,20 @@ export component MainWindow inherits Window {
                 }
                 if event.text == "a" && root.ctrl-held {
                     root.select-all();
+                    return accept;
+                }
+                // M173 Lane A: Ctrl+1..9 (Cmd+1..9 on macOS) — sidebar
+                // shortcut. Slint cannot cfg-gate, so we forward the
+                // digit text and the modifier flags; Rust's
+                // `parse_sidebar_shortcut` then locks the match to the
+                // platform accelerator.
+                if (root.ctrl-held || root.meta-held)
+                   && (event.text == "1" || event.text == "2"
+                       || event.text == "3" || event.text == "4"
+                       || event.text == "5" || event.text == "6"
+                       || event.text == "7" || event.text == "8"
+                       || event.text == "9") {
+                    root.sidebar-shortcut(event.text);
                     return accept;
                 }
             }
