@@ -180,10 +180,20 @@ pub struct AppState {
     /// the persisted selected section moves; inspected at shutdown to
     /// persist a `GuiConfig` update via `save_gui_config`.
     ///
-    /// Currently set by `set_predicate` and read by tests; the production
-    /// reader lands in task A9 (`[gui.sidebar]` config persistence).
-    #[allow(dead_code)]
+    /// Currently set by `set_predicate` and read by `populate_sidebar_config`
+    /// at shutdown to gate the `[gui.sidebar]` save.
     pub sidebar_dirty: bool,
+    /// Per-section sidebar collapsed flags (M173 Lane A task A9).
+    /// Mirrors the four `<section>-collapsed` Slint properties on
+    /// MainWindow. Initialised from `[gui.sidebar]` at startup,
+    /// re-read at shutdown to compose the saved config.
+    pub sidebar_library_collapsed: bool,
+    /// Categories collapsed flag — see [`Self::sidebar_library_collapsed`].
+    pub sidebar_category_collapsed: bool,
+    /// Tags collapsed flag — see [`Self::sidebar_library_collapsed`].
+    pub sidebar_tag_collapsed: bool,
+    /// Trackers collapsed flag — see [`Self::sidebar_library_collapsed`].
+    pub sidebar_tracker_collapsed: bool,
 }
 
 impl AppState {
@@ -207,6 +217,78 @@ impl AppState {
             skin_dirty: false,
             predicate: crate::sidebar::SidebarPredicate::default(),
             sidebar_dirty: false,
+            sidebar_library_collapsed: false,
+            sidebar_category_collapsed: false,
+            sidebar_tag_collapsed: false,
+            sidebar_tracker_collapsed: false,
+        }
+    }
+
+    /// Load persisted sidebar state from a [`irontide_config::SidebarConfig`].
+    ///
+    /// Each absent field stays at the constructor default. Predicate
+    /// tokens that fail to parse (legacy / unknown / corrupt) silently
+    /// fall back to the `Library::All` default — invalid tokens never
+    /// panic the GUI.
+    pub fn load_sidebar_config(&mut self, cfg: &irontide_config::SidebarConfig) {
+        if let Some(v) = cfg.library_collapsed {
+            self.sidebar_library_collapsed = v;
+        }
+        if let Some(v) = cfg.category_collapsed {
+            self.sidebar_category_collapsed = v;
+        }
+        if let Some(v) = cfg.tag_collapsed {
+            self.sidebar_tag_collapsed = v;
+        }
+        if let Some(v) = cfg.tracker_collapsed {
+            self.sidebar_tracker_collapsed = v;
+        }
+        if let Some(token) = &cfg.selected_predicate
+            && let Some(section) = crate::sidebar::SidebarSection::from_token(token)
+        {
+            self.predicate = crate::sidebar::SidebarPredicate::from_section(&section);
+        }
+    }
+
+    /// Compose a [`irontide_config::SidebarConfig`] snapshot of the
+    /// current sidebar state, suitable for persistence at shutdown.
+    ///
+    /// The selected predicate is serialised as the matching
+    /// `SidebarSection::to_token()` slug. Predicates that have no
+    /// canonical section form (currently the bare `All` and the
+    /// recursive `And`) are not persisted — the GUI falls back to the
+    /// default on next launch.
+    #[must_use]
+    pub fn to_sidebar_config(&self) -> irontide_config::SidebarConfig {
+        let selected_predicate = match &self.predicate {
+            crate::sidebar::SidebarPredicate::Library(f) => {
+                Some(crate::sidebar::SidebarSection::Library(*f).to_token())
+            }
+            crate::sidebar::SidebarPredicate::Category(name) => {
+                Some(crate::sidebar::SidebarSection::Category(name.clone()).to_token())
+            }
+            crate::sidebar::SidebarPredicate::Tag(name) => {
+                Some(crate::sidebar::SidebarSection::Tag(name.clone()).to_token())
+            }
+            crate::sidebar::SidebarPredicate::Tracker(b) => {
+                Some(crate::sidebar::SidebarSection::Tracker(*b).to_token())
+            }
+            // `All` is the cold-start default — no need to persist.
+            // `And` is composed at runtime and has no canonical token.
+            crate::sidebar::SidebarPredicate::All
+            | crate::sidebar::SidebarPredicate::And(_, _) => None,
+        };
+        irontide_config::SidebarConfig {
+            library_collapsed: Some(self.sidebar_library_collapsed),
+            category_collapsed: Some(self.sidebar_category_collapsed),
+            tag_collapsed: Some(self.sidebar_tag_collapsed),
+            tracker_collapsed: Some(self.sidebar_tracker_collapsed),
+            selected_predicate,
+            // Scroll offset is reserved for future plumbing — Slint
+            // does not currently surface the Flickable's vertical
+            // offset through the sidebar organism. Keep the field in
+            // the schema so adding it later does not bump the version.
+            scroll_offset_px: None,
         }
     }
 
@@ -653,6 +735,81 @@ mod tests {
         assert!(state.can_seed_only);
         assert!(!state.can_resume_download);
         assert!(state.can_recheck);
+    }
+
+    // ── M173 Lane A task A9: sidebar config load/save ────────────────
+
+    #[test]
+    fn load_sidebar_config_applies_all_fields() {
+        let (tx, _rx) = tokio::sync::oneshot::channel();
+        let mut state = AppState::new(
+            tx,
+            crate::columns::ColumnConfig::default(),
+            crate::skin::SkinSettings::default(),
+        );
+        let cfg = irontide_config::SidebarConfig {
+            library_collapsed: Some(true),
+            category_collapsed: Some(false),
+            tag_collapsed: Some(true),
+            tracker_collapsed: Some(false),
+            selected_predicate: Some("category:Linux".into()),
+            scroll_offset_px: Some(40.0),
+        };
+        state.load_sidebar_config(&cfg);
+        assert!(state.sidebar_library_collapsed);
+        assert!(!state.sidebar_category_collapsed);
+        assert!(state.sidebar_tag_collapsed);
+        assert!(!state.sidebar_tracker_collapsed);
+        assert_eq!(
+            state.predicate,
+            crate::sidebar::SidebarPredicate::Category("Linux".into())
+        );
+    }
+
+    #[test]
+    fn load_sidebar_config_invalid_token_falls_back_to_default() {
+        let (tx, _rx) = tokio::sync::oneshot::channel();
+        let mut state = AppState::new(
+            tx,
+            crate::columns::ColumnConfig::default(),
+            crate::skin::SkinSettings::default(),
+        );
+        let cfg = irontide_config::SidebarConfig {
+            selected_predicate: Some("garbage:nonsense".into()),
+            ..Default::default()
+        };
+        state.load_sidebar_config(&cfg);
+        // Predicate stays at the constructor default.
+        assert_eq!(state.predicate, crate::sidebar::SidebarPredicate::All);
+    }
+
+    #[test]
+    fn to_sidebar_config_round_trips_named_predicates() {
+        let (tx, _rx) = tokio::sync::oneshot::channel();
+        let mut state = AppState::new(
+            tx,
+            crate::columns::ColumnConfig::default(),
+            crate::skin::SkinSettings::default(),
+        );
+        state.predicate = crate::sidebar::SidebarPredicate::Tag("hd".into());
+        state.sidebar_library_collapsed = true;
+        let cfg = state.to_sidebar_config();
+        assert_eq!(cfg.selected_predicate.as_deref(), Some("tag:hd"));
+        assert_eq!(cfg.library_collapsed, Some(true));
+    }
+
+    #[test]
+    fn to_sidebar_config_omits_default_all_predicate() {
+        let (tx, _rx) = tokio::sync::oneshot::channel();
+        let state = AppState::new(
+            tx,
+            crate::columns::ColumnConfig::default(),
+            crate::skin::SkinSettings::default(),
+        );
+        // Default predicate is `All` — must NOT serialise (next launch
+        // gets the same default, no need to persist).
+        let cfg = state.to_sidebar_config();
+        assert_eq!(cfg.selected_predicate, None);
     }
 
     // ── M173 Lane A: set_predicate ────────────────────────────────────

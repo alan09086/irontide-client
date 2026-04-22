@@ -112,6 +112,46 @@ pub struct GuiConfig {
     /// Corner radius preset (`sharp` / `balanced` / `rounded`). None → default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub radius_preset: Option<String>,
+    /// M173 Lane A: persisted sidebar state (collapsed sections,
+    /// selected predicate, scroll position). All fields inside
+    /// [`SidebarConfig`] are `Option<_>` so an absent `[gui.sidebar]`
+    /// table on a pre-M173 config.toml round-trips unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sidebar: Option<SidebarConfig>,
+}
+
+/// `[gui.sidebar]` — per-user sidebar selection + collapsed state
+/// (M173 Lane A task A9).
+///
+/// All fields are `Option<_>` so an absent table on a pre-M173
+/// `config.toml` round-trips unchanged. The Rust GUI defaults each
+/// field to a no-op (collapsed=false, predicate=All, scroll=0.0) when
+/// the field is absent, which matches the M163-era cold-start UI.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SidebarConfig {
+    /// Whether the Library section is collapsed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub library_collapsed: Option<bool>,
+    /// Whether the Categories section is collapsed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category_collapsed: Option<bool>,
+    /// Whether the Tags section is collapsed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag_collapsed: Option<bool>,
+    /// Whether the Trackers section is collapsed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tracker_collapsed: Option<bool>,
+    /// Currently-selected sidebar row, expressed as the
+    /// `SidebarSection::to_token()` slug
+    /// (`library:downloading` / `category:Linux` / etc.). Anything that
+    /// fails to parse on next launch falls back to the `Library::All`
+    /// default — invalid tokens never panic the GUI.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_predicate: Option<String>,
+    /// Sidebar scroll offset in pixels (0.0 = top). Persisted as `f32`
+    /// to match Slint's `length`-typed scroll coordinate.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scroll_offset_px: Option<f32>,
 }
 
 // ── Top-level config ────────────────────────────────────────────────
@@ -1205,6 +1245,7 @@ column_widths = [200.0, 80.0]
             theme: Some("light".into()),
             density: Some("compact".into()),
             radius_preset: Some("sharp".into()),
+            sidebar: None,
         };
         let serialized = toml::to_string_pretty(&original).expect("serialize");
         let deserialized: GuiConfig = toml::from_str(&serialized).expect("deserialize");
@@ -1213,6 +1254,96 @@ column_widths = [200.0, 80.0]
         assert_eq!(deserialized.density, original.density);
         assert_eq!(deserialized.radius_preset, original.radius_preset);
         assert_eq!(deserialized.column_order, original.column_order);
+        // Sidebar absent in serialized form when None.
+        assert!(
+            !serialized.contains("[gui.sidebar]"),
+            "absent sidebar table must not be emitted: {serialized}"
+        );
+    }
+
+    // ── M173 Lane A: SidebarConfig ───────────────────────────────────
+
+    #[test]
+    fn test_sidebar_config_full_round_trip() {
+        let sb = SidebarConfig {
+            library_collapsed: Some(false),
+            category_collapsed: Some(true),
+            tag_collapsed: Some(false),
+            tracker_collapsed: Some(true),
+            selected_predicate: Some("category:Linux".into()),
+            scroll_offset_px: Some(42.5_f32),
+        };
+        let original = GuiConfig {
+            sidebar: Some(sb.clone()),
+            ..Default::default()
+        };
+        let serialized = toml::to_string_pretty(&original).expect("serialize");
+        // The TOML inline-table style nests the sidebar inside [gui]
+        // either as `[gui.sidebar]` (table form) or `sidebar = { ... }`
+        // (inline form). Either is valid; assert the field name is
+        // present rather than pinning the table syntax.
+        assert!(
+            serialized.contains("sidebar"),
+            "non-empty sidebar must surface in serialized output: {serialized}"
+        );
+        let deserialized: GuiConfig = toml::from_str(&serialized).expect("deserialize");
+        assert_eq!(deserialized.sidebar, Some(sb));
+    }
+
+    #[test]
+    fn test_sidebar_config_partial_round_trip() {
+        // Partial update: only `selected_predicate` set. Other fields
+        // must round-trip as None so the GUI applies the default at
+        // load.
+        let sb = SidebarConfig {
+            selected_predicate: Some("library:errored".into()),
+            ..Default::default()
+        };
+        let original = GuiConfig {
+            sidebar: Some(sb.clone()),
+            ..Default::default()
+        };
+        let serialized = toml::to_string_pretty(&original).expect("serialize");
+        // Each None field must be omitted (skip_serializing_if).
+        assert!(
+            !serialized.contains("library_collapsed"),
+            "absent fields must not serialize: {serialized}"
+        );
+        let deserialized: GuiConfig = toml::from_str(&serialized).expect("deserialize");
+        assert_eq!(deserialized.sidebar, Some(sb));
+    }
+
+    #[test]
+    fn test_pre_m173_config_loads_with_sidebar_none() {
+        // Pre-M173 file with only the M163/M172b GUI fields.
+        let toml_str = r#"
+[gui]
+column_order = ["name", "size"]
+column_widths = [200.0, 80.0]
+skin = "tide"
+"#;
+        let cfg: ConfigFile = toml::from_str(toml_str).expect("valid TOML");
+        assert!(cfg.gui.sidebar.is_none(), "missing [gui.sidebar] → None");
+        // Existing fields still load.
+        assert_eq!(cfg.gui.skin.as_deref(), Some("tide"));
+    }
+
+    #[test]
+    fn test_save_gui_config_round_trips_sidebar() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let config_path = dir.path().join("config.toml");
+        let gui = GuiConfig {
+            sidebar: Some(SidebarConfig {
+                library_collapsed: Some(false),
+                selected_predicate: Some("library:downloading".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        save_gui_config(Some(&config_path), &gui).expect("save");
+        let text = std::fs::read_to_string(&config_path).expect("read back");
+        let reloaded: ConfigFile = toml::from_str(&text).expect("parse");
+        assert_eq!(reloaded.gui.sidebar, gui.sidebar);
     }
 
     // ── M172a Lane A: save_config_atomic ─────────────────────────────

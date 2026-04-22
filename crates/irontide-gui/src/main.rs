@@ -50,11 +50,14 @@ fn main() -> Result<(), error::GuiError> {
 
     // 4. Create shutdown channel + app state.
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
-    let state = Arc::new(Mutex::new(app::AppState::new(
-        shutdown_tx,
-        col_config,
-        skin_settings,
-    )));
+    let mut initial_state = app::AppState::new(shutdown_tx, col_config, skin_settings);
+    // M173 Lane A task A9: hydrate persisted sidebar state. Absent
+    // [gui.sidebar] table → all defaults; corrupt token → silent
+    // fallback to Library::All.
+    if let Some(sb) = gui_config.sidebar.as_ref() {
+        initial_state.load_sidebar_config(sb);
+    }
+    let state = Arc::new(Mutex::new(initial_state));
 
     // 5. Create main window + push initial skin into Tokens global.
     let main_window = MainWindow::new()?;
@@ -68,6 +71,13 @@ fn main() -> Result<(), error::GuiError> {
         main_window.set_current_theme(st.skin.theme.to_string().into());
         main_window.set_current_density(st.skin.density.to_string().into());
         main_window.set_current_radius(st.skin.radius.to_string().into());
+        // M173 Lane A task A9: seed sidebar collapsed flags from
+        // persisted state so the first-paint sidebar matches the
+        // user's last session.
+        main_window.set_sidebar_library_collapsed(st.sidebar_library_collapsed);
+        main_window.set_sidebar_category_collapsed(st.sidebar_category_collapsed);
+        main_window.set_sidebar_tag_collapsed(st.sidebar_tag_collapsed);
+        main_window.set_sidebar_tracker_collapsed(st.sidebar_tracker_collapsed);
     }
 
     // 6. Wire menu callbacks.
@@ -499,12 +509,24 @@ fn main() -> Result<(), error::GuiError> {
     // 8. Run Slint event loop (blocks until window is closed).
     main_window.run()?;
 
-    // 9. Save GUI config if any dirty field (columns and/or skin).
+    // 9. Save GUI config if any dirty field (columns / skin / sidebar).
     {
+        // Refresh collapsed state from the live window so toggles made
+        // while the app was running are captured even if AppState was
+        // not updated synchronously by the callback.
+        if let Some(win) = main_window.as_weak().upgrade() {
+            let mut st = state.lock();
+            st.sidebar_library_collapsed = win.get_sidebar_library_collapsed();
+            st.sidebar_category_collapsed = win.get_sidebar_category_collapsed();
+            st.sidebar_tag_collapsed = win.get_sidebar_tag_collapsed();
+            st.sidebar_tracker_collapsed = win.get_sidebar_tracker_collapsed();
+        }
         let st = state.lock();
-        if st.columns_dirty || st.skin_dirty {
+        if st.columns_dirty || st.skin_dirty || st.sidebar_dirty {
             let mut gui = st.columns.to_gui_config();
             st.skin.populate_gui_config(&mut gui);
+            // M173 Lane A task A9: persist [gui.sidebar].
+            gui.sidebar = Some(st.to_sidebar_config());
             if let Err(e) = irontide_config::save_gui_config(None, &gui) {
                 tracing::warn!("failed to save GUI config: {e}");
             }
