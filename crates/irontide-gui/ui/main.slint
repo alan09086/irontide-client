@@ -9,6 +9,7 @@ import { AddMagnetDialog } from "widgets/add_magnet_dialog.slint";
 import { AddTorrentDialog } from "widgets/add_torrent_dialog.slint";
 import { ContextMenu } from "widgets/context_menu.slint";
 import { ConfirmDeleteDialog } from "widgets/confirm_delete_dialog.slint";
+import { TweaksOverlay } from "tweaks.slint";
 
 export { Tokens, Shadow }
 
@@ -238,6 +239,7 @@ export component MainWindow inherits Window {
     // ── Modifier tracking ──
     in-out property <bool> shift-held: false;
     in-out property <bool> ctrl-held: false;
+    in-out property <bool> meta-held: false;
 
     // ── Column widths (set from Rust, used for layout) ──
     // Fixed columns: Progress + State + DownRate + UpRate + Seeds + Peers
@@ -298,6 +300,21 @@ export component MainWindow inherits Window {
     callback select-all();
     callback show-details-stub();
 
+    // ── Tweaks overlay (M172b Lane B) ──
+    in-out property <bool> show-tweaks: false;
+    in-out property <string> current-skin: "tide";
+    in-out property <string> current-theme: "dark";
+    in-out property <string> current-density: "balanced";
+    in-out property <string> current-radius: "balanced";
+    callback tweaks-skin-changed(string);
+    callback tweaks-theme-changed(string);
+    callback tweaks-density-changed(string);
+    callback tweaks-radius-changed(string);
+
+    public function close-tweaks() {
+        root.show-tweaks = false;
+    }
+
     // ── Callbacks ──
     callback menu-file-action(int);
     callback quit-requested();
@@ -307,6 +324,15 @@ export component MainWindow inherits Window {
     // ── FocusScope for keyboard shortcuts + modifier key tracking ──
     focus-scope := FocusScope {
         key-pressed(event) => {
+            // Ctrl+Shift+T (Cmd+Shift+T on macOS): toggle Tweaks overlay.
+            // Checked before other shortcuts so it works even while a
+            // dialog is open (the overlay closes dialogs first).
+            if root.shift-held
+               && (root.ctrl-held || root.meta-held)
+               && (event.text == "t" || event.text == "T") {
+                root.show-tweaks = !root.show-tweaks;
+                return accept;
+            }
             // Keyboard shortcuts (only when no dialog/menu is open)
             if !root.show-add-magnet-dialog && !root.show-add-torrent-dialog && !root.show-delete-dialog && !root.show-context-menu {
                 if event.text == " " {
@@ -328,6 +354,10 @@ export component MainWindow inherits Window {
             }
             // Escape: dismiss open dialogs/menus (priority order)
             if event.text == Key.Escape {
+                if root.show-tweaks {
+                    root.show-tweaks = false;
+                    return accept;
+                }
                 if root.show-context-menu {
                     root.show-context-menu = false;
                     return accept;
@@ -352,6 +382,9 @@ export component MainWindow inherits Window {
             if event.text == Key.Control {
                 root.ctrl-held = true;
             }
+            if event.text == Key.Meta {
+                root.meta-held = true;
+            }
             accept
         }
         key-released(event) => {
@@ -360,6 +393,9 @@ export component MainWindow inherits Window {
             }
             if event.text == Key.Control {
                 root.ctrl-held = false;
+            }
+            if event.text == Key.Meta {
+                root.meta-held = false;
             }
             accept
         }
@@ -940,5 +976,20 @@ export component MainWindow inherits Window {
         cancel => {
             root.show-delete-dialog = false;
         }
+    }
+
+    // Tweaks overlay (Ctrl+Shift+T / Cmd+Shift+T)
+    TweaksOverlay {
+        show: root.show-tweaks;
+        x: root.width - self.width - Tokens.sp-4;
+        y: Tokens.sp-4;
+        current-skin: root.current-skin;
+        current-theme: root.current-theme;
+        current-density: root.current-density;
+        current-radius: root.current-radius;
+        skin-changed(v)    => { root.tweaks-skin-changed(v); }
+        theme-changed(v)   => { root.tweaks-theme-changed(v); }
+        density-changed(v) => { root.tweaks-density-changed(v); }
+        radius-changed(v)  => { root.tweaks-radius-changed(v); }
     }
 }

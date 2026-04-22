@@ -355,6 +355,84 @@ fn main() -> Result<(), error::GuiError> {
         });
     }
 
+    // 6j. Wire Tweaks overlay callbacks (M172b Lane B).
+    {
+        use std::str::FromStr as _;
+        let weak = main_window.as_weak();
+        let cb_state = state.clone();
+        main_window.on_tweaks_skin_changed(move |s| {
+            if let Ok(new_skin) = skin::Skin::from_str(s.as_str()) {
+                let skin_settings = {
+                    let mut st = cb_state.lock();
+                    st.skin.skin = new_skin;
+                    st.skin_dirty = true;
+                    st.skin
+                };
+                skin_settings.apply(&weak);
+                if let Some(win) = weak.upgrade() {
+                    win.set_current_skin(s.clone());
+                }
+            }
+        });
+    }
+    {
+        use std::str::FromStr as _;
+        let weak = main_window.as_weak();
+        let cb_state = state.clone();
+        main_window.on_tweaks_theme_changed(move |s| {
+            if let Ok(new_theme) = skin::Theme::from_str(s.as_str()) {
+                let skin_settings = {
+                    let mut st = cb_state.lock();
+                    st.skin.theme = new_theme;
+                    st.skin_dirty = true;
+                    st.skin
+                };
+                skin_settings.apply(&weak);
+                if let Some(win) = weak.upgrade() {
+                    win.set_current_theme(s.clone());
+                }
+            }
+        });
+    }
+    {
+        use std::str::FromStr as _;
+        let weak = main_window.as_weak();
+        let cb_state = state.clone();
+        main_window.on_tweaks_density_changed(move |s| {
+            if let Ok(new_density) = skin::Density::from_str(s.as_str()) {
+                let skin_settings = {
+                    let mut st = cb_state.lock();
+                    st.skin.density = new_density;
+                    st.skin_dirty = true;
+                    st.skin
+                };
+                skin_settings.apply(&weak);
+                if let Some(win) = weak.upgrade() {
+                    win.set_current_density(s.clone());
+                }
+            }
+        });
+    }
+    {
+        use std::str::FromStr as _;
+        let weak = main_window.as_weak();
+        let cb_state = state.clone();
+        main_window.on_tweaks_radius_changed(move |s| {
+            if let Ok(new_radius) = skin::RadiusPreset::from_str(s.as_str()) {
+                let skin_settings = {
+                    let mut st = cb_state.lock();
+                    st.skin.radius = new_radius;
+                    st.skin_dirty = true;
+                    st.skin
+                };
+                skin_settings.apply(&weak);
+                if let Some(win) = weak.upgrade() {
+                    win.set_current_radius(s.clone());
+                }
+            }
+        });
+    }
+
     // 7. Spawn session thread.
     let session_handle =
         bridge::spawn_session_thread(settings, main_window.as_weak(), shutdown_rx, state.clone());
