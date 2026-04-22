@@ -602,13 +602,19 @@ pub async fn recheck(
     Ok(QbtResponse::ok())
 }
 
+/// v0.173.1 Class B + C fix: form-body acceptance + logged session
+/// errors on `reannounce`. See [`pause`] for the full rationale.
 pub async fn reannounce(
     State(state): State<QbtState>,
-    Query(q): Query<HashesQuery>,
+    req: axum::extract::Request,
 ) -> Result<QbtResponse, QbtError> {
+    let q = extract_hashes_params(req).await?;
     let targets = resolve_hashes(&state, q.hashes.as_deref()).await?;
     for id in targets {
-        let _ = state.session.force_reannounce(id).await;
+        if let Err(e) = state.session.force_reannounce(id).await {
+            tracing::warn!(%id, error = %e,
+                "reannounce_torrent failed — reported to client as 200 per qBt bulk idempotency");
+        }
     }
     Ok(QbtResponse::ok())
 }
