@@ -6,6 +6,7 @@ mod error;
 mod format;
 mod panic_hook;
 mod poll;
+mod sidebar;
 mod skin;
 mod skin_tokens;
 
