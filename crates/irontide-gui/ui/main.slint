@@ -2,7 +2,7 @@
 // Custom widgets only — no std-widgets (hit-region issues on native backends).
 // Retrofitted to the Tokens design-system globals in M172b Lane B.
 
-import { Tokens, Shadow, Palette } from "tokens.slint";
+import { Tokens, Shadow } from "tokens.slint";
 import { TorrentProgressBar } from "widgets/progress_bar.slint";
 import { StatusBar } from "widgets/status_bar.slint";
 import { AddMagnetDialog } from "widgets/add_magnet_dialog.slint";
@@ -10,7 +10,7 @@ import { AddTorrentDialog } from "widgets/add_torrent_dialog.slint";
 import { ContextMenu } from "widgets/context_menu.slint";
 import { ConfirmDeleteDialog } from "widgets/confirm_delete_dialog.slint";
 
-export { Palette, Tokens, Shadow }
+export { Tokens, Shadow }
 
 export struct TorrentRow {
     info-hash: string,
@@ -201,10 +201,10 @@ component Spinner {
 
 export component MainWindow inherits Window {
     title: "IronTide";
-    min-width: 700px;
-    min-height: 400px;
-    preferred-width: 900px;
-    preferred-height: 600px;
+    min-width: Tokens.win-min-width;
+    min-height: Tokens.win-min-height;
+    preferred-width: Tokens.win-preferred-width;
+    preferred-height: Tokens.win-preferred-height;
     background: Tokens.bg-0;
 
     // ── Skin gate (M172b Lane A + B) ──

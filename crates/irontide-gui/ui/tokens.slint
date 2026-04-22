@@ -117,28 +117,14 @@ export global Tokens {
     in-out property <length> col-default-ratio:     60px;
     in-out property <length> col-width-threshold:  780px;
     in-out property <length> col-width-non-name-total: 680px;
+
+    // ── Window-size defaults ───────────────────────────────────────
+    // Slint's Window min/preferred sizes must be `length`, and reactive
+    // Token arithmetic in these positions is awkward, so we define them
+    // as concrete tokens here.
+    in-out property <length> win-min-width:        700px;
+    in-out property <length> win-min-height:       400px;
+    in-out property <length> win-preferred-width:  900px;
+    in-out property <length> win-preferred-height: 600px;
 }
 
-// COMPAT SHIM: maps old `Palette.*` property names onto the new
-// `Tokens.*` values so widgets that have not yet been retrofitted to
-// import `Tokens` directly continue to compile.
-//
-// This shim is deleted in the final B6 commit once every widget in
-// `crates/irontide-gui/ui/` imports `Tokens` directly. Do not add new
-// uses of `Palette`.
-export global Palette {
-    out property <color> background:      Tokens.bg-0;
-    out property <color> surface:         Tokens.bg-2;
-    out property <color> menu-bg:         Tokens.bg-1;
-    out property <color> menu-hover:      Tokens.bg-hover;
-    out property <color> accent:          Tokens.accent;
-    out property <color> text:            Tokens.fg-0;
-    out property <color> disabled-text:   Tokens.fg-3;
-    out property <color> border:          Tokens.border-1;
-    out property <color> row-alt:         Tokens.bg-1;
-    out property <color> col-separator:   Tokens.divider;
-    out property <color> danger:          Tokens.status-error;
-    out property <color> input-bg:        Tokens.bg-inset;
-    out property <color> input-border:    Tokens.border-2;
-    out property <color> checkbox-check:  Tokens.status-seeding;
-}
