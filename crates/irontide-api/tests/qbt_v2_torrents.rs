@@ -180,9 +180,15 @@ async fn torrents_info_includes_all_torrents_by_default() {
             b,
         )
         .await;
-        assert!(
-            st.is_success() || st.is_client_error(),
-            "v1 add status: {st}"
+        // D1.1 (M173 Lane C): harness glue — the v1 add path is a
+        // pre-test fixture and should always succeed with a strict
+        // 201 Created (per the v1 spec; the v2 surface translates to
+        // 200 OK on its own add handler). The prior OK-or-client-error
+        // assertion was masking regressions when v1 responses changed.
+        assert_eq!(
+            st,
+            StatusCode::CREATED,
+            "v1 add must return 201 Created; got {st}"
         );
     }
     let (_, body) = get(&router, "/api/v2/torrents/info", Some(&sid)).await;
@@ -360,17 +366,35 @@ async fn torrents_add_single_magnet_creates_torrent() {
         body.into_bytes(),
     )
     .await;
+    // D1.2 (M173 Lane C): magnet adds always land synchronously. The
+    // prior OK-or-client-error permissive assertion was masking
+    // regressions in the add handler — tighten to a strict 200.
+    assert_eq!(status, StatusCode::OK, "magnet add must return 200");
+    // D1.2: registry-state assertion — the torrent must be visible on
+    // `GET /torrents/info` by its lower-hex info hash (pre-metadata
+    // magnets still show up, they just have empty names until resolved).
+    let expected_hash = "dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c";
+    let (st2, body2) = get(&router, "/api/v2/torrents/info", Some(&sid)).await;
+    assert_eq!(st2, StatusCode::OK, "info lookup after add");
+    let rows: serde_json::Value = serde_json::from_slice(&body2).expect("info JSON");
+    let arr = rows.as_array().expect("info is array");
+    let hashes: Vec<&str> = arr
+        .iter()
+        .filter_map(|row| row.get("hash").and_then(serde_json::Value::as_str))
+        .collect();
     assert!(
-        status == StatusCode::OK || status.is_client_error(),
-        "expected 200 OK or client error, got {status}"
+        hashes.iter().any(|h| h.eq_ignore_ascii_case(expected_hash)),
+        "torrent hash {expected_hash} missing from /torrents/info: {hashes:?}"
     );
 }
 
 #[tokio::test]
 async fn torrents_add_multiple_magnets_newline_separated() {
     let (router, sid) = enabled_router_with(|_| {}).await;
-    let m1 = "magnet:?xt=urn:btih:1111111111111111111111111111111111111111";
-    let m2 = "magnet:?xt=urn:btih:2222222222222222222222222222222222222222";
+    let m1_hash = "1111111111111111111111111111111111111111";
+    let m2_hash = "2222222222222222222222222222222222222222";
+    let m1 = format!("magnet:?xt=urn:btih:{m1_hash}");
+    let m2 = format!("magnet:?xt=urn:btih:{m2_hash}");
     let body = format!("urls={}", urlencode(&format!("{m1}\n{m2}")));
     let (status, _) = post(
         &router,
@@ -380,9 +404,24 @@ async fn torrents_add_multiple_magnets_newline_separated() {
         body.into_bytes(),
     )
     .await;
+    // D1.3 (M173 Lane C): tighten from OK-or-client-error to 200.
+    assert_eq!(status, StatusCode::OK, "multi-magnet add must return 200");
+    // D1.3: both hashes must appear on the listing.
+    let (st2, body2) = get(&router, "/api/v2/torrents/info", Some(&sid)).await;
+    assert_eq!(st2, StatusCode::OK, "info lookup after multi-add");
+    let rows: serde_json::Value = serde_json::from_slice(&body2).expect("info JSON");
+    let arr = rows.as_array().expect("info is array");
+    let hashes: Vec<&str> = arr
+        .iter()
+        .filter_map(|row| row.get("hash").and_then(serde_json::Value::as_str))
+        .collect();
     assert!(
-        status == StatusCode::OK || status.is_client_error(),
-        "expected 200 OK or client error, got {status}"
+        hashes.iter().any(|h| h.eq_ignore_ascii_case(m1_hash)),
+        "torrent 1 hash {m1_hash} missing: {hashes:?}"
+    );
+    assert!(
+        hashes.iter().any(|h| h.eq_ignore_ascii_case(m2_hash)),
+        "torrent 2 hash {m2_hash} missing: {hashes:?}"
     );
 }
 
@@ -407,12 +446,19 @@ async fn torrents_add_torrent_file_multipart_creates_torrent() {
 
 #[tokio::test]
 async fn torrents_add_with_savepath_honors_per_torrent_dir() {
-    // Currently we accept the field but don't wire it (FIXME M170).
+    // D1.4 (M173 Lane C): `savepath=` is wired through
+    // `SessionAddTorrentParams::with_download_dir` — the stale FIXME M170
+    // claim ("accept but don't wire") is out of date. Assert that the
+    // override lands on `TorrentStats.save_path` via the properties
+    // endpoint. The path need not exist on disk: it only gates writes,
+    // not the add-torrent command.
     let (router, sid) = enabled_router_with(|_| {}).await;
+    let hash_hex = "3333333333333333333333333333333333333333";
+    let override_path = "/tmp/irontide-m173-lane-c-savepath";
     let body = format!(
         "urls={}&savepath={}",
-        urlencode("magnet:?xt=urn:btih:3333333333333333333333333333333333333333"),
-        urlencode("/var/lib/dl")
+        urlencode(&format!("magnet:?xt=urn:btih:{hash_hex}")),
+        urlencode(override_path)
     );
     let (status, _) = post(
         &router,
@@ -422,19 +468,33 @@ async fn torrents_add_with_savepath_honors_per_torrent_dir() {
         body.into_bytes(),
     )
     .await;
-    // Accept 200 or 4xx (unknown magnet).
-    assert!(
-        status == StatusCode::OK || status.is_client_error(),
-        "got {status}"
+    assert_eq!(status, StatusCode::OK, "magnet add with savepath");
+
+    let (st2, body2) = get(
+        &router,
+        &format!("/api/v2/torrents/properties?hash={hash_hex}"),
+        Some(&sid),
+    )
+    .await;
+    assert_eq!(st2, StatusCode::OK, "properties lookup after savepath add");
+    let props: serde_json::Value = serde_json::from_slice(&body2).expect("properties JSON");
+    let save_path = props
+        .get("save_path")
+        .and_then(serde_json::Value::as_str)
+        .expect("save_path in properties");
+    assert_eq!(
+        save_path, override_path,
+        "TorrentStats.save_path must reflect the savepath= form override"
     );
 }
 
 #[tokio::test]
 async fn torrents_add_with_paused_starts_paused() {
     let (router, sid) = enabled_router_with(|_| {}).await;
+    let hash_hex = "4444444444444444444444444444444444444444";
     let body = format!(
         "urls={}&paused=true",
-        urlencode("magnet:?xt=urn:btih:4444444444444444444444444444444444444444")
+        urlencode(&format!("magnet:?xt=urn:btih:{hash_hex}"))
     );
     let (status, _) = post(
         &router,
@@ -444,9 +504,38 @@ async fn torrents_add_with_paused_starts_paused() {
         body.into_bytes(),
     )
     .await;
+    // D1.5 (M173 Lane C): tighten from OK-or-client-error to strict 200
+    // and assert the torrent visibly started in a paused state via the
+    // qBt state string on `/torrents/info`. Retry briefly — the torrent
+    // actor may need a moment to propagate the pause flag up to the
+    // first stats snapshot.
+    assert_eq!(status, StatusCode::OK, "paused add must return 200");
+    let mut saw_paused_state = false;
+    for _ in 0..50 {
+        let (st2, body2) = get(&router, "/api/v2/torrents/info", Some(&sid)).await;
+        assert_eq!(st2, StatusCode::OK, "info lookup after paused add");
+        let rows: serde_json::Value = serde_json::from_slice(&body2).expect("info JSON");
+        let arr = rows.as_array().expect("info is array");
+        let state_for_hash = arr
+            .iter()
+            .find(|row| {
+                row.get("hash")
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(|h| h.eq_ignore_ascii_case(hash_hex))
+            })
+            .and_then(|row| row.get("state").and_then(serde_json::Value::as_str))
+            .map(str::to_owned);
+        if let Some(state) = state_for_hash
+            && state.starts_with("paused")
+        {
+            saw_paused_state = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
     assert!(
-        status == StatusCode::OK || status.is_client_error(),
-        "got {status}"
+        saw_paused_state,
+        "paused=true should surface as qBt state starting with 'paused'"
     );
 }
 
