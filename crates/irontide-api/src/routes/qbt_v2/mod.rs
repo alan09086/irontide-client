@@ -65,7 +65,13 @@ pub fn build_router_with_state(session: Arc<SessionHandle>) -> (Router, QbtState
 ///
 /// Composed of per-concern sub-routers merged together:
 /// * `app_read` — `GET /api/v2/app/*` read-only endpoints
-/// * `torrent_core` — the M168-M170 torrent endpoints + `/transferInfo`
+/// * `torrent_core` — the M168-M170 torrent endpoints + `/transferInfo`.
+///   As of v0.173.1 (Class B fix) the five POST bulk-action endpoints
+///   (`pause`, `resume`, `delete`, `recheck`, `reannounce`) accept
+///   `hashes=` and `deleteFiles=` from **either** the URL query string
+///   **or** an `application/x-www-form-urlencoded` body — matching qBt
+///   WebUI v2 parity and unblocking real `*arr` clients (Radarr /
+///   Sonarr / Prowlarr / Lidarr) that POST these params in the body.
 /// * `category_routes` — M170 category CRUD
 /// * (M171 adds `torrent_details`, `torrent_tags`, `app_write` as they land)
 ///
