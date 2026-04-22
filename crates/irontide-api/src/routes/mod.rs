@@ -88,8 +88,10 @@ pub fn build_router(session: SessionHandle) -> Router {
     // -- qBt WebUI v2 compatibility surface (M168) --
     // Registered BEFORE webui so the /api/v2/* routes are matched by the
     // qBt sub-router even when the generic webui fallback would otherwise
-    // catch them. Disabled-by-default behaviour is enforced by qbt_gate
-    // middleware (returns 404 when qbt_compat.enabled == false).
+    // catch them. Enabled-by-default as of v0.172.1 (flipped from M168's
+    // security-through-invisibility default). qbt_gate middleware still
+    // returns 404 when `qbt_compat.enabled == false`, which is now an
+    // explicit opt-out rather than the shipped default.
     //
     // M172a Lane B: the same [`QbtState`] backs both the qBt v2 routes and
     // the `/webui/*` CSRF guard so both surfaces consult the same trusted-

@@ -97,7 +97,9 @@ async fn disabled_router() -> axum::Router {
         std::env::temp_dir().join(format!("irontide-qbt-v2-dis-{}-{}", std::process::id(), n));
     let _ = std::fs::remove_dir_all(&resume_dir);
 
-    let settings = Settings {
+    // v0.172.1: qbt_compat.enabled now defaults to true, so the disabled
+    // variant must opt OUT explicitly.
+    let mut settings = Settings {
         listen_port: 0,
         download_dir: std::path::PathBuf::from("/tmp"),
         enable_dht: false,
@@ -108,6 +110,7 @@ async fn disabled_router() -> axum::Router {
         save_resume_interval_secs: 0,
         ..Settings::default()
     };
+    settings.qbt_compat.enabled = false;
     let session = irontide::ClientBuilder::from_settings(settings)
         .start()
         .await

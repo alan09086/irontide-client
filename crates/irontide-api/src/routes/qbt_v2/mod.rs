@@ -72,7 +72,8 @@ pub fn build_router_with_state(session: Arc<SessionHandle>) -> (Router, QbtState
 /// The merged `protected` router is then layered with `require_sid`, and
 /// combined with an unprotected router for `auth/login` + `auth/logout`.
 /// The whole thing is finally wrapped in `qbt_gate` so the surface returns
-/// 404 when `qbt_compat.enabled = false` (security-through-invisibility).
+/// 404 when `qbt_compat.enabled = false` (explicit operator opt-out as of
+/// v0.172.1 — see `QbtCompatSettings::enabled` docstring).
 ///
 /// `logout` lives on the unprotected router because real qBt returns 200 even
 /// without a valid cookie — `require_sid` would otherwise reject it on a

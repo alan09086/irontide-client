@@ -2,7 +2,8 @@
 //!
 //! - `POST /api/v2/auth/login` — issues the `SID=` cookie on success.
 //! - `POST /api/v2/auth/logout` — idempotent; invalidates the cookie.
-//! - `qbt_gate` — returns 404 when `qbt_compat.enabled == false`.
+//! - `qbt_gate` — returns 404 when `qbt_compat.enabled == false` (explicit
+//!   operator opt-out as of v0.172.1; enabled is the default).
 //! - `require_sid` — returns 403 `Fails.` when the SID cookie is missing,
 //!   malformed, or expired.
 //!
@@ -405,10 +406,11 @@ pub async fn logout(State(state): State<QbtState>, jar: CookieJar) -> QbtRespons
 
 /// Middleware: 404 when `qbt_compat.enabled == false`.
 ///
-/// Runs before `require_sid` so that a disabled daemon never leaks the
-/// presence of the `/api/v2/*` routes. Returning 403 (auth failure) or 501
-/// (not implemented) would both be worse: 404 says "there is no such URL",
-/// which matches how a vanilla IronTide would respond.
+/// Runs before `require_sid` so that an operator-disabled daemon never
+/// leaks the presence of the `/api/v2/*` routes. Returning 403 (auth
+/// failure) or 501 (not implemented) would both be worse: 404 says "there
+/// is no such URL", which matches how a vanilla IronTide with the compat
+/// surface opted-out would respond. Enabled-by-default as of v0.172.1.
 pub async fn qbt_gate(State(state): State<QbtState>, req: Request, next: Next) -> Response {
     // settings() is a channel round-trip — cheap, and allows runtime toggle.
     let enabled = state
