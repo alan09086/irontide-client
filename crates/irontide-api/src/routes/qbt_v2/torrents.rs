@@ -563,10 +563,19 @@ pub async fn resume(
     Ok(QbtResponse::ok())
 }
 
+/// v0.173.1 Class B + C fix: form-body acceptance + logged session
+/// errors on `delete`. See [`pause`] for the full rationale. Preserves
+/// M170's `deleteFiles=true` semantics: when honoured we call
+/// [`SessionHandle::remove_torrent_with_files`] (prunes the on-disk file
+/// tree), otherwise the plain [`SessionHandle::remove_torrent`].
+///
+/// [`SessionHandle::remove_torrent_with_files`]: irontide::session::SessionHandle::remove_torrent_with_files
+/// [`SessionHandle::remove_torrent`]: irontide::session::SessionHandle::remove_torrent
 pub async fn delete(
     State(state): State<QbtState>,
-    Query(q): Query<HashesQuery>,
+    req: axum::extract::Request,
 ) -> Result<QbtResponse, QbtError> {
+    let q = extract_hashes_params(req).await?;
     // Missing flag → preserve files (qBt default + guards M168 behaviour).
     let delete_files = q
         .delete_files
@@ -575,11 +584,15 @@ pub async fn delete(
         .unwrap_or(false);
     let targets = resolve_hashes(&state, q.hashes.as_deref()).await?;
     for id in targets {
-        let _ = if delete_files {
+        let result = if delete_files {
             state.session.remove_torrent_with_files(id).await
         } else {
             state.session.remove_torrent(id).await
         };
+        if let Err(e) = result {
+            tracing::warn!(%id, delete_files, error = %e,
+                "delete_torrent failed — reported to client as 200 per qBt bulk idempotency");
+        }
     }
     // Always 200 — qBt is lenient about per-torrent errors on bulk delete.
     Ok(QbtResponse::ok())
