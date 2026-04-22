@@ -100,6 +100,18 @@ pub struct GuiConfig {
     /// Per-column pixel widths, in the same order as `column_order`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub column_widths: Option<Vec<f32>>,
+    /// Active GUI skin (`tide` / `forge` / `abyss`). None → default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skin: Option<String>,
+    /// Active theme (`dark` / `light`). None → default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub theme: Option<String>,
+    /// UI density (`compact` / `balanced` / `spacious`). None → default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub density: Option<String>,
+    /// Corner radius preset (`sharp` / `balanced` / `rounded`). None → default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub radius_preset: Option<String>,
 }
 
 // ── Top-level config ────────────────────────────────────────────────
@@ -1095,6 +1107,7 @@ max_peers_per_torrent = 50
             column_order: Some(vec!["name".into(), "size".into(), "progress".into()]),
             column_visibility: Some(vec!["name".into(), "progress".into()]),
             column_widths: Some(vec![200.0_f32, 80.0_f32, 120.0_f32]),
+            ..Default::default()
         };
 
         let serialized = toml::to_string_pretty(&original).expect("serialize GuiConfig");
@@ -1138,6 +1151,7 @@ listen_port = 42020
             column_order: Some(vec!["name".into(), "eta".into()]),
             column_visibility: Some(vec!["name".into()]),
             column_widths: Some(vec![150.0_f32, 60.0_f32]),
+            ..Default::default()
         };
 
         save_gui_config(Some(&config_path), &gui).expect("save_gui_config should succeed");
@@ -1156,6 +1170,50 @@ listen_port = 42020
         assert_eq!(reloaded.gui.column_order, gui.column_order);
         assert_eq!(reloaded.gui.column_visibility, gui.column_visibility);
         assert_eq!(reloaded.gui.column_widths, gui.column_widths);
+    }
+
+    // ── M172b Lane A: GuiConfig skin/theme/density/radius_preset ──────
+
+    #[test]
+    fn test_gui_config_old_file_loads_with_none_for_new_fields() {
+        // Pre-M172b config.toml (only column_* fields populated).
+        let toml_str = r#"
+[gui]
+column_order = ["name", "size"]
+column_visibility = ["name"]
+column_widths = [200.0, 80.0]
+"#;
+        let config: ConfigFile = toml::from_str(toml_str).expect("valid TOML");
+        assert_eq!(config.gui.skin, None);
+        assert_eq!(config.gui.theme, None);
+        assert_eq!(config.gui.density, None);
+        assert_eq!(config.gui.radius_preset, None);
+        // Existing fields still load.
+        assert_eq!(
+            config.gui.column_order,
+            Some(vec!["name".into(), "size".into()])
+        );
+    }
+
+    #[test]
+    fn test_gui_config_all_seven_fields_round_trip() {
+        let original = GuiConfig {
+            column_order: Some(vec!["name".into()]),
+            column_visibility: Some(vec!["name".into()]),
+            column_widths: Some(vec![200.0_f32]),
+            skin: Some("forge".into()),
+            theme: Some("light".into()),
+            density: Some("compact".into()),
+            radius_preset: Some("sharp".into()),
+        };
+        let serialized = toml::to_string_pretty(&original).expect("serialize");
+        let deserialized: GuiConfig =
+            toml::from_str(&serialized).expect("deserialize");
+        assert_eq!(deserialized.skin, original.skin);
+        assert_eq!(deserialized.theme, original.theme);
+        assert_eq!(deserialized.density, original.density);
+        assert_eq!(deserialized.radius_preset, original.radius_preset);
+        assert_eq!(deserialized.column_order, original.column_order);
     }
 
     // ── M172a Lane A: save_config_atomic ─────────────────────────────
