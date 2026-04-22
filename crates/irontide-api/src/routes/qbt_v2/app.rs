@@ -531,3 +531,181 @@ fn apply_preferences_patch(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    //! D3.3 (M173 Lane C): unit coverage for `app.rs`.
+    //!
+    //! The async handlers (`version`, `webapi_version`, `preferences`,
+    //! `set_preferences`) require a live `QbtState`, which in turn needs
+    //! a full tokio `SessionHandle` — that's the integration-test
+    //! ground covered by `qbt_v2_app.rs` and `qbt_v2_set_preferences.rs`.
+    //!
+    //! This module focuses on the pure logic that used to have no
+    //! coverage: `build_info()` bitness / hardcoded versions,
+    //! `parse_preferences_patch` (JSON + legacy `json=<...>` form paths),
+    //! `apply_preferences_patch` field mapping, and rejection cases that
+    //! must surface as `QbtError::BadRequest`.
+    use super::*;
+    use irontide::session::Settings;
+
+    /// Handy small helper: call the internal parse + apply pipeline
+    /// against a default `Settings` and return `(settings, applied_patch_flag)`.
+    fn apply(patch_json: &str) -> Result<Settings, QbtError> {
+        let patch: QbtPreferencesPatch = serde_json::from_str(patch_json).expect("parse json");
+        let mut settings = Settings::default();
+        apply_preferences_patch(&mut settings, patch)?;
+        Ok(settings)
+    }
+
+    #[tokio::test]
+    async fn build_info_reports_pinned_versions_and_computed_bitness() {
+        // `build_info()` pins qt/libtorrent/boost/openssl to values that
+        // mirror a recent qBt release. Bitness is computed from
+        // `size_of::<usize>()` so we just assert it's in {32, 64} —
+        // the canonical values for every production IronTide target.
+        let resp = build_info().await;
+        let json = match resp {
+            QbtResponse::Json(v) => v,
+            _ => panic!("build_info must return JSON"),
+        };
+        assert_eq!(json["qt"], "6.5.3");
+        assert_eq!(json["libtorrent"], "2.0.9");
+        assert_eq!(json["boost"], "1.83.0");
+        assert_eq!(json["openssl"], "3.0.11");
+        let bitness = json["bitness"].as_u64().expect("bitness is u64");
+        assert!(
+            bitness == 32 || bitness == 64,
+            "bitness must be 32 or 64, got {bitness}"
+        );
+        // Sanity: match the live target.
+        let expected = (std::mem::size_of::<usize>() as u64) * 8;
+        assert_eq!(bitness, expected);
+    }
+
+    #[test]
+    fn parse_preferences_patch_empty_body_yields_default() {
+        let patch = parse_preferences_patch(b"").expect("empty body -> default");
+        // Every field defaults to None.
+        assert!(patch.dl_limit.is_none());
+        assert!(patch.up_limit.is_none());
+        assert!(patch.dht.is_none());
+    }
+
+    #[test]
+    fn parse_preferences_patch_accepts_json_body() {
+        let body = br#"{"dl_limit":1024,"dht":true,"encryption":1}"#;
+        let patch = parse_preferences_patch(body).expect("json parse");
+        assert_eq!(patch.dl_limit, Some(1024));
+        assert_eq!(patch.dht, Some(true));
+        assert_eq!(patch.encryption, Some(1));
+    }
+
+    #[test]
+    fn parse_preferences_patch_falls_back_to_legacy_form() {
+        // qBt's historical WebUI v2 POSTs `application/x-www-form-urlencoded`
+        // with a single `json=<...>` field.
+        let body = b"json=%7B%22dl_limit%22%3A42%7D"; // url-encoded {"dl_limit":42}
+        let patch = parse_preferences_patch(body).expect("form fallback");
+        assert_eq!(patch.dl_limit, Some(42));
+    }
+
+    #[test]
+    fn parse_preferences_patch_rejects_garbage() {
+        // Not JSON and not a well-formed `json=` form — must surface as
+        // BadRequest so the client sees a descriptive 400.
+        let body = b"this is neither json nor an urlencoded pair";
+        let err = parse_preferences_patch(body).expect_err("garbage must error");
+        assert!(matches!(err, QbtError::BadRequest(_)));
+    }
+
+    #[test]
+    fn negative_dl_limit_clamps_to_zero_sentinel() {
+        // qBt uses negative for "unlimited"; our model uses 0 as the
+        // unlimited sentinel, so the wire -1 must round to 0.
+        let s = apply(r#"{"dl_limit":-1}"#).expect("apply");
+        assert_eq!(s.download_rate_limit, 0);
+        let s = apply(r#"{"up_limit":-99}"#).expect("apply");
+        assert_eq!(s.upload_rate_limit, 0);
+    }
+
+    #[test]
+    fn max_ratio_nan_is_rejected_as_bad_request() {
+        // The allowlist explicitly rejects NaN because it would render
+        // as invalid JSON on the read side and break all *arr clients.
+        // JSON has no syntactic NaN; build the patch directly via the
+        // Rust type instead.
+        let patch = QbtPreferencesPatch {
+            max_ratio: Some(f64::NAN),
+            ..QbtPreferencesPatch::default()
+        };
+        let mut settings = Settings::default();
+        let err = apply_preferences_patch(&mut settings, patch)
+            .expect_err("NaN max_ratio must fail");
+        assert!(
+            matches!(err, QbtError::BadRequest(ref m) if m.contains("NaN")),
+            "expected BadRequest(NaN); got {err:?}"
+        );
+    }
+
+    #[test]
+    fn encryption_unknown_int_is_rejected() {
+        // Only 0/1/2 are valid on the wire. Anything else must 400.
+        let err = apply(r#"{"encryption":7}"#).expect_err("bad encryption must fail");
+        assert!(matches!(err, QbtError::BadRequest(_)));
+    }
+
+    #[test]
+    fn max_ratio_enabled_false_clears_seed_ratio_even_with_value() {
+        // qBt parity: the _enabled flag is authoritative. A patch that
+        // sets both `max_ratio=1.5` and `max_ratio_enabled=false` must
+        // produce a cleared seed_ratio_limit.
+        let s = apply(r#"{"max_ratio":1.5,"max_ratio_enabled":false}"#).expect("apply");
+        assert!(
+            s.seed_ratio_limit.is_none(),
+            "max_ratio_enabled=false overrides max_ratio"
+        );
+    }
+
+    #[test]
+    fn seed_time_minutes_convert_to_seconds_on_apply() {
+        // Inverse of the DTO-side test in preferences.rs: wire is
+        // minutes, storage is seconds, so a patch of 60 minutes must
+        // land as 3600 seconds.
+        let s = apply(r#"{"max_seeding_time":60}"#).expect("apply");
+        assert_eq!(s.seed_time_limit_secs, Some(3600));
+        // Negative means unset.
+        let s = apply(r#"{"max_seeding_time":-1}"#).expect("apply");
+        assert_eq!(s.seed_time_limit_secs, None);
+    }
+
+    #[test]
+    fn max_ratio_act_invalid_slug_is_rejected() {
+        let err =
+            apply(r#"{"max_ratio_act":"pulverise"}"#).expect_err("unknown slug must fail");
+        assert!(matches!(err, QbtError::BadRequest(_)));
+    }
+
+    #[test]
+    fn invalid_cidr_in_reverse_proxies_rejected_with_specific_message() {
+        // The patch validates each CIDR before accepting the list, so
+        // an operator typo produces a precise error instead of the
+        // generic post-merge validate() failure.
+        let err = apply(r#"{"web_ui_reverse_proxies_list":"10.0.0.0/8;not-a-cidr"}"#)
+            .expect_err("invalid CIDR must fail");
+        match err {
+            QbtError::BadRequest(msg) => {
+                assert!(msg.contains("not-a-cidr"), "error must name the bad entry; got {msg}");
+            }
+            other => panic!("expected BadRequest, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn max_connec_wins_over_per_torrent_when_both_set() {
+        // Documented precedence: `max_connec` is applied last, so a
+        // patch setting both fields resolves to the global value.
+        let s = apply(r#"{"max_connec_per_torrent":50,"max_connec":200}"#).expect("apply");
+        assert_eq!(s.max_peers_per_torrent, 200);
+    }
+}
