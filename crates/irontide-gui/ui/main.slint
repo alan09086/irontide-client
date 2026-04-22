@@ -10,8 +10,13 @@ import { AddTorrentDialog } from "widgets/add_torrent_dialog.slint";
 import { ContextMenu } from "widgets/context_menu.slint";
 import { ConfirmDeleteDialog } from "widgets/confirm_delete_dialog.slint";
 import { TweaksOverlay } from "tweaks.slint";
+// M173 Lane A: sidebar IA. Layout wiring lands in task A8; A6 imports the
+// `SidebarRow` struct here so slint_build picks up the new files and Rust
+// callers can see the struct via slint::include_modules!(). The `Sidebar`
+// component itself is wired into the MainWindow body in task A8.
+import { Sidebar, SidebarRow } from "organisms/sidebar.slint";
 
-export { Tokens, Shadow }
+export { Tokens, Shadow, SidebarRow }
 
 export struct TorrentRow {
     info-hash: string,

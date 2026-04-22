@@ -1,0 +1,70 @@
+// SidebarSection molecule (M173 Lane A) — collapsible group header.
+//
+// Layout: collapse triangle (▼/▶) — uppercase section label (fg-2) —
+// total count (right-aligned, fg-3). Clicking anywhere on the header
+// toggles `collapsed`. The body slot below is rendered by the consumer
+// (the sidebar organism) and gated on `collapsed`.
+
+import { Tokens } from "../tokens.slint";
+
+export component SidebarSection {
+    in property <string> label;
+    in property <int> total-count;
+    in-out property <bool> collapsed: false;
+
+    callback toggle-collapsed();
+
+    height: Tokens.chrome-h - Tokens.sp-5;
+    horizontal-stretch: 1;
+
+    Rectangle {
+        background: touch.has-hover ? Tokens.bg-hover : transparent;
+        border-radius: Tokens.r-sm;
+
+        triangle := Text {
+            x: Tokens.sp-3;
+            y: 0;
+            width: Tokens.sp-5;
+            height: parent.height;
+            text: root.collapsed ? "\u{25B6}" : "\u{25BC}";
+            color: Tokens.fg-3;
+            font-size: Tokens.fs-10;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+        }
+
+        label-text := Text {
+            x: triangle.x + triangle.width + Tokens.sp-2;
+            y: 0;
+            width: parent.width - self.x - count-text.width - Tokens.sp-3;
+            height: parent.height;
+            text: root.label;
+            color: Tokens.fg-2;
+            font-size: Tokens.fs-11;
+            font-weight: 700;
+            vertical-alignment: center;
+            horizontal-alignment: left;
+            overflow: elide;
+        }
+
+        count-text := Text {
+            x: parent.width - self.width - Tokens.sp-3;
+            y: 0;
+            width: Tokens.sp-9;
+            height: parent.height;
+            text: root.total-count;
+            color: Tokens.fg-3;
+            font-size: Tokens.fs-11;
+            vertical-alignment: center;
+            horizontal-alignment: right;
+        }
+
+        touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => {
+                root.collapsed = !root.collapsed;
+                root.toggle-collapsed();
+            }
+        }
+    }
+}

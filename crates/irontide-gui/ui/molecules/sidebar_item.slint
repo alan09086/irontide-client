@@ -1,0 +1,96 @@
+// SidebarItem molecule (M173 Lane A) — one row inside a SidebarSection.
+//
+// Layout: optional StatusDot (12 px) — label (elide) — count (right-
+// aligned, fg-2). Hover and selected states swap the background. Clicks
+// fire `clicked()` which the organism translates into a predicate change
+// on the torrent model.
+//
+// All visual properties flow through Tokens — no literal px / colour
+// values, no std-widgets (hit-region issues on native backends, see
+// `feedback_slint_native_widget_hit_regions.md`).
+
+import { Tokens } from "../tokens.slint";
+import { StatusDot } from "../atoms/status_dot.slint";
+
+export component SidebarItem {
+    in property <string> label;
+    in property <int> count;
+    in property <bool> selected: false;
+    // Flip on to render a coloured `StatusDot` to the left of the label.
+    in property <bool> show-dot: false;
+    in property <color> dot-color: Tokens.fg-3;
+    in property <bool> dot-pulsing: false;
+    // Optional shortcut hint rendered after the label (e.g. `Ctrl+1`).
+    // The empty string suppresses the hint.
+    in property <string> shortcut: "";
+
+    callback clicked();
+
+    height: Tokens.row-h;
+    horizontal-stretch: 1;
+
+    Rectangle {
+        background: root.selected
+            ? Tokens.bg-selected
+            : (touch.has-hover ? Tokens.bg-hover : transparent);
+        border-radius: Tokens.r-sm;
+
+        // Inner padding via concrete element offsets — Slint can't
+        // pad a Rectangle directly while still allowing absolute child
+        // positioning, but every sibling reads from Tokens.sp-* so the
+        // theme drives the gutter.
+        dot := StatusDot {
+            x: Tokens.sp-3;
+            y: parent.height / 2 - self.height / 2;
+            dot-color: root.dot-color;
+            pulsing: root.dot-pulsing;
+            visible: root.show-dot;
+        }
+
+        label-text := Text {
+            x: root.show-dot
+                ? Tokens.sp-3 + Tokens.sp-4 + Tokens.sp-3
+                : Tokens.sp-5;
+            y: 0;
+            height: parent.height;
+            // Reserve room on the right for the count + optional shortcut.
+            width: parent.width - self.x - count-text.width
+                - (root.shortcut == "" ? Tokens.sp-3 : (shortcut-text.width + Tokens.sp-4));
+            text: root.label;
+            color: root.selected ? Tokens.fg-0 : Tokens.fg-1;
+            font-size: Tokens.fs-13;
+            vertical-alignment: center;
+            horizontal-alignment: left;
+            overflow: elide;
+        }
+
+        shortcut-text := Text {
+            x: count-text.x - self.width - Tokens.sp-3;
+            y: 0;
+            height: parent.height;
+            text: root.shortcut;
+            color: Tokens.fg-3;
+            font-size: Tokens.fs-11;
+            vertical-alignment: center;
+            horizontal-alignment: right;
+            visible: root.shortcut != "";
+        }
+
+        count-text := Text {
+            x: parent.width - self.width - Tokens.sp-3;
+            y: 0;
+            height: parent.height;
+            width: Tokens.sp-9;
+            text: root.count;
+            color: root.selected ? Tokens.fg-0 : Tokens.fg-2;
+            font-size: Tokens.fs-12;
+            vertical-alignment: center;
+            horizontal-alignment: right;
+        }
+
+        touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.clicked(); }
+        }
+    }
+}
