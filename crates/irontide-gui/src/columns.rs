@@ -255,6 +255,7 @@ impl ColumnConfig {
             column_order: Some(column_order),
             column_visibility: Some(column_visibility),
             column_widths: Some(column_widths),
+            ..Default::default()
         }
     }
 

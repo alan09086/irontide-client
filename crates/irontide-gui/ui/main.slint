@@ -2,6 +2,7 @@
 // Custom widgets only — no std-widgets (hit-region issues on native backends).
 
 import { Palette } from "palette.slint";
+import { Tokens, Shadow } from "tokens.slint";
 import { TorrentProgressBar } from "widgets/progress_bar.slint";
 import { StatusBar } from "widgets/status_bar.slint";
 import { AddMagnetDialog } from "widgets/add_magnet_dialog.slint";
@@ -205,6 +206,12 @@ export component MainWindow inherits Window {
     preferred-width: 900px;
     preferred-height: 600px;
     background: Palette.background;
+
+    // ── Skin gate (M172b Lane A) ──
+    // Set to true by Rust after SkinSettings::apply populates Tokens.
+    // Lane B wraps the main layout in `if root.skin-applied:` so the first
+    // paint shows the loading spinner rather than pre-token defaults.
+    in-out property <bool> skin-applied: false;
 
     // ── Session state ──
     in-out property <bool> session-ready: false;
