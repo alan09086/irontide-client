@@ -69,3 +69,13 @@ reqwest = { version = "0.12", default-features = false, features = [
     "rustls-tls",
     "cookies",
 ] }
+# v0.173.1 Lane B (Class C): capture emitted `tracing` events inside
+# individual tests so we can assert that session errors surface as
+# `warn!` logs from the bulk-action handlers. Fixed version pin — the
+# macro's attribute-namespace is API-stable at 0.2.
+#
+# `no-env-filter` is required because integration tests in `tests/` are
+# compiled as separate crates; without it, the default `RUST_LOG` filter
+# scopes to the test crate itself and drops `irontide_api` logs (the
+# actual subject of the Class C assertions).
+tracing-test = { version = "0.2", features = ["no-env-filter"] }
