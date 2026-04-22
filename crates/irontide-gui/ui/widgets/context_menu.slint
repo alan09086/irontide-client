@@ -1,7 +1,7 @@
 // IronTide right-click context menu overlay.
 // Custom overlay pattern (not PopupWindow) to avoid Slint native positioning issues.
 
-import { Palette } from "../palette.slint";
+import { Tokens } from "../tokens.slint";
 
 export component ContextMenu {
     in property <bool> show;
@@ -28,32 +28,32 @@ export component ContextMenu {
         Rectangle {
             x: root.menu-x;
             y: root.menu-y;
-            width: 200px;
-            height: menu-layout.preferred-height + 8px;
-            background: Palette.menu-bg;
-            border-color: Palette.border;
-            border-width: 1px;
-            border-radius: 4px;
+            width: Tokens.sp-10 * 5;
+            height: menu-layout.preferred-height + Tokens.sp-4;
+            background: Tokens.bg-1;
+            border-color: Tokens.border-1;
+            border-width: Tokens.border-width-thin;
+            border-radius: Tokens.r-md;
 
             // Block dismiss click from passing through
             TouchArea { }
 
             menu-layout := VerticalLayout {
-                padding: 4px;
-                spacing: 2px;
+                padding: Tokens.sp-2;
+                spacing: Tokens.sp-1;
 
                 // Item 0: Pause
                 Rectangle {
-                    height: 28px;
-                    background: root.can-pause ? (pause-touch.has-hover ? Palette.menu-hover : Palette.menu-bg) : Palette.menu-bg;
-                    border-radius: 2px;
+                    height: Tokens.row-h;
+                    background: root.can-pause ? (pause-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1) : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
 
                     Text {
                         text: "Pause";
-                        color: root.can-pause ? Palette.text : Palette.disabled-text;
-                        font-size: 13px;
+                        color: root.can-pause ? Tokens.fg-0 : Tokens.fg-3;
+                        font-size: Tokens.fs-13;
                         vertical-alignment: center;
-                        x: 8px;
+                        x: Tokens.sp-4;
                     }
 
                     pause-touch := TouchArea {
@@ -64,16 +64,16 @@ export component ContextMenu {
 
                 // Item 1: Resume
                 Rectangle {
-                    height: 28px;
-                    background: root.can-resume ? (resume-touch.has-hover ? Palette.menu-hover : Palette.menu-bg) : Palette.menu-bg;
-                    border-radius: 2px;
+                    height: Tokens.row-h;
+                    background: root.can-resume ? (resume-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1) : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
 
                     Text {
                         text: "Resume";
-                        color: root.can-resume ? Palette.text : Palette.disabled-text;
-                        font-size: 13px;
+                        color: root.can-resume ? Tokens.fg-0 : Tokens.fg-3;
+                        font-size: Tokens.fs-13;
                         vertical-alignment: center;
-                        x: 8px;
+                        x: Tokens.sp-4;
                     }
 
                     resume-touch := TouchArea {
@@ -84,16 +84,16 @@ export component ContextMenu {
 
                 // Item 2: Seed Only
                 Rectangle {
-                    height: 28px;
-                    background: root.can-seed-only ? (seed-touch.has-hover ? Palette.menu-hover : Palette.menu-bg) : Palette.menu-bg;
-                    border-radius: 2px;
+                    height: Tokens.row-h;
+                    background: root.can-seed-only ? (seed-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1) : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
 
                     Text {
                         text: "Seed Only";
-                        color: root.can-seed-only ? Palette.text : Palette.disabled-text;
-                        font-size: 13px;
+                        color: root.can-seed-only ? Tokens.fg-0 : Tokens.fg-3;
+                        font-size: Tokens.fs-13;
                         vertical-alignment: center;
-                        x: 8px;
+                        x: Tokens.sp-4;
                     }
 
                     seed-touch := TouchArea {
@@ -104,16 +104,16 @@ export component ContextMenu {
 
                 // Item 3: Resume Download
                 Rectangle {
-                    height: 28px;
-                    background: root.can-resume-download ? (resume-dl-touch.has-hover ? Palette.menu-hover : Palette.menu-bg) : Palette.menu-bg;
-                    border-radius: 2px;
+                    height: Tokens.row-h;
+                    background: root.can-resume-download ? (resume-dl-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1) : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
 
                     Text {
                         text: "Resume Download";
-                        color: root.can-resume-download ? Palette.text : Palette.disabled-text;
-                        font-size: 13px;
+                        color: root.can-resume-download ? Tokens.fg-0 : Tokens.fg-3;
+                        font-size: Tokens.fs-13;
                         vertical-alignment: center;
-                        x: 8px;
+                        x: Tokens.sp-4;
                     }
 
                     resume-dl-touch := TouchArea {
@@ -124,22 +124,22 @@ export component ContextMenu {
 
                 // Separator
                 Rectangle {
-                    height: 1px;
-                    background: Palette.border;
+                    height: Tokens.border-width-thin;
+                    background: Tokens.border-1;
                 }
 
                 // Item 4: Remove (always enabled)
                 Rectangle {
-                    height: 28px;
-                    background: remove-touch.has-hover ? Palette.menu-hover : Palette.menu-bg;
-                    border-radius: 2px;
+                    height: Tokens.row-h;
+                    background: remove-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
 
                     Text {
                         text: "Remove";
-                        color: Palette.text;
-                        font-size: 13px;
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
                         vertical-alignment: center;
-                        x: 8px;
+                        x: Tokens.sp-4;
                     }
 
                     remove-touch := TouchArea {
@@ -149,16 +149,16 @@ export component ContextMenu {
 
                 // Item 5: Remove + Delete Files (always enabled)
                 Rectangle {
-                    height: 28px;
-                    background: remove-del-touch.has-hover ? Palette.menu-hover : Palette.menu-bg;
-                    border-radius: 2px;
+                    height: Tokens.row-h;
+                    background: remove-del-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
 
                     Text {
                         text: "Remove + Delete Files";
-                        color: Palette.text;
-                        font-size: 13px;
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
                         vertical-alignment: center;
-                        x: 8px;
+                        x: Tokens.sp-4;
                     }
 
                     remove-del-touch := TouchArea {
@@ -168,22 +168,22 @@ export component ContextMenu {
 
                 // Separator
                 Rectangle {
-                    height: 1px;
-                    background: Palette.border;
+                    height: Tokens.border-width-thin;
+                    background: Tokens.border-1;
                 }
 
                 // Item 6: Recheck
                 Rectangle {
-                    height: 28px;
-                    background: root.can-recheck ? (recheck-touch.has-hover ? Palette.menu-hover : Palette.menu-bg) : Palette.menu-bg;
-                    border-radius: 2px;
+                    height: Tokens.row-h;
+                    background: root.can-recheck ? (recheck-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1) : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
 
                     Text {
                         text: "Recheck";
-                        color: root.can-recheck ? Palette.text : Palette.disabled-text;
-                        font-size: 13px;
+                        color: root.can-recheck ? Tokens.fg-0 : Tokens.fg-3;
+                        font-size: Tokens.fs-13;
                         vertical-alignment: center;
-                        x: 8px;
+                        x: Tokens.sp-4;
                     }
 
                     recheck-touch := TouchArea {
@@ -194,16 +194,16 @@ export component ContextMenu {
 
                 // Item 7: Force Reannounce (always enabled)
                 Rectangle {
-                    height: 28px;
-                    background: reannounce-touch.has-hover ? Palette.menu-hover : Palette.menu-bg;
-                    border-radius: 2px;
+                    height: Tokens.row-h;
+                    background: reannounce-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
 
                     Text {
                         text: "Force Reannounce";
-                        color: Palette.text;
-                        font-size: 13px;
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
                         vertical-alignment: center;
-                        x: 8px;
+                        x: Tokens.sp-4;
                     }
 
                     reannounce-touch := TouchArea {

@@ -1,7 +1,7 @@
 // Delete confirmation dialog — modal overlay shown before removing torrents.
 // Custom widgets only (no std-widgets) for consistent hit regions.
 
-import { Palette } from "../palette.slint";
+import { Tokens } from "../tokens.slint";
 
 export component ConfirmDeleteDialog {
     in property <bool> show;
@@ -17,7 +17,7 @@ export component ConfirmDeleteDialog {
 
     if root.show: Rectangle {
         // Full-window backdrop at 80% opacity
-        background: Palette.background.with-alpha(80%);
+        background: Tokens.bg-0.with-alpha(80%);
 
         backdrop-touch := TouchArea {
             clicked => { root.cancel(); }
@@ -27,53 +27,53 @@ export component ConfirmDeleteDialog {
         Rectangle {
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
-            width: 400px;
-            height: dialog-layout.preferred-height + 32px;
-            background: Palette.surface;
-            border-color: Palette.border;
-            border-width: 1px;
-            border-radius: 8px;
+            width: Tokens.sp-10 * 10;
+            height: dialog-layout.preferred-height + Tokens.sp-9;
+            background: Tokens.bg-2;
+            border-color: Tokens.border-1;
+            border-width: Tokens.border-width-thin;
+            border-radius: Tokens.r-lg;
 
             // Block backdrop click from reaching through dialog
             TouchArea { }
 
             dialog-layout := VerticalLayout {
-                padding: 16px;
-                spacing: 12px;
+                padding: Tokens.sp-6;
+                spacing: Tokens.sp-5;
 
                 // Title
                 Text {
                     text: "Remove Torrent(s)";
-                    color: Palette.text;
-                    font-size: 16px;
+                    color: Tokens.fg-0;
+                    font-size: Tokens.fs-16;
                     font-weight: 700;
                 }
 
                 // Message
                 Text {
                     text: "Remove " + root.count + " selected torrent(s)?";
-                    color: Palette.text;
-                    font-size: 13px;
+                    color: Tokens.fg-0;
+                    font-size: Tokens.fs-13;
                 }
 
                 // Custom checkbox: "Also delete files on disk"
                 HorizontalLayout {
-                    spacing: 8px;
+                    spacing: Tokens.sp-4;
                     alignment: start;
 
                     // Checkbox box
                     Rectangle {
-                        width: 18px;
-                        height: 18px;
-                        border-width: 1px;
-                        border-color: Palette.input-border;
-                        border-radius: 3px;
-                        background: Palette.input-bg;
+                        width: Tokens.sp-7 - Tokens.sp-1;
+                        height: Tokens.sp-7 - Tokens.sp-1;
+                        border-width: Tokens.border-width-thin;
+                        border-color: Tokens.border-2;
+                        border-radius: Tokens.r-sm;
+                        background: Tokens.bg-inset;
 
                         if root.check-active: Text {
                             text: "\u{2713}";
-                            color: Palette.checkbox-check;
-                            font-size: 14px;
+                            color: Tokens.status-seeding;
+                            font-size: Tokens.fs-14;
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
@@ -86,8 +86,8 @@ export component ConfirmDeleteDialog {
                     // Checkbox label (also clickable)
                     Text {
                         text: "Also delete files on disk";
-                        color: Palette.text;
-                        font-size: 13px;
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
                         vertical-alignment: center;
 
                         label-touch := TouchArea {
@@ -99,19 +99,19 @@ export component ConfirmDeleteDialog {
                 // Buttons row
                 HorizontalLayout {
                     alignment: end;
-                    spacing: 8px;
+                    spacing: Tokens.sp-4;
 
                     // Cancel
                     Rectangle {
-                        width: 80px;
-                        height: 32px;
-                        background: cancel-touch.has-hover ? Palette.menu-hover : Palette.accent;
-                        border-radius: 4px;
+                        width: Tokens.sp-10 * 2;
+                        height: Tokens.chrome-h - Tokens.sp-2;
+                        background: cancel-touch.has-hover ? Tokens.bg-hover : Tokens.accent;
+                        border-radius: Tokens.r-md;
 
                         Text {
                             text: "Cancel";
-                            color: Palette.text;
-                            font-size: 13px;
+                            color: Tokens.accent-fg;
+                            font-size: Tokens.fs-13;
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
@@ -123,15 +123,15 @@ export component ConfirmDeleteDialog {
 
                     // Remove (danger colour)
                     Rectangle {
-                        width: 80px;
-                        height: 32px;
-                        background: remove-touch.has-hover ? #c62828 : Palette.danger;
-                        border-radius: 4px;
+                        width: Tokens.sp-10 * 2;
+                        height: Tokens.chrome-h - Tokens.sp-2;
+                        background: remove-touch.has-hover ? Tokens.status-error.darker(0.15) : Tokens.status-error;
+                        border-radius: Tokens.r-md;
 
                         Text {
                             text: "Remove";
-                            color: Palette.text;
-                            font-size: 13px;
+                            color: Tokens.fg-0;
+                            font-size: Tokens.fs-13;
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }

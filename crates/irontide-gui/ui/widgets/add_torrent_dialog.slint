@@ -1,7 +1,7 @@
 // Add Torrent File Dialog — modal overlay for selecting and adding a .torrent file.
 // Custom widgets only (no std-widgets) for consistent hit regions.
 
-import { Palette } from "../palette.slint";
+import { Tokens } from "../tokens.slint";
 
 export component AddTorrentDialog {
     in property <bool> show;
@@ -17,7 +17,7 @@ export component AddTorrentDialog {
 
     if root.show: Rectangle {
         // Full-window backdrop
-        background: Palette.background.with-alpha(80%);
+        background: Tokens.bg-0.with-alpha(80%);
 
         // Consume clicks on backdrop to dismiss
         backdrop-touch := TouchArea {
@@ -28,63 +28,63 @@ export component AddTorrentDialog {
         Rectangle {
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
-            width: 480px;
-            height: dialog-layout.preferred-height + 32px;
-            background: Palette.surface;
-            border-color: Palette.border;
-            border-width: 1px;
-            border-radius: 8px;
+            width: Tokens.sp-10 * 12;
+            height: dialog-layout.preferred-height + Tokens.sp-9;
+            background: Tokens.bg-2;
+            border-color: Tokens.border-1;
+            border-width: Tokens.border-width-thin;
+            border-radius: Tokens.r-lg;
 
             // Block backdrop click from reaching through dialog
             TouchArea { }
 
             dialog-layout := VerticalLayout {
-                padding: 16px;
-                spacing: 12px;
+                padding: Tokens.sp-6;
+                spacing: Tokens.sp-5;
 
                 // Title
                 Text {
                     text: "Add Torrent File";
-                    color: Palette.text;
-                    font-size: 16px;
+                    color: Tokens.fg-0;
+                    font-size: Tokens.fs-16;
                     font-weight: 700;
                 }
 
                 // File selection: display path + Browse button
                 VerticalLayout {
-                    spacing: 4px;
-                    Text { text: "File:"; color: Palette.text; font-size: 13px; }
+                    spacing: Tokens.sp-2;
+                    Text { text: "File:"; color: Tokens.fg-0; font-size: Tokens.fs-13; }
                     HorizontalLayout {
-                        spacing: 8px;
+                        spacing: Tokens.sp-4;
                         Rectangle {
                             horizontal-stretch: 1;
-                            height: 32px;
-                            background: Palette.input-bg;
-                            border-color: Palette.input-border;
-                            border-width: 1px;
-                            border-radius: 4px;
+                            height: Tokens.chrome-h - Tokens.sp-2;
+                            background: Tokens.bg-inset;
+                            border-color: Tokens.border-2;
+                            border-width: Tokens.border-width-thin;
+                            border-radius: Tokens.r-md;
 
                             // Display-only text for selected file path
                             Text {
-                                x: 8px;
-                                color: root.selected-file-path == "" ? Palette.disabled-text : Palette.text;
-                                font-size: 13px;
+                                x: Tokens.sp-4;
+                                color: root.selected-file-path == "" ? Tokens.fg-3 : Tokens.fg-0;
+                                font-size: Tokens.fs-13;
                                 vertical-alignment: center;
                                 overflow: elide;
                                 text: root.selected-file-path == "" ? "(no file selected)" : root.selected-file-path;
-                                width: parent.width - 16px;
+                                width: parent.width - Tokens.sp-6;
                             }
                         }
                         Rectangle {
-                            width: 80px;
-                            height: 32px;
-                            background: browse-file-touch.has-hover ? Palette.menu-hover : Palette.accent;
-                            border-radius: 4px;
+                            width: Tokens.sp-10 * 2;
+                            height: Tokens.chrome-h - Tokens.sp-2;
+                            background: browse-file-touch.has-hover ? Tokens.bg-hover : Tokens.accent;
+                            border-radius: Tokens.r-md;
 
                             Text {
                                 text: "Browse...";
-                                color: Palette.text;
-                                font-size: 13px;
+                                color: Tokens.accent-fg;
+                                font-size: Tokens.fs-13;
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
                             }
@@ -97,45 +97,45 @@ export component AddTorrentDialog {
 
                 // Torrent info panel (visible only after file is selected)
                 if root.torrent-name != "": Rectangle {
-                    background: Palette.background;
-                    border-color: Palette.border;
-                    border-width: 1px;
-                    border-radius: 4px;
-                    height: info-layout.preferred-height + 16px;
+                    background: Tokens.bg-0;
+                    border-color: Tokens.border-1;
+                    border-width: Tokens.border-width-thin;
+                    border-radius: Tokens.r-md;
+                    height: info-layout.preferred-height + Tokens.sp-6;
 
                     info-layout := VerticalLayout {
-                        padding: 8px;
-                        spacing: 4px;
+                        padding: Tokens.sp-4;
+                        spacing: Tokens.sp-2;
 
                         Text {
                             text: "Torrent Info";
-                            color: Palette.text;
-                            font-size: 12px;
+                            color: Tokens.fg-0;
+                            font-size: Tokens.fs-12;
                             font-weight: 700;
                         }
 
                         HorizontalLayout {
-                            spacing: 16px;
+                            spacing: Tokens.sp-6;
                             Text {
                                 text: "Name: " + root.torrent-name;
-                                color: Palette.text;
-                                font-size: 12px;
+                                color: Tokens.fg-0;
+                                font-size: Tokens.fs-12;
                                 overflow: elide;
                                 horizontal-stretch: 1;
                             }
                         }
 
                         HorizontalLayout {
-                            spacing: 16px;
+                            spacing: Tokens.sp-6;
                             Text {
                                 text: "Size: " + root.torrent-size;
-                                color: Palette.text;
-                                font-size: 12px;
+                                color: Tokens.fg-0;
+                                font-size: Tokens.fs-12;
                             }
                             Text {
                                 text: "Files: " + root.torrent-file-count;
-                                color: Palette.text;
-                                font-size: 12px;
+                                color: Tokens.fg-0;
+                                font-size: Tokens.fs-12;
                             }
                         }
                     }
@@ -143,38 +143,38 @@ export component AddTorrentDialog {
 
                 // Download directory label + input + Browse
                 VerticalLayout {
-                    spacing: 4px;
-                    Text { text: "Download to:"; color: Palette.text; font-size: 13px; }
+                    spacing: Tokens.sp-2;
+                    Text { text: "Download to:"; color: Tokens.fg-0; font-size: Tokens.fs-13; }
                     HorizontalLayout {
-                        spacing: 8px;
+                        spacing: Tokens.sp-4;
                         Rectangle {
                             horizontal-stretch: 1;
-                            height: 32px;
-                            background: Palette.input-bg;
-                            border-color: Palette.input-border;
-                            border-width: 1px;
-                            border-radius: 4px;
+                            height: Tokens.chrome-h - Tokens.sp-2;
+                            background: Tokens.bg-inset;
+                            border-color: Tokens.border-2;
+                            border-width: Tokens.border-width-thin;
+                            border-radius: Tokens.r-md;
 
                             dir-input := TextInput {
-                                x: 8px;
+                                x: Tokens.sp-4;
                                 y: 0;
-                                width: parent.width - 16px;
+                                width: parent.width - Tokens.sp-6;
                                 height: parent.height;
-                                color: Palette.text;
-                                font-size: 13px;
+                                color: Tokens.fg-0;
+                                font-size: Tokens.fs-13;
                                 text: root.default-dir;
                             }
                         }
                         Rectangle {
-                            width: 80px;
-                            height: 32px;
-                            background: browse-dir-touch.has-hover ? Palette.menu-hover : Palette.accent;
-                            border-radius: 4px;
+                            width: Tokens.sp-10 * 2;
+                            height: Tokens.chrome-h - Tokens.sp-2;
+                            background: browse-dir-touch.has-hover ? Tokens.bg-hover : Tokens.accent;
+                            border-radius: Tokens.r-md;
 
                             Text {
                                 text: "Browse...";
-                                color: Palette.text;
-                                font-size: 13px;
+                                color: Tokens.accent-fg;
+                                font-size: Tokens.fs-13;
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
                             }
@@ -188,19 +188,19 @@ export component AddTorrentDialog {
                 // Buttons row
                 HorizontalLayout {
                     alignment: end;
-                    spacing: 8px;
+                    spacing: Tokens.sp-4;
 
                     // Cancel
                     Rectangle {
-                        width: 80px;
-                        height: 32px;
-                        background: cancel-touch.has-hover ? Palette.menu-hover : Palette.accent;
-                        border-radius: 4px;
+                        width: Tokens.sp-10 * 2;
+                        height: Tokens.chrome-h - Tokens.sp-2;
+                        background: cancel-touch.has-hover ? Tokens.bg-hover : Tokens.accent;
+                        border-radius: Tokens.r-md;
 
                         Text {
                             text: "Cancel";
-                            color: Palette.text;
-                            font-size: 13px;
+                            color: Tokens.accent-fg;
+                            font-size: Tokens.fs-13;
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
@@ -211,16 +211,16 @@ export component AddTorrentDialog {
 
                     // Add (disabled when no file selected)
                     Rectangle {
-                        width: 80px;
-                        height: 32px;
-                        background: root.torrent-name == "" ? Palette.accent : (add-touch.has-hover ? Palette.menu-hover : Palette.checkbox-check);
-                        border-radius: 4px;
+                        width: Tokens.sp-10 * 2;
+                        height: Tokens.chrome-h - Tokens.sp-2;
+                        background: root.torrent-name == "" ? Tokens.accent : (add-touch.has-hover ? Tokens.bg-hover : Tokens.status-seeding);
+                        border-radius: Tokens.r-md;
                         opacity: root.torrent-name == "" ? 0.5 : 1.0;
 
                         Text {
                             text: "Add";
-                            color: Palette.text;
-                            font-size: 13px;
+                            color: Tokens.accent-fg;
+                            font-size: Tokens.fs-13;
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }

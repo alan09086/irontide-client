@@ -1,6 +1,6 @@
 // Status bar at the bottom of the main window.
 
-import { Palette } from "../palette.slint";
+import { Tokens } from "../tokens.slint";
 
 export component StatusBar {
     in property <string> down-rate: "\u{2014}";
@@ -9,28 +9,28 @@ export component StatusBar {
     in property <int> dht-nodes: 0;
     in property <int> listen-port: 0;
 
-    height: 24px;
+    height: Tokens.chrome-h - Tokens.sp-5;
 
     Rectangle {
-        background: Palette.surface;
+        background: Tokens.bg-2;
         border-width: 0;
 
         HorizontalLayout {
-            padding-left: 8px;
-            padding-right: 8px;
-            spacing: 16px;
+            padding-left: Tokens.sp-4;
+            padding-right: Tokens.sp-4;
+            spacing: Tokens.sp-6;
 
             // Left: rates
             Text {
                 text: "\u{2193} " + root.down-rate;
-                color: Palette.text;
-                font-size: 12px;
+                color: Tokens.fg-0;
+                font-size: Tokens.fs-12;
                 vertical-alignment: center;
             }
             Text {
                 text: "\u{2191} " + root.up-rate;
-                color: Palette.text;
-                font-size: 12px;
+                color: Tokens.fg-0;
+                font-size: Tokens.fs-12;
                 vertical-alignment: center;
             }
 
@@ -40,20 +40,20 @@ export component StatusBar {
             // Right: counts
             Text {
                 text: root.total-torrents + " torrents";
-                color: Palette.disabled-text;
-                font-size: 12px;
+                color: Tokens.fg-3;
+                font-size: Tokens.fs-12;
                 vertical-alignment: center;
             }
             Text {
                 text: "DHT: " + root.dht-nodes;
-                color: Palette.disabled-text;
-                font-size: 12px;
+                color: Tokens.fg-3;
+                font-size: Tokens.fs-12;
                 vertical-alignment: center;
             }
             Text {
                 text: "Port: " + root.listen-port;
-                color: Palette.disabled-text;
-                font-size: 12px;
+                color: Tokens.fg-3;
+                font-size: Tokens.fs-12;
                 vertical-alignment: center;
             }
         }
