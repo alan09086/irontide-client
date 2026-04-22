@@ -55,13 +55,79 @@ pub struct HashQuery {
     pub hash: String,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, Clone, Debug)]
 pub struct HashesQuery {
     #[serde(default)]
     pub hashes: Option<String>,
     #[serde(default)]
     #[serde(alias = "deleteFiles")]
     pub delete_files: Option<String>,
+}
+
+/// v0.173.1 Class B fix: accept `hashes=` / `deleteFiles=` from EITHER the
+/// URL query string OR an `application/x-www-form-urlencoded` request body,
+/// matching qBt WebUI v2 parity. Real `*arr` clients (Radarr / Sonarr /
+/// Prowlarr / Lidarr) POST these params in the body; `axum::extract::Query`
+/// only reads the URL, so a strict `Query<HashesQuery>` handler rejects the
+/// `*arr` flow with 400.
+///
+/// Resolution order (URL query wins on conflict, but empty-string values in
+/// the query do NOT shadow non-empty body values — qBt's loose clients
+/// sometimes emit `?hashes=` with an empty value):
+///
+/// 1. Parse the URL query; if it carries a non-empty `hashes` or
+///    `delete_files`, return that.
+/// 2. Otherwise consume the body (capped at 64 KiB, the same cap used by
+///    the category / tag form parsers) and parse it as form-urlencoded.
+/// 3. If both query and body are empty or absent, return
+///    [`QbtError::BadRequest`] so the caller gets 400 instead of a silent
+///    no-op.
+///
+/// Reuses the `to_bytes(req.into_body(), 64 * 1024)` + `serde_urlencoded::
+/// from_bytes(...)` pattern already proven in
+/// [`super::categories`] / [`super::tags`].
+///
+/// # Errors
+/// - [`QbtError::BadRequest`] when the body exceeds the 64 KiB cap, is not
+///   valid form-urlencoded, or when neither query nor body supplies a
+///   recognised field.
+pub(super) async fn extract_hashes_params(
+    req: axum::extract::Request,
+) -> Result<HashesQuery, QbtError> {
+    let query_parsed = req
+        .uri()
+        .query()
+        .and_then(|raw| serde_urlencoded::from_str::<HashesQuery>(raw).ok());
+    if let Some(ref q) = query_parsed {
+        let has_hashes = q.hashes.as_deref().is_some_and(|s| !s.is_empty());
+        let has_delete = q.delete_files.as_deref().is_some_and(|s| !s.is_empty());
+        if has_hashes || has_delete {
+            return Ok(q.clone());
+        }
+    }
+
+    let bytes = axum::body::to_bytes(req.into_body(), 64 * 1024)
+        .await
+        .map_err(|e| QbtError::BadRequest(format!("read body: {e}")))?;
+    if !bytes.is_empty() {
+        let body_parsed: HashesQuery = serde_urlencoded::from_bytes(&bytes)
+            .map_err(|e| QbtError::BadRequest(format!("parse body: {e}")))?;
+        let has_hashes = body_parsed
+            .hashes
+            .as_deref()
+            .is_some_and(|s| !s.is_empty());
+        let has_delete = body_parsed
+            .delete_files
+            .as_deref()
+            .is_some_and(|s| !s.is_empty());
+        if has_hashes || has_delete {
+            return Ok(body_parsed);
+        }
+    }
+
+    Err(QbtError::BadRequest(
+        "hashes= parameter required in query or form body".into(),
+    ))
 }
 
 // ── Shared helpers ────────────────────────────────────────────────────
@@ -556,5 +622,95 @@ pub async fn transfer_info(State(state): State<QbtState>) -> Result<QbtResponse,
     Ok(QbtResponse::Json(serde_json::to_value(&info).map_err(
         |e| QbtError::Internal(format!("serialise: {e}")),
     )?))
+}
+
+// ── Unit tests ─────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use axum::body::Body;
+    use axum::http::{Request, header};
+
+    use super::*;
+
+    /// v0.173.1 Class B: when the URL query carries non-empty `hashes=`,
+    /// it wins over the body (qBt WebUI v2 convention: query is more
+    /// "explicit" than a form-urlencoded body).
+    #[tokio::test]
+    async fn extract_hashes_params_prefers_query_when_present() {
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/v2/torrents/pause?hashes=ABC")
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(Body::from("hashes=XYZ"))
+            .unwrap();
+        let q = extract_hashes_params(req).await.expect("extract ok");
+        assert_eq!(q.hashes.as_deref(), Some("ABC"));
+    }
+
+    /// v0.173.1 Class B: empty query → fall through to the form body.
+    /// This is the *arr integration path.
+    #[tokio::test]
+    async fn extract_hashes_params_falls_back_to_form_body() {
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/v2/torrents/pause")
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(Body::from("hashes=XYZ&deleteFiles=true"))
+            .unwrap();
+        let q = extract_hashes_params(req).await.expect("extract ok");
+        assert_eq!(q.hashes.as_deref(), Some("XYZ"));
+        assert_eq!(q.delete_files.as_deref(), Some("true"));
+    }
+
+    /// v0.173.1 Class B: neither query nor body supplies a recognised
+    /// field → 400, not a silent no-op.
+    #[tokio::test]
+    async fn extract_hashes_params_missing_returns_400() {
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/v2/torrents/pause")
+            .body(Body::empty())
+            .unwrap();
+        let err = extract_hashes_params(req).await.expect_err("extract err");
+        assert!(matches!(err, QbtError::BadRequest(_)));
+    }
+
+    /// v0.173.1 Class B: a literal `hashes=` (empty value) in the query
+    /// must NOT shadow a non-empty `hashes=` in the body. Some qBt clients
+    /// emit empty-value query params when they also carry a body.
+    #[tokio::test]
+    async fn extract_hashes_params_empty_string_in_query_falls_through_to_body() {
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/v2/torrents/pause?hashes=")
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(Body::from("hashes=XYZ"))
+            .unwrap();
+        let q = extract_hashes_params(req).await.expect("extract ok");
+        assert_eq!(
+            q.hashes.as_deref(),
+            Some("XYZ"),
+            "empty-string query hashes must not shadow non-empty body hashes"
+        );
+    }
+
+    /// v0.173.1 Class B: body over the 64 KiB cap is rejected as a 400,
+    /// preventing a hostile client from tying up a worker with a giant
+    /// body read.
+    #[tokio::test]
+    async fn extract_hashes_params_oversized_body_returns_400() {
+        // 64 KiB cap — give it 65 KiB of payload so to_bytes errors out.
+        let mut big = String::from("hashes=");
+        big.push_str(&"a".repeat(65 * 1024));
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/v2/torrents/pause")
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(Body::from(big))
+            .unwrap();
+        let err = extract_hashes_params(req).await.expect_err("extract err");
+        assert!(matches!(err, QbtError::BadRequest(_)));
+    }
 }
 
