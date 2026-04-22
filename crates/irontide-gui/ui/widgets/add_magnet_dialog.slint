@@ -1,7 +1,7 @@
 // Add Magnet Dialog — modal overlay for entering a magnet URI.
 // Custom widgets only (no std-widgets) for consistent hit regions.
 
-import { Palette } from "../tokens.slint";
+import { Tokens } from "../tokens.slint";
 
 export component AddMagnetDialog {
     in property <bool> show;
@@ -12,7 +12,7 @@ export component AddMagnetDialog {
 
     if root.show: Rectangle {
         // Full-window backdrop
-        background: Palette.background.with-alpha(80%);
+        background: Tokens.bg-0.with-alpha(80%);
 
         // Consume clicks on backdrop to dismiss
         backdrop-touch := TouchArea {
@@ -23,52 +23,52 @@ export component AddMagnetDialog {
         Rectangle {
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
-            width: 480px;
-            height: dialog-layout.preferred-height + 32px;
-            background: Palette.surface;
-            border-color: Palette.border;
-            border-width: 1px;
-            border-radius: 8px;
+            width: Tokens.sp-10 * 12;
+            height: dialog-layout.preferred-height + Tokens.sp-9;
+            background: Tokens.bg-2;
+            border-color: Tokens.border-1;
+            border-width: Tokens.border-width-thin;
+            border-radius: Tokens.r-lg;
 
             // Block backdrop click from reaching through dialog
             TouchArea { }
 
             dialog-layout := VerticalLayout {
-                padding: 16px;
-                spacing: 12px;
+                padding: Tokens.sp-6;
+                spacing: Tokens.sp-5;
 
                 // Title
                 Text {
                     text: "Add Magnet Link";
-                    color: Palette.text;
-                    font-size: 16px;
+                    color: Tokens.fg-0;
+                    font-size: Tokens.fs-16;
                     font-weight: 700;
                 }
 
                 // URI label + input
                 VerticalLayout {
-                    spacing: 4px;
-                    Text { text: "Magnet URI:"; color: Palette.text; font-size: 13px; }
+                    spacing: Tokens.sp-2;
+                    Text { text: "Magnet URI:"; color: Tokens.fg-0; font-size: Tokens.fs-13; }
                     Rectangle {
-                        height: 32px;
-                        background: Palette.input-bg;
-                        border-color: Palette.input-border;
-                        border-width: 1px;
-                        border-radius: 4px;
+                        height: Tokens.chrome-h - Tokens.sp-2;
+                        background: Tokens.bg-inset;
+                        border-color: Tokens.border-2;
+                        border-width: Tokens.border-width-thin;
+                        border-radius: Tokens.r-md;
 
                         uri-input := TextInput {
-                            x: 8px;
+                            x: Tokens.sp-4;
                             y: 0;
-                            width: parent.width - 16px;
+                            width: parent.width - Tokens.sp-6;
                             height: parent.height;
-                            color: Palette.text;
-                            font-size: 13px;
+                            color: Tokens.fg-0;
+                            font-size: Tokens.fs-13;
                         }
                         // Placeholder text when empty
                         if uri-input.text == "": Text {
-                            x: 8px;
-                            color: Palette.disabled-text;
-                            font-size: 13px;
+                            x: Tokens.sp-4;
+                            color: Tokens.fg-3;
+                            font-size: Tokens.fs-13;
                             text: "magnet:?xt=urn:btih:...";
                             vertical-alignment: center;
                         }
@@ -77,38 +77,38 @@ export component AddMagnetDialog {
 
                 // Download directory label + input + Browse
                 VerticalLayout {
-                    spacing: 4px;
-                    Text { text: "Download to:"; color: Palette.text; font-size: 13px; }
+                    spacing: Tokens.sp-2;
+                    Text { text: "Download to:"; color: Tokens.fg-0; font-size: Tokens.fs-13; }
                     HorizontalLayout {
-                        spacing: 8px;
+                        spacing: Tokens.sp-4;
                         Rectangle {
                             horizontal-stretch: 1;
-                            height: 32px;
-                            background: Palette.input-bg;
-                            border-color: Palette.input-border;
-                            border-width: 1px;
-                            border-radius: 4px;
+                            height: Tokens.chrome-h - Tokens.sp-2;
+                            background: Tokens.bg-inset;
+                            border-color: Tokens.border-2;
+                            border-width: Tokens.border-width-thin;
+                            border-radius: Tokens.r-md;
 
                             dir-input := TextInput {
-                                x: 8px;
+                                x: Tokens.sp-4;
                                 y: 0;
-                                width: parent.width - 16px;
+                                width: parent.width - Tokens.sp-6;
                                 height: parent.height;
-                                color: Palette.text;
-                                font-size: 13px;
+                                color: Tokens.fg-0;
+                                font-size: Tokens.fs-13;
                                 text: root.default-dir;
                             }
                         }
                         Rectangle {
-                            width: 80px;
-                            height: 32px;
-                            background: browse-touch.has-hover ? Palette.menu-hover : Palette.accent;
-                            border-radius: 4px;
+                            width: Tokens.sp-10 * 2;
+                            height: Tokens.chrome-h - Tokens.sp-2;
+                            background: browse-touch.has-hover ? Tokens.bg-hover : Tokens.accent;
+                            border-radius: Tokens.r-md;
 
                             Text {
                                 text: "Browse...";
-                                color: Palette.text;
-                                font-size: 13px;
+                                color: Tokens.accent-fg;
+                                font-size: Tokens.fs-13;
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
                             }
@@ -122,19 +122,19 @@ export component AddMagnetDialog {
                 // Buttons row
                 HorizontalLayout {
                     alignment: end;
-                    spacing: 8px;
+                    spacing: Tokens.sp-4;
 
                     // Cancel
                     Rectangle {
-                        width: 80px;
-                        height: 32px;
-                        background: cancel-touch.has-hover ? Palette.menu-hover : Palette.accent;
-                        border-radius: 4px;
+                        width: Tokens.sp-10 * 2;
+                        height: Tokens.chrome-h - Tokens.sp-2;
+                        background: cancel-touch.has-hover ? Tokens.bg-hover : Tokens.accent;
+                        border-radius: Tokens.r-md;
 
                         Text {
                             text: "Cancel";
-                            color: Palette.text;
-                            font-size: 13px;
+                            color: Tokens.accent-fg;
+                            font-size: Tokens.fs-13;
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
@@ -145,16 +145,16 @@ export component AddMagnetDialog {
 
                     // Add (disabled when URI empty)
                     Rectangle {
-                        width: 80px;
-                        height: 32px;
-                        background: uri-input.text == "" ? Palette.accent : (add-touch.has-hover ? Palette.menu-hover : Palette.checkbox-check);
-                        border-radius: 4px;
+                        width: Tokens.sp-10 * 2;
+                        height: Tokens.chrome-h - Tokens.sp-2;
+                        background: uri-input.text == "" ? Tokens.accent : (add-touch.has-hover ? Tokens.bg-hover : Tokens.status-seeding);
+                        border-radius: Tokens.r-md;
                         opacity: uri-input.text == "" ? 0.5 : 1.0;
 
                         Text {
                             text: "Add";
-                            color: Palette.text;
-                            font-size: 13px;
+                            color: Tokens.accent-fg;
+                            font-size: Tokens.fs-13;
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
