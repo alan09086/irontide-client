@@ -163,3 +163,174 @@ impl From<&Settings> for QbtPreferences {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //! D3.1 (M173 Lane C): unit coverage for the qBt v2 preferences DTO.
+    //!
+    //! Focus: encryption int mapping, wire-unit conversions (seconds vs.
+    //! minutes), `Option<T>`-to-sentinel rendering (`-1` / `false`), the
+    //! `max_ratio_act` enum round-trip, and the reverse-proxy list's
+    //! semicolon-joined wire shape. The DTO is a pure projection of
+    //! `Settings`, so these tests construct a `Settings`, run
+    //! `QbtPreferences::from(&settings)`, and assert field-by-field.
+    use super::*;
+    use irontide::prelude::EncryptionMode;
+    use irontide::session::Settings;
+
+    fn base_settings() -> Settings {
+        // Minimum-boilerplate settings — the defaults already have
+        // `qbt_compat` disabled; we flip `enabled` to exercise the
+        // username pass-through.
+        let mut s = Settings::default();
+        s.qbt_compat.enabled = true;
+        s
+    }
+
+    #[test]
+    fn encryption_disabled_maps_to_qbt_two() {
+        let mut s = base_settings();
+        s.encryption_mode = EncryptionMode::Disabled;
+        let p = QbtPreferences::from(&s);
+        assert_eq!(p.encryption, QbtEncryption::Disable);
+        assert_eq!(u8::from(p.encryption), 2);
+    }
+
+    #[test]
+    fn encryption_enabled_and_prefer_plaintext_both_map_to_qbt_zero() {
+        let mut s = base_settings();
+        s.encryption_mode = EncryptionMode::Enabled;
+        assert_eq!(QbtPreferences::from(&s).encryption, QbtEncryption::Prefer);
+        s.encryption_mode = EncryptionMode::PreferPlaintext;
+        assert_eq!(QbtPreferences::from(&s).encryption, QbtEncryption::Prefer);
+    }
+
+    #[test]
+    fn encryption_forced_maps_to_qbt_one() {
+        let mut s = base_settings();
+        s.encryption_mode = EncryptionMode::Forced;
+        let p = QbtPreferences::from(&s);
+        assert_eq!(p.encryption, QbtEncryption::Force);
+        assert_eq!(u8::from(p.encryption), 1);
+    }
+
+    #[test]
+    fn encryption_tryfrom_rejects_out_of_range_int() {
+        assert!(QbtEncryption::try_from(3_u8).is_err());
+        assert!(QbtEncryption::try_from(255_u8).is_err());
+        // Valid values round-trip via the canonical int mapping.
+        assert_eq!(QbtEncryption::try_from(0_u8).unwrap(), QbtEncryption::Prefer);
+        assert_eq!(QbtEncryption::try_from(1_u8).unwrap(), QbtEncryption::Force);
+        assert_eq!(
+            QbtEncryption::try_from(2_u8).unwrap(),
+            QbtEncryption::Disable
+        );
+    }
+
+    #[test]
+    fn max_ratio_none_renders_sentinel_and_flag_false() {
+        let mut s = base_settings();
+        s.seed_ratio_limit = None;
+        let p = QbtPreferences::from(&s);
+        assert!(
+            (p.max_ratio - -1.0).abs() < f64::EPSILON,
+            "unset seed ratio must surface as -1.0 sentinel"
+        );
+        assert!(!p.max_ratio_enabled);
+    }
+
+    #[test]
+    fn max_ratio_some_renders_value_and_flag_true() {
+        let mut s = base_settings();
+        s.seed_ratio_limit = Some(1.75);
+        let p = QbtPreferences::from(&s);
+        assert!((p.max_ratio - 1.75).abs() < f64::EPSILON);
+        assert!(p.max_ratio_enabled);
+    }
+
+    #[test]
+    fn seed_time_seconds_convert_to_wire_minutes() {
+        let mut s = base_settings();
+        // Storage unit is seconds; wire unit is minutes. Integer division
+        // is the documented truncation for fractional minutes.
+        s.seed_time_limit_secs = Some(3660); // 61 minutes (with 60 s truncated).
+        s.inactive_seed_time_limit_secs = Some(120); // 2 minutes exactly.
+        let p = QbtPreferences::from(&s);
+        assert_eq!(p.max_seeding_time, 61);
+        assert!(p.max_seeding_time_enabled);
+        assert_eq!(p.max_inactive_seeding_time, 2);
+        assert!(p.max_inactive_seeding_time_enabled);
+    }
+
+    #[test]
+    fn seed_time_none_renders_minus_one_and_flag_false() {
+        let mut s = base_settings();
+        s.seed_time_limit_secs = None;
+        s.inactive_seed_time_limit_secs = None;
+        let p = QbtPreferences::from(&s);
+        assert_eq!(p.max_seeding_time, -1);
+        assert!(!p.max_seeding_time_enabled);
+        assert_eq!(p.max_inactive_seeding_time, -1);
+        assert!(!p.max_inactive_seeding_time_enabled);
+    }
+
+    #[test]
+    fn max_ratio_action_enum_variants_all_serialise() {
+        // All three variants must render with the exact wire slugs that
+        // qBt expects on `max_ratio_act`.
+        let mut s = base_settings();
+        s.max_ratio_action = MaxRatioAction::Pause;
+        assert_eq!(QbtPreferences::from(&s).max_ratio_act, "pause");
+        s.max_ratio_action = MaxRatioAction::Remove;
+        assert_eq!(QbtPreferences::from(&s).max_ratio_act, "remove");
+        s.max_ratio_action = MaxRatioAction::EnableSuperSeeding;
+        assert_eq!(
+            QbtPreferences::from(&s).max_ratio_act,
+            "enable_super_seeding"
+        );
+    }
+
+    #[test]
+    fn reverse_proxies_list_joins_with_semicolons() {
+        let mut s = base_settings();
+        s.qbt_compat.web_ui_reverse_proxies_list = vec![
+            "10.0.0.0/8".into(),
+            "192.168.0.0/16".into(),
+            "::1/128".into(),
+        ];
+        let p = QbtPreferences::from(&s);
+        assert_eq!(
+            p.web_ui_reverse_proxies_list, "10.0.0.0/8;192.168.0.0/16;::1/128",
+            "qBt wire convention is `;`-joined CIDRs"
+        );
+    }
+
+    #[test]
+    fn dto_roundtrips_through_json_losslessly() {
+        // The DTO is Serialize + Deserialize, so *arr clients that echo
+        // a prefs payload back to us must produce the same struct. This
+        // also covers the bespoke `QbtEncryption` (u8 <-> enum) impl.
+        let mut s = base_settings();
+        s.seed_ratio_limit = Some(2.5);
+        s.seed_time_limit_secs = Some(1800); // 30 minutes
+        s.encryption_mode = EncryptionMode::Forced;
+        s.max_ratio_action = MaxRatioAction::EnableSuperSeeding;
+        s.enable_dht = true;
+        s.enable_pex = true;
+        s.enable_lsd = false;
+        s.enable_upnp = true;
+        s.listen_port = 42000;
+        let p = QbtPreferences::from(&s);
+        let bytes = serde_json::to_vec(&p).expect("serialise");
+        let p2: QbtPreferences = serde_json::from_slice(&bytes).expect("deserialise");
+        assert_eq!(p.encryption, p2.encryption);
+        assert_eq!(p.dht, p2.dht);
+        assert_eq!(p.pex, p2.pex);
+        assert_eq!(p.lsd, p2.lsd);
+        assert_eq!(p.upnp, p2.upnp);
+        assert_eq!(p.listen_port, p2.listen_port);
+        assert_eq!(p.max_seeding_time, p2.max_seeding_time);
+        assert!((p.max_ratio - p2.max_ratio).abs() < f64::EPSILON);
+        assert_eq!(p.max_ratio_act, p2.max_ratio_act);
+    }
+}
