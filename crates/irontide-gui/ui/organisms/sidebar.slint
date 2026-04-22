@@ -1,0 +1,192 @@
+// Sidebar organism (M173 Lane A) — the four-section information
+// architecture from spec §3.
+//
+// Layout (top-down): Library (8 fixed rows) → Categories (dynamic) →
+// Tags (dynamic) → Trackers (3 fixed rows). Each section is a
+// `SidebarSection` header followed by a `for`-loop over `SidebarItem`s.
+// Clicks bubble up via `predicate-changed(string)` carrying the
+// `SidebarSection::to_token()` slug — Rust resolves the slug back to a
+// `SidebarPredicate` and pushes it onto `AppState`.
+//
+// Visual properties flow through the M172b `Tokens` global. No literal
+// colours/sizes here.
+
+import { Tokens } from "../tokens.slint";
+import { SidebarSection } from "../molecules/sidebar_section.slint";
+import { SidebarItem } from "../molecules/sidebar_item.slint";
+
+// Plain-data row used by Categories / Tags / Trackers. The Library
+// section uses the same struct; rows that need a coloured StatusDot
+// flip `show-dot=true` and supply `dot-color`.
+export struct SidebarRow {
+    // `to_token()` slug — `library:downloading`, `category:Linux`, etc.
+    token: string,
+    // Display label.
+    label: string,
+    // Live count from `TrackerIndex`.
+    count: int,
+    // Optional shortcut hint shown after the label.
+    shortcut: string,
+    // Render a coloured `StatusDot` left of the label when true.
+    show-dot: bool,
+    // Dot colour (only meaningful when `show-dot` is true).
+    dot-color: color,
+    // Whether this row is the currently active predicate.
+    selected: bool,
+}
+
+export component Sidebar {
+    // ── In-bound model state (set by Rust) ────────────────────────────
+    in property <[SidebarRow]> library-rows;
+    in property <[SidebarRow]> category-rows;
+    in property <[SidebarRow]> tag-rows;
+    in property <[SidebarRow]> tracker-rows;
+
+    // Per-section collapsed state — round-tripped to config.toml.
+    in-out property <bool> library-collapsed: false;
+    in-out property <bool> category-collapsed: false;
+    in-out property <bool> tag-collapsed: false;
+    in-out property <bool> tracker-collapsed: false;
+
+    // ── Out-bound callbacks ───────────────────────────────────────────
+    // Fired when a row is clicked. Rust receives the `to_token` slug.
+    callback predicate-changed(string);
+    // Fired when a section header is toggled. Rust persists collapsed
+    // state to `config.toml` (task A9).
+    callback section-toggled(string, bool);
+
+    width: Tokens.sidebar-w;
+    horizontal-stretch: 0;
+    vertical-stretch: 1;
+
+    Rectangle {
+        background: Tokens.bg-1;
+
+        // Right-edge separator from the torrent list.
+        Rectangle {
+            x: parent.width - Tokens.border-width-thin;
+            y: 0;
+            width: Tokens.border-width-thin;
+            height: parent.height;
+            background: Tokens.border-1;
+        }
+
+        Flickable {
+            x: 0;
+            y: 0;
+            width: parent.width - Tokens.border-width-thin;
+            height: parent.height;
+            viewport-width: self.width;
+
+            VerticalLayout {
+                padding: Tokens.sp-2;
+                spacing: Tokens.sp-2;
+
+                // ── Library ─────────────────────────────────────────
+                SidebarSection {
+                    label: "LIBRARY";
+                    total-count: root.library-rows.length > 0
+                        ? root.library-rows[0].count
+                        : 0;
+                    collapsed <=> root.library-collapsed;
+                    toggle-collapsed => {
+                        root.section-toggled("library", root.library-collapsed);
+                    }
+                }
+                if !root.library-collapsed: VerticalLayout {
+                    spacing: 0;
+                    for row in root.library-rows: SidebarItem {
+                        label: row.label;
+                        count: row.count;
+                        selected: row.selected;
+                        show-dot: row.show-dot;
+                        dot-color: row.dot-color;
+                        shortcut: row.shortcut;
+                        clicked => { root.predicate-changed(row.token); }
+                    }
+                }
+
+                // ── Categories ──────────────────────────────────────
+                SidebarSection {
+                    label: "CATEGORIES";
+                    total-count: root.category-rows.length;
+                    collapsed <=> root.category-collapsed;
+                    toggle-collapsed => {
+                        root.section-toggled("category", root.category-collapsed);
+                    }
+                }
+                if !root.category-collapsed: VerticalLayout {
+                    spacing: 0;
+                    for row in root.category-rows: SidebarItem {
+                        label: row.label;
+                        count: row.count;
+                        selected: row.selected;
+                        show-dot: row.show-dot;
+                        dot-color: row.dot-color;
+                        clicked => { root.predicate-changed(row.token); }
+                    }
+                    if root.category-rows.length == 0: Text {
+                        text: "No categories yet.";
+                        color: Tokens.fg-3;
+                        font-size: Tokens.fs-12;
+                        x: Tokens.sp-5;
+                        height: Tokens.row-h;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // ── Tags ────────────────────────────────────────────
+                SidebarSection {
+                    label: "TAGS";
+                    total-count: root.tag-rows.length;
+                    collapsed <=> root.tag-collapsed;
+                    toggle-collapsed => {
+                        root.section-toggled("tag", root.tag-collapsed);
+                    }
+                }
+                if !root.tag-collapsed: VerticalLayout {
+                    spacing: 0;
+                    for row in root.tag-rows: SidebarItem {
+                        label: row.label;
+                        count: row.count;
+                        selected: row.selected;
+                        show-dot: row.show-dot;
+                        dot-color: row.dot-color;
+                        clicked => { root.predicate-changed(row.token); }
+                    }
+                    if root.tag-rows.length == 0: Text {
+                        text: "No tags yet.";
+                        color: Tokens.fg-3;
+                        font-size: Tokens.fs-12;
+                        x: Tokens.sp-5;
+                        height: Tokens.row-h;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // ── Trackers ────────────────────────────────────────
+                SidebarSection {
+                    label: "TRACKERS";
+                    total-count: root.tracker-rows[0].count
+                        + root.tracker-rows[1].count
+                        + root.tracker-rows[2].count;
+                    collapsed <=> root.tracker-collapsed;
+                    toggle-collapsed => {
+                        root.section-toggled("tracker", root.tracker-collapsed);
+                    }
+                }
+                if !root.tracker-collapsed: VerticalLayout {
+                    spacing: 0;
+                    for row in root.tracker-rows: SidebarItem {
+                        label: row.label;
+                        count: row.count;
+                        selected: row.selected;
+                        show-dot: row.show-dot;
+                        dot-color: row.dot-color;
+                        clicked => { root.predicate-changed(row.token); }
+                    }
+                }
+            }
+        }
+    }
+}

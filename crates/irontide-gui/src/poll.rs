@@ -14,6 +14,8 @@ use slint::{Model, ModelRc, SharedString, VecModel};
 use irontide::session::{SessionHandle, TorrentState, TorrentSummary};
 
 use crate::columns::ColumnId;
+use crate::sidebar::{RowView, SidebarPredicate, TrackerIndex};
+use crate::sidebar_view;
 
 // Thread-local storage for the VecModel so the upgrade_in_event_loop
 // closure can access it without moving it into each closure.
@@ -100,17 +102,38 @@ pub async fn poll_loop(
         .map(|s| s.listen_port as i32)
         .unwrap_or(0);
 
+    // M173 Lane A: TrackerIndex carries previous-tick counts for diff-only
+    // sidebar updates. The first call returns the full Added/Changed mix
+    // for cold-start population.
+    let mut tracker_index = TrackerIndex::new();
+
     loop {
         tokio::time::sleep(Duration::from_millis(500)).await;
 
-        // Fetch data — on failure, keep last UI, log warning.
-        let summaries = match session.list_torrent_summaries().await {
-            Ok(s) => s,
+        // Fetch torrent IDs once, then enrich each with stats + trackers.
+        // We hold a (TorrentSummary, RowView) tuple per torrent so the
+        // existing model + the M173 sidebar share one fetch.
+        let ids = match session.list_torrents().await {
+            Ok(ids) => ids,
             Err(e) => {
-                tracing::warn!("poll: list_torrent_summaries failed: {e}");
+                tracing::warn!("poll: list_torrents failed: {e}");
                 continue;
             }
         };
+        let mut summaries: Vec<TorrentSummary> = Vec::with_capacity(ids.len());
+        let mut rich: Vec<RowView> = Vec::with_capacity(ids.len());
+        for id in ids {
+            let stats = match session.torrent_stats(id).await {
+                Ok(s) => s,
+                Err(_) => continue, // shutting down or vanishing — skip
+            };
+            // The tracker_list call is best-effort; on failure we still
+            // produce a row, just with empty tracker buckets.
+            let trackers = session.tracker_list(id).await.unwrap_or_default();
+            summaries.push(TorrentSummary::from(&stats));
+            rich.push(sidebar_view::rich_row_view(&stats, &trackers));
+        }
+
         let sess_stats = match session.session_stats().await {
             Ok(s) => s,
             Err(e) => {
@@ -119,14 +142,26 @@ pub async fn poll_loop(
             }
         };
 
-        // Read sort + selection state.
-        let (sort, selected) = {
+        // Read sort + selection + predicate state.
+        let (sort, selected, predicate) = {
             let st = state.lock();
-            (st.sort, st.selected.clone())
+            (st.sort, st.selected.clone(), st.predicate.clone())
         };
 
-        // Sort raw summaries.
-        let mut sorted = summaries;
+        // Filter (M173 Lane A) then sort. The enricher reaches into the
+        // pre-built rich slice so the predicate can match against
+        // `error` / `category` / `tags` / tracker buckets.
+        let rich_by_hash: std::collections::HashMap<&str, &RowView> = rich
+            .iter()
+            .map(|r| (r.info_hash.as_str(), r))
+            .collect();
+        let mut sorted = apply_predicate(&summaries, &predicate, |s| {
+            rich_by_hash
+                .get(s.info_hash.as_str())
+                .copied()
+                .cloned()
+                .unwrap_or_else(|| RowView::from_summary(s))
+        });
         sort_summaries(&mut sorted, &sort);
 
         // Convert to Slint rows.
@@ -154,6 +189,27 @@ pub async fn poll_loop(
         } else {
             "\u{2014}".to_owned()
         };
+
+        // M173 Lane A: refresh the TrackerIndex + build sidebar rows.
+        // The Index is owned by the loop (per-tick state) so the diff is
+        // computed against the previous tick. We discard the diff for
+        // now — A8 just pushes the full counts to the UI; future work
+        // can route the diff to a `row_changed`-style incremental
+        // update on the Slint sidebar models.
+        let _ = tracker_index.update(&rich);
+        let counts = tracker_index
+            .snapshot()
+            .cloned()
+            .unwrap_or_default();
+        let category_names: Vec<String> = session
+            .list_categories()
+            .await
+            .into_iter()
+            .map(|c| c.name)
+            .collect();
+        let tag_names = session.list_tags().await;
+        let sidebar_rows =
+            sidebar_view::build_sidebar_rows(&counts, &category_names, &tag_names, &predicate);
 
         // Push to UI.
         let sort_col = sort.column.to_index();
@@ -196,8 +252,71 @@ pub async fn poll_loop(
             win.set_status_listen_port(listen_port);
             win.set_sort_column(sort_col);
             win.set_sort_ascending(sort_asc);
+
+            // M173 Lane A: push the four sidebar lists.
+            win.set_sidebar_library_rows(slint::ModelRc::new(slint::VecModel::from(
+                sidebar_rows.library,
+            )));
+            win.set_sidebar_category_rows(slint::ModelRc::new(slint::VecModel::from(
+                sidebar_rows.categories,
+            )));
+            win.set_sidebar_tag_rows(slint::ModelRc::new(slint::VecModel::from(
+                sidebar_rows.tags,
+            )));
+            win.set_sidebar_tracker_rows(slint::ModelRc::new(slint::VecModel::from(
+                sidebar_rows.trackers,
+            )));
         });
     }
+}
+
+// ── Filtering (M173 Lane A) ─────────────────────────────────────────────────
+
+/// Apply a sidebar predicate to a list of summaries, returning a new vec
+/// containing only the rows that match.
+///
+/// `enrich` is the GUI-side hook that augments each summary with the
+/// per-tick fields the sidebar needs (`error`, `category`, `tags`,
+/// tracker buckets) — see `crate::sidebar::RowView`. The poll loop owns
+/// the enrichment because it has access to the session handle (M173 Lane A
+/// task A4 plugs in the real implementation; until then the default hook
+/// returns the bare-summary `RowView`, which lets `Library::All` /
+/// `Library::Active` / `Library::Inactive` / `Library::Paused` /
+/// `Library::Seeding` / `Library::Downloading` / `Library::Completed`
+/// behave correctly out of the box).
+///
+/// **Sort-after-filter semantics**: this function only filters. The caller
+/// must run [`sort_summaries`] on the returned vec before pushing to the
+/// model. A predicate of [`SidebarPredicate::All`] — the default — passes
+/// through every row, so the M163 behaviour is preserved unchanged.
+pub fn apply_predicate<F>(
+    summaries: &[TorrentSummary],
+    predicate: &SidebarPredicate,
+    enrich: F,
+) -> Vec<TorrentSummary>
+where
+    F: Fn(&TorrentSummary) -> RowView,
+{
+    if matches!(predicate, SidebarPredicate::All) {
+        return summaries.to_vec();
+    }
+    summaries
+        .iter()
+        .filter(|s| predicate.matches(&enrich(s)))
+        .cloned()
+        .collect()
+}
+
+/// The minimal `enrich` hook used by `apply_predicate` when no richer
+/// data is available — the A3 baseline. Production poll loop (A8) uses
+/// a richer closure that consults `TorrentStats` / `tracker_list`, so
+/// the helper is now used only by tests; kept public so future
+/// callers (e.g. lightweight unit tests against a synthetic summary
+/// stream) have a stable entry point.
+#[must_use]
+#[allow(dead_code)]
+pub fn enrich_summary_only(s: &TorrentSummary) -> RowView {
+    RowView::from_summary(s)
 }
 
 // ── Sorting ─────────────────────────────────────────────────────────────────
@@ -550,6 +669,100 @@ mod tests {
         let (down, up) = aggregate_rates(&summaries);
         assert_eq!(down, 600);
         assert_eq!(up, 60);
+    }
+
+    // ── M173 Lane A: apply_predicate (sort-after-filter rebuild) ───────
+
+    use crate::sidebar::{LibraryFilter, SidebarPredicate};
+
+    #[test]
+    fn apply_predicate_all_is_passthrough() {
+        let summaries = vec![
+            test_summary("A", "aaa"),
+            test_summary("B", "bbb"),
+            test_summary("C", "ccc"),
+        ];
+        let out = apply_predicate(&summaries, &SidebarPredicate::All, enrich_summary_only);
+        assert_eq!(out.len(), 3);
+        // Rebuild preserves input order — sorting happens AFTER filter.
+        assert_eq!(out[0].info_hash, "aaa");
+        assert_eq!(out[1].info_hash, "bbb");
+        assert_eq!(out[2].info_hash, "ccc");
+    }
+
+    #[test]
+    fn apply_predicate_paused_filters_out_downloading() {
+        let mut a = test_summary("A", "aaa");
+        a.state = TorrentState::Downloading;
+        let mut b = test_summary("B", "bbb");
+        b.state = TorrentState::Paused;
+        let mut c = test_summary("C", "ccc");
+        c.state = TorrentState::Paused;
+        let summaries = vec![a, b, c];
+        let pred = SidebarPredicate::Library(LibraryFilter::Paused);
+        let out = apply_predicate(&summaries, &pred, enrich_summary_only);
+        assert_eq!(out.len(), 2);
+        assert!(out.iter().all(|s| s.state == TorrentState::Paused));
+    }
+
+    #[test]
+    fn apply_predicate_active_uses_rates() {
+        let mut a = test_summary("A", "aaa");
+        a.download_rate = 1024;
+        let b = test_summary("B", "bbb"); // both rates 0
+        let mut c = test_summary("C", "ccc");
+        c.upload_rate = 512;
+        let summaries = vec![a, b, c];
+        let pred = SidebarPredicate::Library(LibraryFilter::Active);
+        let out = apply_predicate(&summaries, &pred, enrich_summary_only);
+        assert_eq!(out.len(), 2);
+        let hashes: Vec<&str> = out.iter().map(|s| s.info_hash.as_str()).collect();
+        assert!(hashes.contains(&"aaa"));
+        assert!(hashes.contains(&"ccc"));
+    }
+
+    #[test]
+    fn apply_predicate_custom_enricher_drives_category_filter() {
+        let summaries = vec![
+            test_summary("A", "aaa"),
+            test_summary("B", "bbb"),
+            test_summary("C", "ccc"),
+        ];
+        let pred = SidebarPredicate::Category("Linux".into());
+        // Enricher fakes the category via a simple lookup — proves task A4
+        // can plug richer data through without changing apply_predicate.
+        let out = apply_predicate(&summaries, &pred, |s| {
+            let cat = if s.info_hash == "bbb" {
+                Some("Linux".to_owned())
+            } else {
+                None
+            };
+            crate::sidebar::RowView::from_summary(s).with_category(cat)
+        });
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].info_hash, "bbb");
+    }
+
+    #[test]
+    fn apply_predicate_filter_then_sort_preserves_only_match() {
+        let mut a = test_summary("Charlie", "ccc");
+        a.state = TorrentState::Paused;
+        let mut b = test_summary("Alpha", "aaa");
+        b.state = TorrentState::Downloading;
+        let mut c = test_summary("Bravo", "bbb");
+        c.state = TorrentState::Paused;
+        let summaries = vec![a, b, c];
+        let pred = SidebarPredicate::Library(LibraryFilter::Paused);
+        let mut out = apply_predicate(&summaries, &pred, enrich_summary_only);
+        // Verify that callers can sort the filter output correctly.
+        let sort = SortState {
+            column: ColumnId::Name,
+            ascending: true,
+        };
+        sort_summaries(&mut out, &sort);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].name, "Bravo");
+        assert_eq!(out[1].name, "Charlie");
     }
 
     #[test]

@@ -6,6 +6,8 @@ mod error;
 mod format;
 mod panic_hook;
 mod poll;
+mod sidebar;
+mod sidebar_view;
 mod skin;
 mod skin_tokens;
 
@@ -48,11 +50,14 @@ fn main() -> Result<(), error::GuiError> {
 
     // 4. Create shutdown channel + app state.
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
-    let state = Arc::new(Mutex::new(app::AppState::new(
-        shutdown_tx,
-        col_config,
-        skin_settings,
-    )));
+    let mut initial_state = app::AppState::new(shutdown_tx, col_config, skin_settings);
+    // M173 Lane A task A9: hydrate persisted sidebar state. Absent
+    // [gui.sidebar] table → all defaults; corrupt token → silent
+    // fallback to Library::All.
+    if let Some(sb) = gui_config.sidebar.as_ref() {
+        initial_state.load_sidebar_config(sb);
+    }
+    let state = Arc::new(Mutex::new(initial_state));
 
     // 5. Create main window + push initial skin into Tokens global.
     let main_window = MainWindow::new()?;
@@ -66,6 +71,13 @@ fn main() -> Result<(), error::GuiError> {
         main_window.set_current_theme(st.skin.theme.to_string().into());
         main_window.set_current_density(st.skin.density.to_string().into());
         main_window.set_current_radius(st.skin.radius.to_string().into());
+        // M173 Lane A task A9: seed sidebar collapsed flags from
+        // persisted state so the first-paint sidebar matches the
+        // user's last session.
+        main_window.set_sidebar_library_collapsed(st.sidebar_library_collapsed);
+        main_window.set_sidebar_category_collapsed(st.sidebar_category_collapsed);
+        main_window.set_sidebar_tag_collapsed(st.sidebar_tag_collapsed);
+        main_window.set_sidebar_tracker_collapsed(st.sidebar_tracker_collapsed);
     }
 
     // 6. Wire menu callbacks.
@@ -366,6 +378,51 @@ fn main() -> Result<(), error::GuiError> {
             bridge::show_toast(&weak, "Details panel: coming in M172", false);
         });
     }
+    {
+        // M173 Lane A task A7+A8: Ctrl+1..9 / Cmd+1..9 sidebar shortcut.
+        // Slint forwards the raw digit text plus the focus-scope guard
+        // already blocked any open dialog/menu. The Rust side validates
+        // the platform accelerator via `accel::parse_sidebar_shortcut`
+        // and resolves the slot to a Library predicate via
+        // `sidebar_view::predicate_for_shortcut_slot` (slots 1..=8 →
+        // LibraryFilter::ORDER; slot 9 currently no-ops).
+        let weak = main_window.as_weak();
+        let cb_state = state.clone();
+        main_window.on_sidebar_shortcut(move |digit| {
+            let Some(win) = weak.upgrade() else { return };
+            let ctrl = win.get_ctrl_held();
+            let meta = win.get_meta_held();
+            let Some(slot) = accel::parse_sidebar_shortcut(digit.as_str(), ctrl, meta)
+            else {
+                return;
+            };
+            let Some(predicate) = sidebar_view::predicate_for_shortcut_slot(slot) else {
+                return;
+            };
+            cb_state.lock().set_predicate(predicate);
+        });
+    }
+    {
+        // M173 Lane A task A8: sidebar row click → predicate change.
+        // The Slint sidebar emits the SidebarSection::to_token() slug;
+        // we parse it back into a SidebarPredicate and push onto
+        // AppState. The next poll tick rebuilds the visible model.
+        let cb_state = state.clone();
+        main_window.on_sidebar_predicate_changed(move |token| {
+            if let Some(section) = sidebar::SidebarSection::from_token(token.as_str()) {
+                let predicate = sidebar::SidebarPredicate::from_section(&section);
+                cb_state.lock().set_predicate(predicate);
+            }
+        });
+    }
+    {
+        // M173 Lane A task A8: sidebar section collapse toggle.
+        // Marks the sidebar config dirty so task A9 persists on quit.
+        let cb_state = state.clone();
+        main_window.on_sidebar_section_toggled(move |_kind, _collapsed| {
+            cb_state.lock().sidebar_dirty = true;
+        });
+    }
 
     // 6j. Wire Tweaks overlay callbacks (M172b Lane B).
     {
@@ -452,12 +509,24 @@ fn main() -> Result<(), error::GuiError> {
     // 8. Run Slint event loop (blocks until window is closed).
     main_window.run()?;
 
-    // 9. Save GUI config if any dirty field (columns and/or skin).
+    // 9. Save GUI config if any dirty field (columns / skin / sidebar).
     {
+        // Refresh collapsed state from the live window so toggles made
+        // while the app was running are captured even if AppState was
+        // not updated synchronously by the callback.
+        if let Some(win) = main_window.as_weak().upgrade() {
+            let mut st = state.lock();
+            st.sidebar_library_collapsed = win.get_sidebar_library_collapsed();
+            st.sidebar_category_collapsed = win.get_sidebar_category_collapsed();
+            st.sidebar_tag_collapsed = win.get_sidebar_tag_collapsed();
+            st.sidebar_tracker_collapsed = win.get_sidebar_tracker_collapsed();
+        }
         let st = state.lock();
-        if st.columns_dirty || st.skin_dirty {
+        if st.columns_dirty || st.skin_dirty || st.sidebar_dirty {
             let mut gui = st.columns.to_gui_config();
             st.skin.populate_gui_config(&mut gui);
+            // M173 Lane A task A9: persist [gui.sidebar].
+            gui.sidebar = Some(st.to_sidebar_config());
             if let Err(e) = irontide_config::save_gui_config(None, &gui) {
                 tracing::warn!("failed to save GUI config: {e}");
             }

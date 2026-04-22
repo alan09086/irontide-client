@@ -10,8 +10,13 @@ import { AddTorrentDialog } from "widgets/add_torrent_dialog.slint";
 import { ContextMenu } from "widgets/context_menu.slint";
 import { ConfirmDeleteDialog } from "widgets/confirm_delete_dialog.slint";
 import { TweaksOverlay } from "tweaks.slint";
+// M173 Lane A: sidebar IA. The `Sidebar` organism + the `SidebarRow`
+// data struct are imported here so slint_build picks them up. The
+// MainWindow body (below) wires the `Sidebar` into the layout in task
+// A8.
+import { Sidebar, SidebarRow } from "organisms/sidebar.slint";
 
-export { Tokens, Shadow }
+export { Tokens, Shadow, SidebarRow }
 
 export struct TorrentRow {
     info-hash: string,
@@ -299,6 +304,26 @@ export component MainWindow inherits Window {
     callback delete-selected();
     callback select-all();
     callback show-details-stub();
+    // M173 Lane A: Ctrl+1..9 / Cmd+1..9 sidebar shortcuts. The payload
+    // is the raw digit text (`"1"`..`"9"`); Rust validates the
+    // platform accelerator via `accel::parse_sidebar_shortcut` against
+    // `ctrl-held` / `meta-held` and resolves the slot against the
+    // visible sidebar order in `AppState`. Fires only when no
+    // modal/menu has focus (focus-scope isolation — see the gate in
+    // the FocusScope handler below).
+    callback sidebar-shortcut(/* digit text "1".."9" */ string);
+
+    // ── Sidebar (M173 Lane A task A8) ──
+    in property <[SidebarRow]> sidebar-library-rows;
+    in property <[SidebarRow]> sidebar-category-rows;
+    in property <[SidebarRow]> sidebar-tag-rows;
+    in property <[SidebarRow]> sidebar-tracker-rows;
+    in-out property <bool> sidebar-library-collapsed: false;
+    in-out property <bool> sidebar-category-collapsed: false;
+    in-out property <bool> sidebar-tag-collapsed: false;
+    in-out property <bool> sidebar-tracker-collapsed: false;
+    callback sidebar-predicate-changed(/* token */ string);
+    callback sidebar-section-toggled(/* kind: library|category|tag|tracker */ string, /* collapsed */ bool);
 
     // ── Tweaks overlay (M172b Lane B) ──
     in-out property <bool> show-tweaks: false;
@@ -333,8 +358,11 @@ export component MainWindow inherits Window {
                 root.show-tweaks = !root.show-tweaks;
                 return accept;
             }
-            // Keyboard shortcuts (only when no dialog/menu is open)
-            if !root.show-add-magnet-dialog && !root.show-add-torrent-dialog && !root.show-delete-dialog && !root.show-context-menu {
+            // Keyboard shortcuts (only when no dialog/menu is open).
+            // The Tweaks overlay is treated as modal too — it absorbs
+            // its own keys above, so any leftover key event with
+            // root.show-tweaks should not trigger sidebar shortcuts.
+            if !root.show-add-magnet-dialog && !root.show-add-torrent-dialog && !root.show-delete-dialog && !root.show-context-menu && !root.show-tweaks {
                 if event.text == " " {
                     root.toggle-pause-resume();
                     return accept;
@@ -349,6 +377,20 @@ export component MainWindow inherits Window {
                 }
                 if event.text == "a" && root.ctrl-held {
                     root.select-all();
+                    return accept;
+                }
+                // M173 Lane A: Ctrl+1..9 (Cmd+1..9 on macOS) — sidebar
+                // shortcut. Slint cannot cfg-gate, so we forward the
+                // digit text and the modifier flags; Rust's
+                // `parse_sidebar_shortcut` then locks the match to the
+                // platform accelerator.
+                if (root.ctrl-held || root.meta-held)
+                   && (event.text == "1" || event.text == "2"
+                       || event.text == "3" || event.text == "4"
+                       || event.text == "5" || event.text == "6"
+                       || event.text == "7" || event.text == "8"
+                       || event.text == "9") {
+                    root.sidebar-shortcut(event.text);
                     return accept;
                 }
             }
@@ -408,10 +450,36 @@ export component MainWindow inherits Window {
                 }
             }
 
-            // Main content area
-            Rectangle {
-                background: Tokens.bg-0;
+            // M173 Lane A: sidebar lives left of the main content. The
+            // sidebar is hidden while the session is still loading so
+            // the loading spinner remains centred on the full window
+            // width.
+            HorizontalLayout {
+                spacing: 0;
                 vertical-stretch: 1;
+
+                if root.session-ready && root.error-text == "": Sidebar {
+                    library-rows: root.sidebar-library-rows;
+                    category-rows: root.sidebar-category-rows;
+                    tag-rows: root.sidebar-tag-rows;
+                    tracker-rows: root.sidebar-tracker-rows;
+                    library-collapsed <=> root.sidebar-library-collapsed;
+                    category-collapsed <=> root.sidebar-category-collapsed;
+                    tag-collapsed <=> root.sidebar-tag-collapsed;
+                    tracker-collapsed <=> root.sidebar-tracker-collapsed;
+                    predicate-changed(token) => {
+                        root.sidebar-predicate-changed(token);
+                    }
+                    section-toggled(kind, collapsed) => {
+                        root.sidebar-section-toggled(kind, collapsed);
+                    }
+                }
+
+                // Main content area
+                Rectangle {
+                    background: Tokens.bg-0;
+                    horizontal-stretch: 1;
+                    vertical-stretch: 1;
 
                 // Loading state: spinner + message
                 if !root.session-ready && root.error-text == "": VerticalLayout {
@@ -864,6 +932,7 @@ export component MainWindow inherits Window {
                         horizontal-alignment: center;
                         wrap: word-wrap;
                     }
+                }
                 }
             }
 
