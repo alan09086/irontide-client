@@ -1319,6 +1319,134 @@ mod tests {
         )));
     }
 
+    // ── M173 Lane A task A10: ★★★ predicate matrix ────────────────────
+    //
+    // Per the master plan "Required test coverage": one test per Library
+    // filter covering empty / typical / boundary states. The basic
+    // matches-test for each filter lives above; this block adds the
+    // three-state coverage.
+
+    #[test]
+    fn matrix_downloading_progress_zero_fifty_one_hundred() {
+        // Boundary at 0% / 50% / 100% progress should not flip
+        // Downloading membership — Downloading is purely state-based.
+        for progress in [0.0, 0.5, 1.0] {
+            let r = row(TorrentState::Downloading, progress);
+            assert!(
+                LibraryFilter::Downloading.matches(&r),
+                "progress {progress} should still match Downloading"
+            );
+        }
+        // Empty input slice: zero counts.
+        let counts = library_counts(&[]);
+        assert_eq!(counts[&LibraryFilter::Downloading], 0);
+    }
+
+    #[test]
+    fn matrix_paused_with_and_without_ratio_act() {
+        // The user might have a Paused torrent that was paused
+        // automatically (max_ratio_act fired) vs manually. The
+        // predicate doesn't differentiate today — both pass, but the
+        // test pins the contract so a future engine change does not
+        // silently drop the auto-paused torrents.
+        let r = row(TorrentState::Paused, 0.5);
+        assert!(LibraryFilter::Paused.matches(&r));
+        // Same shape with progress=1.0 (post-completion auto-pause).
+        let r_done = row(TorrentState::Paused, 1.0);
+        assert!(LibraryFilter::Paused.matches(&r_done));
+        // Empty input slice.
+        let counts = library_counts(&[]);
+        assert_eq!(counts[&LibraryFilter::Paused], 0);
+    }
+
+    #[test]
+    fn matrix_errored_disk_vs_network() {
+        // Disk-error rows and network-error rows both classify
+        // identically — the predicate is `error.is_empty()` only.
+        let r_disk = row(TorrentState::Downloading, 0.5).with_error("disk full");
+        let r_net = row(TorrentState::Downloading, 0.5).with_error("connection refused");
+        assert!(LibraryFilter::Errored.matches(&r_disk));
+        assert!(LibraryFilter::Errored.matches(&r_net));
+        // Boundary: empty error → not errored.
+        let r_clean = row(TorrentState::Downloading, 0.5);
+        assert!(!LibraryFilter::Errored.matches(&r_clean));
+        // Empty slice: zero counts.
+        assert_eq!(library_counts(&[])[&LibraryFilter::Errored], 0);
+    }
+
+    #[test]
+    fn matrix_active_inactive_boundary_at_zero_rate() {
+        // Boundary: download_rate = 0, upload_rate = 0 → Inactive
+        // (and not Active). One byte either way flips Active on.
+        let mut r_zero = row(TorrentState::Downloading, 0.5);
+        r_zero.download_rate = 0;
+        r_zero.upload_rate = 0;
+        assert!(!LibraryFilter::Active.matches(&r_zero));
+        assert!(LibraryFilter::Inactive.matches(&r_zero));
+
+        let mut r_one_byte_dl = r_zero.clone();
+        r_one_byte_dl.download_rate = 1;
+        assert!(LibraryFilter::Active.matches(&r_one_byte_dl));
+        assert!(!LibraryFilter::Inactive.matches(&r_one_byte_dl));
+
+        let mut r_one_byte_ul = r_zero;
+        r_one_byte_ul.upload_rate = 1;
+        assert!(LibraryFilter::Active.matches(&r_one_byte_ul));
+        assert!(!LibraryFilter::Inactive.matches(&r_one_byte_ul));
+    }
+
+    #[test]
+    fn matrix_completed_via_state_or_progress() {
+        // Three avenues to "Completed":
+        //   1. state == Complete
+        //   2. state == Seeding/Sharing
+        //   3. progress >= 1.0 even when state is something else
+        let r_complete = row(TorrentState::Complete, 1.0);
+        let r_seeding = row(TorrentState::Seeding, 1.0);
+        let r_sharing = row(TorrentState::Sharing, 0.5); // < 1.0 but Sharing
+        let r_progress = row(TorrentState::Downloading, 1.0); // 100% but not seeding yet
+        for r in [&r_complete, &r_seeding, &r_sharing, &r_progress] {
+            assert!(
+                LibraryFilter::Completed.matches(r),
+                "expected Completed match: {r:?}"
+            );
+        }
+        // Boundary: progress 0.999... → not Completed (still Downloading).
+        let r_almost = row(TorrentState::Downloading, 0.999);
+        assert!(!LibraryFilter::Completed.matches(&r_almost));
+    }
+
+    #[test]
+    fn matrix_seeding_excludes_completed_only() {
+        // Seeding + Sharing classify as Seeding; Complete does not
+        // (Complete is the brief "all done, awaiting transition" state).
+        let r_seeding = row(TorrentState::Seeding, 1.0);
+        let r_sharing = row(TorrentState::Sharing, 1.0);
+        assert!(LibraryFilter::Seeding.matches(&r_seeding));
+        assert!(LibraryFilter::Seeding.matches(&r_sharing));
+        let r_complete = row(TorrentState::Complete, 1.0);
+        assert!(!LibraryFilter::Seeding.matches(&r_complete));
+    }
+
+    #[test]
+    fn matrix_all_passes_every_state() {
+        // The "All" filter must always pass — pin the contract so any
+        // future addition to TorrentState doesn't accidentally exclude.
+        for state in [
+            TorrentState::FetchingMetadata,
+            TorrentState::Checking,
+            TorrentState::Downloading,
+            TorrentState::Complete,
+            TorrentState::Seeding,
+            TorrentState::Paused,
+            TorrentState::Stopped,
+            TorrentState::Sharing,
+        ] {
+            let r = row(state, 0.5);
+            assert!(LibraryFilter::All.matches(&r), "All must match {state:?}");
+        }
+    }
+
     #[test]
     fn tracker_bucket_counts_zero_buckets_present() {
         let counts = tracker_bucket_counts(&[]);

@@ -359,4 +359,90 @@ mod tests {
         assert_eq!(set.tags.len(), 1);
         assert_eq!(set.trackers.len(), 3);
     }
+
+    // ── M173 Lane A task A10: Slint integration mirror tests ─────────
+    //
+    // The GUI crate is bin-only (no library target), so a true Slint
+    // integration test that drives the runtime is out of scope. These
+    // tests instead exercise the data flow that an integration test
+    // would assert: row clicks → predicate state, predicate state →
+    // selected highlight, count updates → row count badges.
+
+    #[test]
+    fn integration_predicate_change_updates_selected_marker() {
+        let counts = empty_counts();
+        let tags = vec!["hd".to_owned(), "1080p".to_owned()];
+        // Initial state: All predicate, neither tag selected.
+        let set = build_sidebar_rows(&counts, &[], &tags, &SidebarPredicate::All);
+        assert!(!set.tags[0].selected);
+        assert!(!set.tags[1].selected);
+        // User clicks "hd" → predicate switches → marker moves.
+        let active = SidebarPredicate::Tag("hd".into());
+        let set2 = build_sidebar_rows(&counts, &[], &tags, &active);
+        assert!(set2.tags[0].selected);
+        assert!(!set2.tags[1].selected);
+    }
+
+    #[test]
+    fn integration_count_change_updates_label_only() {
+        let mut counts = empty_counts();
+        counts.library.insert(LibraryFilter::Downloading, 0);
+        let set_zero =
+            build_sidebar_rows(&counts, &[], &[], &SidebarPredicate::All);
+        let downloading_zero = set_zero
+            .library
+            .iter()
+            .find(|r| r.label == "Downloading")
+            .expect("found");
+        assert_eq!(downloading_zero.count, 0);
+
+        counts.library.insert(LibraryFilter::Downloading, 7);
+        let set_seven =
+            build_sidebar_rows(&counts, &[], &[], &SidebarPredicate::All);
+        let downloading_seven = set_seven
+            .library
+            .iter()
+            .find(|r| r.label == "Downloading")
+            .expect("found");
+        assert_eq!(downloading_seven.count, 7);
+        // Label / token / shortcut / dot all unchanged — only count moves.
+        assert_eq!(downloading_zero.label, downloading_seven.label);
+        assert_eq!(downloading_zero.token, downloading_seven.token);
+        assert_eq!(downloading_zero.shortcut, downloading_seven.shortcut);
+        assert_eq!(downloading_zero.show_dot, downloading_seven.show_dot);
+    }
+
+    #[test]
+    fn integration_category_appears_when_registry_grows() {
+        let counts = empty_counts();
+        let initial = build_sidebar_rows(&counts, &[], &[], &SidebarPredicate::All);
+        assert_eq!(initial.categories.len(), 0);
+        let after = build_sidebar_rows(
+            &counts,
+            &["Linux".to_owned()],
+            &[],
+            &SidebarPredicate::All,
+        );
+        assert_eq!(after.categories.len(), 1);
+        assert_eq!(after.categories[0].label, "Linux");
+        assert_eq!(after.categories[0].token, "category:Linux");
+    }
+
+    #[test]
+    fn integration_shortcut_slot_round_trips_to_predicate() {
+        // Ctrl+1 → Library::All → predicate Library(All).
+        let pred = predicate_for_shortcut_slot(1).expect("slot 1");
+        assert_eq!(pred, SidebarPredicate::Library(LibraryFilter::All));
+        // Build sidebar with that predicate active; the All row must
+        // be selected (matches_predicate special-case for Library(All)
+        // == bare All).
+        let set = build_sidebar_rows(&empty_counts(), &[], &[], &pred);
+        assert!(set.library[0].selected);
+        // Ctrl+8 → Errored.
+        let pred = predicate_for_shortcut_slot(8).expect("slot 8");
+        assert_eq!(pred, SidebarPredicate::Library(LibraryFilter::Errored));
+        let set = build_sidebar_rows(&empty_counts(), &[], &[], &pred);
+        assert!(set.library[7].selected);
+        assert!(!set.library[0].selected);
+    }
 }

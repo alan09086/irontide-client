@@ -191,4 +191,147 @@ mod tests {
     fn parse_sidebar_shortcut_empty_text_returns_none() {
         assert_eq!(parse_sidebar_shortcut("", true, true), None);
     }
+
+    // ── M173 Lane A task A10: focus-scope isolation contract ──────────
+    //
+    // The Slint FocusScope handler in main.slint gates Ctrl+1..9
+    // behind a modal-open check (`!show-add-magnet-dialog && ...`).
+    // We cannot drive Slint from a unit test, but we can pin the
+    // contract on the Rust side by simulating the guard:
+    //
+    // 1. The shortcut handler MUST NOT fire when any modal flag is
+    //    true. We model this with a closure `is_modal_open` mirroring
+    //    the Slint expression and assert that the would-be slot is
+    //    suppressed when any modal is open.
+    //
+    // 2. The shortcut handler MUST fire when no modal is open AND
+    //    the platform accelerator matches.
+
+    /// Mirrors the Slint guard: the handler fires only when every
+    /// modal flag is `false`. Returns the resolved slot when the
+    /// shortcut should fire, or `None` when the modal guard or the
+    /// accelerator gate suppresses it.
+    fn would_fire_shortcut(
+        digit_text: &str,
+        ctrl: bool,
+        meta: bool,
+        modals_open: ModalState,
+    ) -> Option<u8> {
+        if modals_open.any_open() {
+            return None;
+        }
+        parse_sidebar_shortcut(digit_text, ctrl, meta)
+    }
+
+    #[derive(Default, Debug, Clone, Copy)]
+    struct ModalState {
+        add_magnet: bool,
+        add_torrent: bool,
+        delete_confirm: bool,
+        context_menu: bool,
+        tweaks: bool,
+    }
+
+    impl ModalState {
+        fn any_open(self) -> bool {
+            self.add_magnet
+                || self.add_torrent
+                || self.delete_confirm
+                || self.context_menu
+                || self.tweaks
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn focus_scope_isolation_no_modal_fires() {
+        let modals = ModalState::default();
+        assert_eq!(
+            would_fire_shortcut("1", true, false, modals),
+            Some(1),
+            "no modal open + Ctrl+1 must fire"
+        );
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn focus_scope_isolation_add_magnet_modal_blocks() {
+        let modals = ModalState {
+            add_magnet: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            would_fire_shortcut("1", true, false, modals),
+            None,
+            "add-magnet modal open must suppress shortcut"
+        );
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn focus_scope_isolation_add_torrent_modal_blocks() {
+        let modals = ModalState {
+            add_torrent: true,
+            ..Default::default()
+        };
+        assert_eq!(would_fire_shortcut("3", true, false, modals), None);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn focus_scope_isolation_delete_confirm_modal_blocks() {
+        let modals = ModalState {
+            delete_confirm: true,
+            ..Default::default()
+        };
+        assert_eq!(would_fire_shortcut("5", true, false, modals), None);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn focus_scope_isolation_context_menu_blocks() {
+        // The right-click context menu should also suppress sidebar
+        // shortcuts (a Ctrl+N press while the menu is up should not
+        // also navigate the sidebar).
+        let modals = ModalState {
+            context_menu: true,
+            ..Default::default()
+        };
+        assert_eq!(would_fire_shortcut("1", true, false, modals), None);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn focus_scope_isolation_tweaks_overlay_blocks() {
+        // Mirrors the M173 Lane A change to extend the modal guard
+        // with `!show-tweaks` — the Tweaks overlay absorbs its own
+        // Ctrl+N shortcuts; sidebar must not also fire.
+        let modals = ModalState {
+            tweaks: true,
+            ..Default::default()
+        };
+        assert_eq!(would_fire_shortcut("9", true, false, modals), None);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn focus_scope_isolation_dismiss_modal_re_enables() {
+        // Open a modal, dismiss it, the next shortcut fires.
+        let mut modals = ModalState {
+            add_magnet: true,
+            ..Default::default()
+        };
+        assert_eq!(would_fire_shortcut("1", true, false, modals), None);
+        modals.add_magnet = false;
+        assert_eq!(would_fire_shortcut("1", true, false, modals), Some(1));
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn focus_scope_isolation_no_modal_but_no_modifier_does_not_fire() {
+        // Even with all modals closed, the shortcut is gated on the
+        // platform accelerator. Plain "1" without Ctrl does not fire.
+        let modals = ModalState::default();
+        assert_eq!(would_fire_shortcut("1", false, false, modals), None);
+    }
 }
