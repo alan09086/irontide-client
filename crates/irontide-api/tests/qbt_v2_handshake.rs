@@ -267,13 +267,18 @@ async fn test_arr_full_usage_flow() {
         .to_owned();
     assert_eq!(hash.len(), 40, "hash must be 40 hex chars");
 
-    // Pause the torrent.
+    // Pause the torrent. v0.173.1 Class B: send `hashes=` via the
+    // `application/x-www-form-urlencoded` body rather than the URL
+    // query, matching the real `*arr` request shape. This one call is
+    // deliberately routed through the new body-parse path so the
+    // end-to-end *arr smoke test exercises Class B parity — the other
+    // bulk-action calls below keep the query-string path for breadth.
     let (status, _) = post(
         &router,
-        &format!("/api/v2/torrents/pause?hashes={hash}"),
+        "/api/v2/torrents/pause",
         Some(&sid),
-        None,
-        Vec::new(),
+        Some("application/x-www-form-urlencoded"),
+        format!("hashes={hash}").into_bytes(),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
