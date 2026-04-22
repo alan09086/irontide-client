@@ -15,35 +15,38 @@ export struct Shadow {
 }
 
 export global Tokens {
-    // ── Colours (active palette) ─────────────────────────────────────
-    in-out property <color> bg-0:         #0a0e14;
-    in-out property <color> bg-1:         #11161f;
-    in-out property <color> bg-2:         #161c27;
-    in-out property <color> bg-3:         #1d2430;
-    in-out property <color> bg-hover:     #1d2633;
-    in-out property <color> bg-selected:  #223042;
-    in-out property <color> bg-inset:     #070a10;
-    in-out property <color> fg-0:         #e8edf5;
-    in-out property <color> fg-1:         #b7c1d0;
-    in-out property <color> fg-2:         #8b97a8;
-    in-out property <color> fg-3:         #5b6576;
-    in-out property <color> border-1:     #2a3444;
-    in-out property <color> border-2:     #3a4555;
-    in-out property <color> divider:      #232c3a;
-    in-out property <color> accent:       #4da6ff;
-    in-out property <color> accent-hover: #6ab4ff;
-    in-out property <color> accent-fg:    #0a0e14;
-    in-out property <color> accent-bg-soft: #1a2838;
+    // ── Colours (active palette — Tide-dark defaults, codegen-aligned) ─
+    // Each default matches the value in scripts/tokens.hex.json for the
+    // `tide-dark` skin so the first paint is correct pre-apply. Rust's
+    // SkinSettings::apply() overwrites these on startup.
+    in-out property <color> bg-0:           #0d1115;  // spec: oklch(0.175 0.010 250)
+    in-out property <color> bg-1:           #13181c;  // spec: oklch(0.205 0.011 250)
+    in-out property <color> bg-2:           #181c21;  // spec: oklch(0.225 0.012 250)
+    in-out property <color> bg-3:           #1c2127;  // spec: oklch(0.245 0.013 250)
+    in-out property <color> bg-hover:       #21272d;  // spec: oklch(0.27  0.014 250)
+    in-out property <color> bg-selected:    #193841;  // spec: oklch(0.32  0.04  220)
+    in-out property <color> bg-inset:       #080c0f;  // spec: oklch(0.15  0.010 250)
+    in-out property <color> fg-0:           #eff2f4;  // spec: oklch(0.96  0.004 240)
+    in-out property <color> fg-1:           #c1c5c8;  // spec: oklch(0.82  0.006 240)
+    in-out property <color> fg-2:           #8b9094;  // spec: oklch(0.65  0.008 240)
+    in-out property <color> fg-3:           #5e6468;  // spec: oklch(0.50  0.010 240)
+    in-out property <color> border-1:       #292e34;  // spec: oklch(0.30  0.012 250)
+    in-out property <color> border-2:       #383e44;  // spec: oklch(0.36  0.014 250)
+    in-out property <color> divider:        #25292f;  // spec: oklch(0.28  0.012 250)
+    in-out property <color> accent:         #1db8ce;  // spec: oklch(0.72  0.12  210)
+    in-out property <color> accent-hover:   #22cde5;  // spec: oklch(0.78  0.13  210)
+    in-out property <color> accent-fg:      #040c13;  // spec: oklch(0.15  0.02  240)
+    in-out property <color> accent-bg-soft: #03343c;  // spec: oklch(0.30  0.05  210)
 
     // ── Status colours (shared across skins/themes) ─────────────────
-    in-out property <color> status-downloading: #4da6ff;
-    in-out property <color> status-seeding:     #4dd99a;
-    in-out property <color> status-paused:      #8b97a8;
-    in-out property <color> status-checking:    #ffc34d;
-    in-out property <color> status-metadata:    #b98dff;
-    in-out property <color> status-queued:      #5b6576;
-    in-out property <color> status-error:       #ff6b6b;
-    in-out property <color> status-stalled:     #8b97a8;
+    in-out property <color> status-downloading: #00b0d5;  // spec: oklch(0.70 0.14 220)
+    in-out property <color> status-seeding:     #53be70;  // spec: oklch(0.72 0.15 150)
+    in-out property <color> status-paused:      #86909b;  // spec: oklch(0.65 0.02 250)
+    in-out property <color> status-checking:    #a497ea;  // spec: oklch(0.72 0.12 290)
+    in-out property <color> status-metadata:    #b98dff;  // placeholder (no CSS entry)
+    in-out property <color> status-queued:      #c69e58;  // spec: oklch(0.72 0.10  80)
+    in-out property <color> status-error:       #e85854;  // spec: oklch(0.65 0.18  25)
+    in-out property <color> status-stalled:     #6e8398;  // spec: oklch(0.60 0.04 250)
 
     // ── Spacing (sp-1 … sp-10) ──────────────────────────────────────
     in-out property <length> sp-1:  2px;
