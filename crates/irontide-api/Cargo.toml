@@ -79,3 +79,18 @@ reqwest = { version = "0.12", default-features = false, features = [
 # scopes to the test crate itself and drops `irontide_api` logs (the
 # actual subject of the Class C assertions).
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
+# v0.173.2: direct dev-dep on irontide-session (NOT via the irontide facade)
+# to activate the test-util feature without re-enabling the facade's default
+# crypto-aws-lc feature in test builds. Used only by qbt_v2_magnet_meta_propagation.rs
+# (the A9 HTTP integration test).
+irontide-session = { path = "../irontide-session", features = ["test-util"] }
+# v0.173.2: direct dev-deps on leaf crates referenced by the A9 helpers in
+# tests/common/mod.rs. `irontide-core` is NOT transitively accessible as a
+# crate name from the test binary (only reachable via the `irontide`
+# facade's re-exports, which aren't usable as `irontide_core::...` paths).
+# `irontide-core` keeps its default features (`crypto-aws-lc`) because
+# `sha1()` is `#[cfg]`-gated on the crypto backend and the feature is
+# already unified-on from the `irontide-api` → `irontide` → `irontide-core`
+# chain — no new feature surface.
+irontide-core = { path = "../irontide-core", version = "0.173.1" }
+irontide-bencode = { path = "../irontide-bencode", version = "0.173.1" }
