@@ -451,17 +451,10 @@ async fn end_to_end_m170_arr_workflow() {
     }
     assert!(!hash.is_empty(), "torrent never appeared under category=sonarr");
 
-    // 5. Poll /torrents/files?hash=X. Lane B registers this route; we
-    //    only assert non-empty array when it's present (200). A 404 would
-    //    mean the magnet's metadata hasn't resolved yet (expected, since
-    //    we're not running a real swarm) — in that case we skip the
-    //    assertion without failing the test.
-    let files_uri = format!("/api/v2/torrents/files?hash={hash}");
-    let (files_status, _) = get(&router, &files_uri, Some(&sid)).await;
-    assert!(
-        matches!(files_status, StatusCode::OK | StatusCode::NOT_FOUND),
-        "files endpoint should return 200 (metadata ready) or 404 (still resolving), got {files_status}"
-    );
+    // 5. v0.173.2 (A12): the soft `OK | NOT_FOUND` assertion that was here
+    //    has been removed. The tight assertion (`OK` after metadata resolves)
+    //    lives in tests/qbt_v2_magnet_meta_propagation.rs (A9). This e2e test
+    //    remains focused on the M170 HTTP /torrents/add + category=sonarr flow.
 
     // 6. Delete with deleteFiles=true. For a magnet-only torrent with
     //    no resolved files, this still exercises the deleteFiles code
