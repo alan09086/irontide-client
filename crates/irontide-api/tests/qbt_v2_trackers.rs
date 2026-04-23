@@ -198,9 +198,9 @@ async fn trackers_endpoint_pseudo_trackers_emitted_first() {
     let arr = v.as_array().expect("array");
     assert!(arr.len() >= 3);
     // Pseudo-trackers are always `tier = -1`.
-    for i in 0..3 {
+    for (i, entry) in arr.iter().enumerate().take(3) {
         assert_eq!(
-            arr[i]["tier"].as_i64().expect("tier i64"),
+            entry["tier"].as_i64().expect("tier i64"),
             -1,
             "pseudo-tracker {i} must have tier -1"
         );

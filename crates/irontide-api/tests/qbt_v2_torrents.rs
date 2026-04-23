@@ -193,7 +193,7 @@ async fn torrents_info_includes_all_torrents_by_default() {
     }
     let (_, body) = get(&router, "/api/v2/torrents/info", Some(&sid)).await;
     let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert!(v.as_array().unwrap().len() >= 1, "expected at least 1");
+    assert!(!v.as_array().unwrap().is_empty(), "expected at least 1");
 }
 
 #[tokio::test]
@@ -277,7 +277,7 @@ async fn torrents_properties_with_valid_hash_returns_superset_fields() {
     let hash = arr
         .as_array()
         .unwrap()
-        .get(0)
+        .first()
         .and_then(|t| t.get("hash"))
         .and_then(|h| h.as_str())
         .unwrap_or("")
