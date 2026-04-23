@@ -22,8 +22,8 @@ io-uring = ["irontide/io-uring"]
 iocp = ["irontide/iocp"]
 
 [dependencies]
-irontide = { path = "../irontide", version = "0.173.1", default-features = false }
-irontide-api = { path = "../irontide-api", version = "0.173.1" }
+irontide = { path = "../irontide", version = "0.173.2", default-features = false }
+irontide-api = { path = "../irontide-api", version = "0.173.2" }
 irontide-config = { workspace = true }
 irontide-format = { workspace = true }
 clap = { version = "4", features = ["derive"] }
