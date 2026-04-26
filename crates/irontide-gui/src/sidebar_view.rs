@@ -387,8 +387,7 @@ mod tests {
     fn integration_count_change_updates_label_only() {
         let mut counts = empty_counts();
         counts.library.insert(LibraryFilter::Downloading, 0);
-        let set_zero =
-            build_sidebar_rows(&counts, &[], &[], &SidebarPredicate::All);
+        let set_zero = build_sidebar_rows(&counts, &[], &[], &SidebarPredicate::All);
         let downloading_zero = set_zero
             .library
             .iter()
@@ -397,8 +396,7 @@ mod tests {
         assert_eq!(downloading_zero.count, 0);
 
         counts.library.insert(LibraryFilter::Downloading, 7);
-        let set_seven =
-            build_sidebar_rows(&counts, &[], &[], &SidebarPredicate::All);
+        let set_seven = build_sidebar_rows(&counts, &[], &[], &SidebarPredicate::All);
         let downloading_seven = set_seven
             .library
             .iter()
@@ -417,12 +415,7 @@ mod tests {
         let counts = empty_counts();
         let initial = build_sidebar_rows(&counts, &[], &[], &SidebarPredicate::All);
         assert_eq!(initial.categories.len(), 0);
-        let after = build_sidebar_rows(
-            &counts,
-            &["Linux".to_owned()],
-            &[],
-            &SidebarPredicate::All,
-        );
+        let after = build_sidebar_rows(&counts, &["Linux".to_owned()], &[], &SidebarPredicate::All);
         assert_eq!(after.categories.len(), 1);
         assert_eq!(after.categories[0].label, "Linux");
         assert_eq!(after.categories[0].token, "category:Linux");

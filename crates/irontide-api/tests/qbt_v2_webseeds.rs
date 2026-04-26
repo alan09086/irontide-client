@@ -27,11 +27,9 @@ static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 fn fresh_paths() -> (PathBuf, PathBuf) {
     let n = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
-    let resume_dir = std::env::temp_dir().join(format!(
-        "irontide-qbt-v2-webseeds-resume-{pid}-{n}"
-    ));
-    let reg_path =
-        std::env::temp_dir().join(format!("irontide-qbt-v2-webseeds-{pid}-{n}.toml"));
+    let resume_dir =
+        std::env::temp_dir().join(format!("irontide-qbt-v2-webseeds-resume-{pid}-{n}"));
+    let reg_path = std::env::temp_dir().join(format!("irontide-qbt-v2-webseeds-{pid}-{n}.toml"));
     let _ = std::fs::remove_dir_all(&resume_dir);
     let _ = std::fs::remove_file(&reg_path);
     (resume_dir, reg_path)
@@ -235,12 +233,7 @@ async fn webseeds_endpoint_unknown_hash_returns_404() {
     let router = build_router(session.clone());
     let sid = login(&router).await;
 
-    let (status, _) = get_webseeds(
-        &router,
-        "0123456789abcdef0123456789abcdef01234567",
-        &sid,
-    )
-    .await;
+    let (status, _) = get_webseeds(&router, "0123456789abcdef0123456789abcdef01234567", &sid).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 

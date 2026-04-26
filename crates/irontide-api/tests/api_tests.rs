@@ -30,11 +30,8 @@ static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 /// directory so parallel tests cannot collide in the shared XDG state dir.
 async fn test_session() -> irontide::session::SessionHandle {
     let n = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let resume_dir = std::env::temp_dir().join(format!(
-        "irontide-api-test-{}-{}",
-        std::process::id(),
-        n
-    ));
+    let resume_dir =
+        std::env::temp_dir().join(format!("irontide-api-test-{}-{}", std::process::id(), n));
     // Ensure the directory is empty so earlier runs cannot contaminate us.
     let _ = std::fs::remove_dir_all(&resume_dir);
 
@@ -1050,10 +1047,7 @@ async fn test_add_magnet_valid() {
         .clone()
         .oneshot(
             Request::post("/webui/add-magnet")
-                .header(
-                    header::CONTENT_TYPE,
-                    "application/x-www-form-urlencoded",
-                )
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                 .body(Body::from(form_body))
                 .expect("build request"),
         )
@@ -1077,20 +1071,14 @@ async fn test_add_magnet_invalid() {
     let form_body = "uri=not-a-magnet";
 
     let req = Request::post("/webui/add-magnet")
-        .header(
-            header::CONTENT_TYPE,
-            "application/x-www-form-urlencoded",
-        )
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
         .body(Body::from(form_body))
         .expect("build request");
     let (status, body) = request(&router, req).await;
 
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     let text = String::from_utf8_lossy(&body);
-    assert!(
-        !text.is_empty(),
-        "error response body should not be empty"
-    );
+    assert!(!text.is_empty(), "error response body should not be empty");
 }
 
 #[tokio::test]

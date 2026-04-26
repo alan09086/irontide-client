@@ -552,7 +552,10 @@ impl SkinSettings {
             .as_deref()
             .map_or(RadiusPreset::default(), |s| {
                 s.parse::<RadiusPreset>().unwrap_or_else(|_| {
-                    tracing::warn!(invalid = s, "unknown radius preset in config, using default");
+                    tracing::warn!(
+                        invalid = s,
+                        "unknown radius preset in config, using default"
+                    );
                     RadiusPreset::default()
                 })
             });
@@ -833,14 +836,8 @@ mod tests {
 
                         // Palette should match the codegen table.
                         let p = s.palette();
-                        assert_eq!(
-                            r.bg_0, p.bg_0,
-                            "bg_0 mismatch for {skin:?}/{theme:?}"
-                        );
-                        assert_eq!(
-                            r.accent, p.accent,
-                            "accent mismatch for {skin:?}/{theme:?}"
-                        );
+                        assert_eq!(r.bg_0, p.bg_0, "bg_0 mismatch for {skin:?}/{theme:?}");
+                        assert_eq!(r.accent, p.accent, "accent mismatch for {skin:?}/{theme:?}");
 
                         // Spacing should be resolution-independent.
                         assert_eq!(r.sp_1, 2.0);

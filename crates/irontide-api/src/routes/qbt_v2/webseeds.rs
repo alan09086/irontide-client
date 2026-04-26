@@ -28,8 +28,8 @@ pub async fn list(
     State(state): State<QbtState>,
     Query(q): Query<HashQuery>,
 ) -> Result<QbtResponse, QbtError> {
-    let id = Id20::from_hex(&q.hash)
-        .map_err(|e| QbtError::BadRequest(format!("invalid hash: {e}")))?;
+    let id =
+        Id20::from_hex(&q.hash).map_err(|e| QbtError::BadRequest(format!("invalid hash: {e}")))?;
 
     let urls = state
         .session

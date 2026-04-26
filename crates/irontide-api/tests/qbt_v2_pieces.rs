@@ -27,11 +27,8 @@ static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 fn fresh_paths() -> (PathBuf, PathBuf) {
     let n = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
-    let resume_dir = std::env::temp_dir().join(format!(
-        "irontide-qbt-v2-pieces-resume-{pid}-{n}"
-    ));
-    let reg_path =
-        std::env::temp_dir().join(format!("irontide-qbt-v2-pieces-{pid}-{n}.toml"));
+    let resume_dir = std::env::temp_dir().join(format!("irontide-qbt-v2-pieces-resume-{pid}-{n}"));
+    let reg_path = std::env::temp_dir().join(format!("irontide-qbt-v2-pieces-{pid}-{n}.toml"));
     let _ = std::fs::remove_dir_all(&resume_dir);
     let _ = std::fs::remove_file(&reg_path);
     (resume_dir, reg_path)
@@ -201,17 +198,13 @@ async fn piece_states_404_pre_metadata() {
     // Submit a well-formed magnet URI. Because enable_dht/lsd/pex are
     // all disabled in the test settings, metadata will never resolve
     // for the duration of the test.
-    let magnet =
-        "magnet:?xt=urn:btih:aabbccddeeff00112233445566778899aabbccdd&dn=nometa";
+    let magnet = "magnet:?xt=urn:btih:aabbccddeeff00112233445566778899aabbccdd&dn=nometa";
     let params = SessionAddTorrentParams::magnet(magnet);
     let hash = session.add_torrent(params).await.expect("add magnet");
 
     let (status, _) = get_json(
         &router,
-        &format!(
-            "/api/v2/torrents/pieceStates?hash={}",
-            hash.to_hex()
-        ),
+        &format!("/api/v2/torrents/pieceStates?hash={}", hash.to_hex()),
         &sid,
     )
     .await;
@@ -303,13 +296,10 @@ async fn piece_hashes_v1_returns_40_char_sha1_hex() {
 
     for (i, entry) in arr.iter().enumerate() {
         let s = entry.as_str().expect("hash string");
-        assert_eq!(
-            s.len(),
-            40,
-            "piece {i}: v1 hash must be 40-char SHA-1 hex"
-        );
+        assert_eq!(s.len(), 40, "piece {i}: v1 hash must be 40-char SHA-1 hex");
         assert!(
-            s.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
+            s.chars()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
             "piece {i}: hash must be lowercase hex: {s}"
         );
         assert_eq!(
@@ -369,7 +359,11 @@ async fn piece_hashes_default_limit_includes_small_torrent() {
     .await;
     assert_eq!(status, StatusCode::OK);
     let arr = v.as_array().expect("array");
-    assert_eq!(arr.len(), 100, "100-piece torrent fits under default 4096 cap");
+    assert_eq!(
+        arr.len(),
+        100,
+        "100-piece torrent fits under default 4096 cap"
+    );
 }
 
 #[tokio::test]

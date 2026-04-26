@@ -23,9 +23,7 @@ pub enum QbtResponse {
     Json(serde_json::Value),
     /// A 200 `Ok.` body with an optional `Set-Cookie` header. Used by
     /// `auth/login` (with cookie) and `auth/logout` (without).
-    Ok {
-        set_cookie: Option<String>,
-    },
+    Ok { set_cookie: Option<String> },
 }
 
 impl QbtResponse {
@@ -129,7 +127,7 @@ impl IntoResponse for QbtError {
 /// Convenience: serialise any `Serialize` value straight into a `QbtResponse::Json`.
 #[allow(dead_code)]
 pub fn json_ok<T: Serialize>(value: &T) -> Result<QbtResponse, QbtError> {
-    let v = serde_json::to_value(value)
-        .map_err(|e| QbtError::Internal(format!("serialise: {e}")))?;
+    let v =
+        serde_json::to_value(value).map_err(|e| QbtError::Internal(format!("serialise: {e}")))?;
     Ok(QbtResponse::Json(v))
 }

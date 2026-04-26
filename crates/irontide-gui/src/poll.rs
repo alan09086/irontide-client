@@ -151,10 +151,8 @@ pub async fn poll_loop(
         // Filter (M173 Lane A) then sort. The enricher reaches into the
         // pre-built rich slice so the predicate can match against
         // `error` / `category` / `tags` / tracker buckets.
-        let rich_by_hash: std::collections::HashMap<&str, &RowView> = rich
-            .iter()
-            .map(|r| (r.info_hash.as_str(), r))
-            .collect();
+        let rich_by_hash: std::collections::HashMap<&str, &RowView> =
+            rich.iter().map(|r| (r.info_hash.as_str(), r)).collect();
         let mut sorted = apply_predicate(&summaries, &predicate, |s| {
             rich_by_hash
                 .get(s.info_hash.as_str())
@@ -197,10 +195,7 @@ pub async fn poll_loop(
         // can route the diff to a `row_changed`-style incremental
         // update on the Slint sidebar models.
         let _ = tracker_index.update(&rich);
-        let counts = tracker_index
-            .snapshot()
-            .cloned()
-            .unwrap_or_default();
+        let counts = tracker_index.snapshot().cloned().unwrap_or_default();
         let category_names: Vec<String> = session
             .list_categories()
             .await
@@ -411,10 +406,7 @@ fn to_slint_row(s: &TorrentSummary, selected: &HashSet<String>) -> crate::Torren
         peers: SharedString::from(s.num_peers.to_string()),
         eta: SharedString::from(crate::format::format_eta(remaining, s.download_rate)),
         state: if s.state == TorrentState::Checking {
-            SharedString::from(format!(
-                "checking ({:.1}%)",
-                s.checking_progress * 100.0
-            ))
+            SharedString::from(format!("checking ({:.1}%)", s.checking_progress * 100.0))
         } else {
             SharedString::from(crate::format::format_state(&s.state, s.user_seed_mode))
         },

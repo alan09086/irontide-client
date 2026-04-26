@@ -312,9 +312,7 @@ async fn trackers_fragment_renders_force_reannounce_button_even_when_empty() {
         "Force Reannounce button must be present: {text}"
     );
     assert!(
-        text.contains(&format!(
-            r#"hx-post="/webui/torrents/{hash}/reannounce""#
-        )),
+        text.contains(&format!(r#"hx-post="/webui/torrents/{hash}/reannounce""#)),
         "Force Reannounce form must target the reannounce endpoint: {text}"
     );
 }
@@ -322,9 +320,11 @@ async fn trackers_fragment_renders_force_reannounce_button_even_when_empty() {
 #[tokio::test]
 async fn trackers_fragment_unknown_hash_returns_404() {
     let (router, _tempdir) = test_router_isolated().await;
-    let req = Request::get(format!("/webui/fragments/torrent/{NONEXISTENT_HASH}/trackers"))
-        .body(Body::empty())
-        .expect("build request");
+    let req = Request::get(format!(
+        "/webui/fragments/torrent/{NONEXISTENT_HASH}/trackers"
+    ))
+    .body(Body::empty())
+    .expect("build request");
     let response = router
         .clone()
         .oneshot(req)

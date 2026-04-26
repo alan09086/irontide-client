@@ -31,13 +31,10 @@ struct Fixtures {
 fn fresh_fixtures(tag: &str) -> Fixtures {
     let n = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
-    let resume_dir = std::env::temp_dir().join(format!(
-        "irontide-qbt-v2-del-{tag}-resume-{pid}-{n}"
-    ));
-    let reg_path =
-        std::env::temp_dir().join(format!("irontide-qbt-v2-del-{tag}-{pid}-{n}.toml"));
-    let download_dir = std::env::temp_dir()
-        .join(format!("irontide-qbt-v2-del-{tag}-dl-{pid}-{n}"));
+    let resume_dir =
+        std::env::temp_dir().join(format!("irontide-qbt-v2-del-{tag}-resume-{pid}-{n}"));
+    let reg_path = std::env::temp_dir().join(format!("irontide-qbt-v2-del-{tag}-{pid}-{n}.toml"));
+    let download_dir = std::env::temp_dir().join(format!("irontide-qbt-v2-del-{tag}-dl-{pid}-{n}"));
     let _ = std::fs::remove_dir_all(&resume_dir);
     let _ = std::fs::remove_file(&reg_path);
     let _ = std::fs::remove_dir_all(&download_dir);
@@ -122,11 +119,7 @@ struct TestInfoSingle {
 /// Build a single-file torrent whose pieces hash `data` byte-for-byte.
 /// Writes the raw data into `download_dir/name` so the session's initial
 /// recheck sees a complete file and avoids waiting on peers.
-fn make_single_file_torrent(
-    data: &[u8],
-    piece_length: u64,
-    name: &str,
-) -> Vec<u8> {
+fn make_single_file_torrent(data: &[u8], piece_length: u64, name: &str) -> Vec<u8> {
     let mut pieces = Vec::new();
     for chunk in data.chunks(piece_length as usize) {
         let h = irontide::core::sha1(chunk);

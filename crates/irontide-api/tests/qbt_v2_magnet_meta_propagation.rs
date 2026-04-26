@@ -19,9 +19,7 @@ use irontide_api::routes::build_router;
 async fn fresh_session() -> (SessionHandle, std::path::PathBuf) {
     let (mut settings, dl_dir) = make_test_settings("qbt-v2-mp");
     settings.qbt_compat.enabled = true;
-    let session = SessionHandle::start(settings)
-        .await
-        .expect("start session");
+    let session = SessionHandle::start(settings).await.expect("start session");
     (session, dl_dir)
 }
 
@@ -54,7 +52,13 @@ async fn get(router: &axum::Router, uri: &str, cookie: &str) -> (StatusCode, Vec
         .expect("build GET");
     let resp = router.clone().oneshot(req).await.expect("GET");
     let status = resp.status();
-    let body = resp.into_body().collect().await.expect("drain").to_bytes().to_vec();
+    let body = resp
+        .into_body()
+        .collect()
+        .await
+        .expect("drain")
+        .to_bytes()
+        .to_vec();
     (status, body)
 }
 
@@ -67,18 +71,22 @@ async fn post(router: &axum::Router, uri: &str, cookie: &str) -> (StatusCode, Ve
         .expect("build POST");
     let resp = router.clone().oneshot(req).await.expect("POST");
     let status = resp.status();
-    let body = resp.into_body().collect().await.expect("drain").to_bytes().to_vec();
+    let body = resp
+        .into_body()
+        .collect()
+        .await
+        .expect("drain")
+        .to_bytes()
+        .to_vec();
     (status, body)
 }
 
 #[tokio::test]
 async fn magnet_files_endpoint_200_after_metadata_resolves() {
     let (session, _dl) = fresh_session().await;
-    let hash = inject_magnet_and_resolve_meta(
-        &session,
-        "archlinux-2026.04.01-x86_64.iso",
-        1_536_851_968,
-    ).await;
+    let hash =
+        inject_magnet_and_resolve_meta(&session, "archlinux-2026.04.01-x86_64.iso", 1_536_851_968)
+            .await;
 
     let router = build_router(session);
     let sid = login(&router).await;
@@ -86,25 +94,27 @@ async fn magnet_files_endpoint_200_after_metadata_resolves() {
         &router,
         &format!("/api/v2/torrents/files?hash={}", hash.to_hex()),
         &sid,
-    ).await;
+    )
+    .await;
     assert_eq!(
-        status, StatusCode::OK,
+        status,
+        StatusCode::OK,
         "/files must return 200 for magnet-added torrents post-metadata; body={:?}",
         String::from_utf8_lossy(&body)
     );
     let files: Vec<serde_json::Value> = serde_json::from_slice(&body).expect("json");
     assert_eq!(files.len(), 1);
-    assert_eq!(files[0]["name"].as_str(), Some("archlinux-2026.04.01-x86_64.iso"));
+    assert_eq!(
+        files[0]["name"].as_str(),
+        Some("archlinux-2026.04.01-x86_64.iso")
+    );
 }
 
 #[tokio::test]
 async fn magnet_delete_files_actually_removes_files() {
     let (session, dl_dir) = fresh_session().await;
-    let hash = inject_magnet_and_resolve_meta(
-        &session,
-        "archlinux-2026.04.01-x86_64.iso",
-        16_384,
-    ).await;
+    let hash =
+        inject_magnet_and_resolve_meta(&session, "archlinux-2026.04.01-x86_64.iso", 16_384).await;
     let target = dl_dir.join("archlinux-2026.04.01-x86_64.iso");
     std::fs::write(&target, b"pretend-this-is-an-iso").expect("write fixture");
     assert!(target.exists());
@@ -113,9 +123,13 @@ async fn magnet_delete_files_actually_removes_files() {
     let sid = login(&router).await;
     let (status, _) = post(
         &router,
-        &format!("/api/v2/torrents/delete?hashes={}&deleteFiles=true", hash.to_hex()),
+        &format!(
+            "/api/v2/torrents/delete?hashes={}&deleteFiles=true",
+            hash.to_hex()
+        ),
         &sid,
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
 
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;

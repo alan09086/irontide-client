@@ -28,14 +28,12 @@ static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 fn fresh_paths(tag: &str) -> (PathBuf, PathBuf, PathBuf) {
     let n = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
-    let resume_dir = std::env::temp_dir().join(format!(
-        "irontide-qbt-v2-addcat-{tag}-resume-{pid}-{n}"
-    ));
-    let reg_path = std::env::temp_dir()
-        .join(format!("irontide-qbt-v2-addcat-{tag}-{pid}-{n}.toml"));
-    let default_dl = std::env::temp_dir().join(format!(
-        "irontide-qbt-v2-addcat-{tag}-default-{pid}-{n}"
-    ));
+    let resume_dir =
+        std::env::temp_dir().join(format!("irontide-qbt-v2-addcat-{tag}-resume-{pid}-{n}"));
+    let reg_path =
+        std::env::temp_dir().join(format!("irontide-qbt-v2-addcat-{tag}-{pid}-{n}.toml"));
+    let default_dl =
+        std::env::temp_dir().join(format!("irontide-qbt-v2-addcat-{tag}-default-{pid}-{n}"));
     let _ = std::fs::remove_dir_all(&resume_dir);
     let _ = std::fs::remove_file(&reg_path);
     let _ = std::fs::remove_dir_all(&default_dl);
@@ -43,7 +41,11 @@ fn fresh_paths(tag: &str) -> (PathBuf, PathBuf, PathBuf) {
     (resume_dir, reg_path, default_dl)
 }
 
-async fn session_with_default(default_dl: PathBuf, resume_dir: PathBuf, reg_path: PathBuf) -> SessionHandle {
+async fn session_with_default(
+    default_dl: PathBuf,
+    resume_dir: PathBuf,
+    reg_path: PathBuf,
+) -> SessionHandle {
     let mut settings = Settings {
         listen_port: 0,
         download_dir: default_dl,
@@ -235,7 +237,10 @@ async fn add_with_savepath_wins_over_category() {
         .get("save_path")
         .and_then(Value::as_str)
         .unwrap_or("");
-    assert_eq!(sp, explicit, "explicit savepath must beat category save_path");
+    assert_eq!(
+        sp, explicit,
+        "explicit savepath must beat category save_path"
+    );
 
     // The category label is still recorded on the torrent.
     for _ in 0..50 {

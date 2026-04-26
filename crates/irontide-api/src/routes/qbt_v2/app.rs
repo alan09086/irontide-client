@@ -260,9 +260,7 @@ pub async fn set_preferences(
         .map_err(|e| match e {
             // M173 Lane B (B11): concurrent setPreferences hit the
             // in-flight guard. qBt clients can retry shortly.
-            irontide::session::Error::ConcurrentReconfig => {
-                QbtError::Conflict(e.to_string())
-            }
+            irontide::session::Error::ConcurrentReconfig => QbtError::Conflict(e.to_string()),
             _ => QbtError::Internal(format!("apply settings: {e}")),
         })?;
 
@@ -640,8 +638,8 @@ mod tests {
             ..QbtPreferencesPatch::default()
         };
         let mut settings = Settings::default();
-        let err = apply_preferences_patch(&mut settings, patch)
-            .expect_err("NaN max_ratio must fail");
+        let err =
+            apply_preferences_patch(&mut settings, patch).expect_err("NaN max_ratio must fail");
         assert!(
             matches!(err, QbtError::BadRequest(ref m) if m.contains("NaN")),
             "expected BadRequest(NaN); got {err:?}"
@@ -681,8 +679,7 @@ mod tests {
 
     #[test]
     fn max_ratio_act_invalid_slug_is_rejected() {
-        let err =
-            apply(r#"{"max_ratio_act":"pulverise"}"#).expect_err("unknown slug must fail");
+        let err = apply(r#"{"max_ratio_act":"pulverise"}"#).expect_err("unknown slug must fail");
         assert!(matches!(err, QbtError::BadRequest(_)));
     }
 
@@ -695,7 +692,10 @@ mod tests {
             .expect_err("invalid CIDR must fail");
         match err {
             QbtError::BadRequest(msg) => {
-                assert!(msg.contains("not-a-cidr"), "error must name the bad entry; got {msg}");
+                assert!(
+                    msg.contains("not-a-cidr"),
+                    "error must name the bad entry; got {msg}"
+                );
             }
             other => panic!("expected BadRequest, got {other:?}"),
         }

@@ -26,9 +26,7 @@ static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 fn fresh_paths() -> (PathBuf, PathBuf) {
     let n = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
-    let resume_dir = std::env::temp_dir().join(format!(
-        "irontide-qbt-v2-b5-resume-{pid}-{n}"
-    ));
+    let resume_dir = std::env::temp_dir().join(format!("irontide-qbt-v2-b5-resume-{pid}-{n}"));
     let reg_path = std::env::temp_dir().join(format!("irontide-qbt-v2-b5-{pid}-{n}.toml"));
     let _ = std::fs::remove_dir_all(&resume_dir);
     let _ = std::fs::remove_file(&reg_path);

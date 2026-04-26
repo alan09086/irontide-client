@@ -275,8 +275,9 @@ impl AppState {
             }
             // `All` is the cold-start default — no need to persist.
             // `And` is composed at runtime and has no canonical token.
-            crate::sidebar::SidebarPredicate::All
-            | crate::sidebar::SidebarPredicate::And(_, _) => None,
+            crate::sidebar::SidebarPredicate::All | crate::sidebar::SidebarPredicate::And(_, _) => {
+                None
+            }
         };
         irontide_config::SidebarConfig {
             library_collapsed: Some(self.sidebar_library_collapsed),
@@ -826,9 +827,8 @@ mod tests {
         assert_eq!(state.predicate, crate::sidebar::SidebarPredicate::All);
         assert!(!state.sidebar_dirty);
 
-        let new_pred = crate::sidebar::SidebarPredicate::Library(
-            crate::sidebar::LibraryFilter::Paused,
-        );
+        let new_pred =
+            crate::sidebar::SidebarPredicate::Library(crate::sidebar::LibraryFilter::Paused);
         let changed = state.set_predicate(new_pred.clone());
         assert!(changed);
         assert_eq!(state.predicate, new_pred);

@@ -83,11 +83,7 @@ async fn pause_existing_torrent_emits_hx_trigger() {
         .expect("build pause request");
     let response = router.clone().oneshot(req).await.expect("pause");
 
-    assert_eq!(
-        response.status(),
-        StatusCode::OK,
-        "pause should return 200"
-    );
+    assert_eq!(response.status(), StatusCode::OK, "pause should return 200");
     let hx = response
         .headers()
         .get("HX-Trigger")
@@ -409,7 +405,11 @@ async fn settings_fragment_renders_current_values() {
     let req = Request::get("/webui/fragments/settings")
         .body(Body::empty())
         .expect("build settings fragment request");
-    let response = router.clone().oneshot(req).await.expect("settings fragment");
+    let response = router
+        .clone()
+        .oneshot(req)
+        .await
+        .expect("settings fragment");
     assert_eq!(response.status(), StatusCode::OK);
 
     let body = response
@@ -456,7 +456,11 @@ async fn fetch_settings_fragment(router: &axum::Router) -> String {
     let req = Request::get("/webui/fragments/settings")
         .body(Body::empty())
         .expect("build settings fragment request");
-    let response = router.clone().oneshot(req).await.expect("settings fragment");
+    let response = router
+        .clone()
+        .oneshot(req)
+        .await
+        .expect("settings fragment");
     let body = response
         .into_body()
         .collect()
@@ -483,10 +487,7 @@ async fn patch_settings_round_trips_max_torrents() {
     let req = Request::builder()
         .method("PATCH")
         .uri("/webui/settings")
-        .header(
-            header::CONTENT_TYPE,
-            "application/x-www-form-urlencoded",
-        )
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
         .body(Body::from(settings_form_body(42)))
         .expect("build patch request");
     let response = router.clone().oneshot(req).await.expect("patch settings");
@@ -519,10 +520,7 @@ async fn patch_settings_checkbox_absence_disables_flag() {
     let req = Request::builder()
         .method("PATCH")
         .uri("/webui/settings")
-        .header(
-            header::CONTENT_TYPE,
-            "application/x-www-form-urlencoded",
-        )
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
         .body(Body::from(body))
         .expect("build patch request");
     let response = router.clone().oneshot(req).await.expect("patch");
@@ -549,10 +547,7 @@ async fn patch_settings_malformed_body_returns_error_fragment() {
     let req = Request::builder()
         .method("PATCH")
         .uri("/webui/settings")
-        .header(
-            header::CONTENT_TYPE,
-            "application/x-www-form-urlencoded",
-        )
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
         .body(Body::from("listen_port=abc"))
         .expect("build patch request");
     let response = router.clone().oneshot(req).await.expect("patch");

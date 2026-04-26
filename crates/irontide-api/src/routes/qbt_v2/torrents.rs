@@ -112,10 +112,7 @@ pub(super) async fn extract_hashes_params(
     if !bytes.is_empty() {
         let body_parsed: HashesQuery = serde_urlencoded::from_bytes(&bytes)
             .map_err(|e| QbtError::BadRequest(format!("parse body: {e}")))?;
-        let has_hashes = body_parsed
-            .hashes
-            .as_deref()
-            .is_some_and(|s| !s.is_empty());
+        let has_hashes = body_parsed.hashes.as_deref().is_some_and(|s| !s.is_empty());
         let has_delete = body_parsed
             .delete_files
             .as_deref()
@@ -284,8 +281,8 @@ pub async fn properties(
     State(state): State<QbtState>,
     Query(q): Query<HashQuery>,
 ) -> Result<QbtResponse, QbtError> {
-    let id = Id20::from_hex(&q.hash)
-        .map_err(|e| QbtError::BadRequest(format!("invalid hash: {e}")))?;
+    let id =
+        Id20::from_hex(&q.hash).map_err(|e| QbtError::BadRequest(format!("invalid hash: {e}")))?;
     let stats = match state.session.torrent_stats(id).await {
         Ok(s) => s,
         Err(_) => return Err(QbtError::NotFound),
@@ -484,9 +481,9 @@ fn apply_form_knobs(
 async fn add_one(state: &QbtState, params: SessionAddTorrentParams) -> Result<(), QbtError> {
     match state.session.add_torrent(params).await {
         Ok(_) => Ok(()),
-        Err(irontide::session::Error::CategoryNotFound(name)) => Err(QbtError::Conflict(
-            format!("category '{name}' does not exist"),
-        )),
+        Err(irontide::session::Error::CategoryNotFound(name)) => Err(QbtError::Conflict(format!(
+            "category '{name}' does not exist"
+        ))),
         Err(irontide::session::Error::TorrentBeingRemoved(_)) => Err(QbtError::Conflict(
             "torrent is being removed, try again".into(),
         )),
@@ -750,4 +747,3 @@ mod tests {
         assert!(matches!(err, QbtError::BadRequest(_)));
     }
 }
-

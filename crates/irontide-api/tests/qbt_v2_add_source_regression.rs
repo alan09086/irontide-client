@@ -29,11 +29,10 @@ static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 fn fresh_paths(tag: &str) -> (PathBuf, PathBuf) {
     let n = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
-    let resume_dir = std::env::temp_dir().join(format!(
-        "irontide-qbt-v2-regression-{tag}-resume-{pid}-{n}"
-    ));
-    let reg_path = std::env::temp_dir()
-        .join(format!("irontide-qbt-v2-regression-{tag}-{pid}-{n}.toml"));
+    let resume_dir =
+        std::env::temp_dir().join(format!("irontide-qbt-v2-regression-{tag}-resume-{pid}-{n}"));
+    let reg_path =
+        std::env::temp_dir().join(format!("irontide-qbt-v2-regression-{tag}-{pid}-{n}.toml"));
     let _ = std::fs::remove_dir_all(&resume_dir);
     let _ = std::fs::remove_file(&reg_path);
     (resume_dir, reg_path)
@@ -125,7 +124,10 @@ async fn session_handle_add_magnet_uri_still_works() {
     // is uncategorised and uses Settings.download_dir.
     let id = hashes.v1.unwrap();
     let stats = session.torrent_stats(id).await.expect("stats");
-    assert!(stats.category.is_none(), "legacy path must not assign a category");
+    assert!(
+        stats.category.is_none(),
+        "legacy path must not assign a category"
+    );
     assert_eq!(stats.save_path, "/tmp");
 }
 
@@ -201,5 +203,9 @@ async fn qbt_v2_add_magnet_form_without_optional_fields_still_works() {
         .body(Body::from(body))
         .expect("build POST");
     let resp = router.clone().oneshot(req).await.expect("qbt add");
-    assert_eq!(resp.status(), StatusCode::OK, "bare magnet add must succeed");
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "bare magnet add must succeed"
+    );
 }

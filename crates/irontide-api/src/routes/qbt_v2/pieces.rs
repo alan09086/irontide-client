@@ -52,8 +52,8 @@ pub async fn states(
     State(state): State<QbtState>,
     Query(q): Query<HashQuery>,
 ) -> Result<QbtResponse, QbtError> {
-    let id = Id20::from_hex(&q.hash)
-        .map_err(|e| QbtError::BadRequest(format!("invalid hash: {e}")))?;
+    let id =
+        Id20::from_hex(&q.hash).map_err(|e| QbtError::BadRequest(format!("invalid hash: {e}")))?;
 
     let states = state
         .session
@@ -68,10 +68,9 @@ pub async fn states(
         return Err(QbtError::NotFound);
     }
 
-    Ok(QbtResponse::Json(
-        serde_json::to_value(&states)
-            .map_err(|e| QbtError::Internal(format!("serialise: {e}")))?,
-    ))
+    Ok(QbtResponse::Json(serde_json::to_value(&states).map_err(
+        |e| QbtError::Internal(format!("serialise: {e}")),
+    )?))
 }
 
 /// `GET /api/v2/torrents/pieceHashes?hash=X&offset=...&limit=...`.
@@ -90,8 +89,8 @@ pub async fn hashes(
     State(state): State<QbtState>,
     Query(q): Query<PieceHashesQuery>,
 ) -> Result<QbtResponse, QbtError> {
-    let id = Id20::from_hex(&q.hash)
-        .map_err(|e| QbtError::BadRequest(format!("invalid hash: {e}")))?;
+    let id =
+        Id20::from_hex(&q.hash).map_err(|e| QbtError::BadRequest(format!("invalid hash: {e}")))?;
     let offset = q.offset.unwrap_or(0);
     let limit = q
         .limit
@@ -110,10 +109,9 @@ pub async fn hashes(
         .await
         .map_err(|_| QbtError::NotFound)?;
 
-    Ok(QbtResponse::Json(
-        serde_json::to_value(&hashes)
-            .map_err(|e| QbtError::Internal(format!("serialise: {e}")))?,
-    ))
+    Ok(QbtResponse::Json(serde_json::to_value(&hashes).map_err(
+        |e| QbtError::Internal(format!("serialise: {e}")),
+    )?))
 }
 
 #[cfg(test)]

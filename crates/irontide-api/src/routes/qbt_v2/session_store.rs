@@ -79,9 +79,7 @@ impl SessionStore {
     /// Generate a cryptographically secure token (24 bytes → URL-safe base64).
     fn generate_sid(&self) -> Result<String, RandomSourceError> {
         let mut buf = [0u8; SID_RAW_LEN];
-        self.rng
-            .fill(&mut buf)
-            .map_err(|_| RandomSourceError)?;
+        self.rng.fill(&mut buf).map_err(|_| RandomSourceError)?;
         Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(buf))
     }
 
@@ -253,7 +251,8 @@ mod tests {
             assert_eq!(sid.len(), 32, "got: {sid}");
             // All chars must be URL-safe base64 alphabet (no +, /, or =).
             assert!(
-                sid.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
+                sid.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
                 "non-base64-url char: {sid}"
             );
             assert!(seen.insert(sid.clone()), "duplicate token: {sid}");

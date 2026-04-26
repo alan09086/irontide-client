@@ -28,11 +28,8 @@ static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 fn fresh_paths() -> (PathBuf, PathBuf) {
     let n = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
-    let resume_dir = std::env::temp_dir().join(format!(
-        "irontide-qbt-v2-props-resume-{pid}-{n}"
-    ));
-    let reg_path =
-        std::env::temp_dir().join(format!("irontide-qbt-v2-props-{pid}-{n}.toml"));
+    let resume_dir = std::env::temp_dir().join(format!("irontide-qbt-v2-props-resume-{pid}-{n}"));
+    let reg_path = std::env::temp_dir().join(format!("irontide-qbt-v2-props-{pid}-{n}.toml"));
     let _ = std::fs::remove_dir_all(&resume_dir);
     let _ = std::fs::remove_file(&reg_path);
     (resume_dir, reg_path)
@@ -123,7 +120,12 @@ struct TestInfo {
 /// Build a minimal single-file torrent. `piece_length` is configurable so
 /// tests can verify that `piece_size` in the response reflects the real
 /// value (not the ~1KB block size we used to mistakenly report).
-fn make_torrent(name: &str, piece_length: u64, created_by: Option<&str>, creation_date: Option<i64>) -> Vec<u8> {
+fn make_torrent(
+    name: &str,
+    piece_length: u64,
+    created_by: Option<&str>,
+    creation_date: Option<i64>,
+) -> Vec<u8> {
     // File size must be a non-trivial multiple of piece_length so the
     // SHA-1 piece count is deterministic; we use 2 full pieces.
     let data = vec![0xCD_u8; (piece_length as usize) * 2];

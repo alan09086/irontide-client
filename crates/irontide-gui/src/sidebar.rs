@@ -319,11 +319,7 @@ impl RowView {
     #[must_use]
     pub fn from_stats(stats: &TorrentStats) -> Self {
         Self {
-            info_hash: stats
-                .info_hashes
-                .v1
-                .map(|h| h.to_hex())
-                .unwrap_or_default(),
+            info_hash: stats.info_hashes.v1.map(|h| h.to_hex()).unwrap_or_default(),
             state: stats.state,
             progress: f64::from(stats.progress),
             download_rate: stats.download_rate,
@@ -727,7 +723,11 @@ fn diff_counts(prev: &SectionCounts, next: &SectionCounts) -> Vec<SectionChange>
     }
 
     // Categories: union of prev + next keys, classify per change kind.
-    let cat_keys: HashSet<&String> = prev.categories.keys().chain(next.categories.keys()).collect();
+    let cat_keys: HashSet<&String> = prev
+        .categories
+        .keys()
+        .chain(next.categories.keys())
+        .collect();
     for cat in cat_keys {
         let old = prev.categories.get(cat).copied().unwrap_or(0);
         let new = next.categories.get(cat).copied().unwrap_or(0);
@@ -984,8 +984,8 @@ mod tests {
         let mut r = row(TorrentState::Downloading, 0.5);
         r.download_rate = 100;
         r.category = Some("Linux".into());
-        let pred =
-            SidebarPredicate::Library(LibraryFilter::Downloading).and(SidebarPredicate::Category("Linux".into()));
+        let pred = SidebarPredicate::Library(LibraryFilter::Downloading)
+            .and(SidebarPredicate::Category("Linux".into()));
         assert!(pred.matches(&r));
 
         // Wrong category breaks the AND.
@@ -1053,7 +1053,12 @@ mod tests {
         let paused = row(TorrentState::Paused, 0.4);
         let errored = row(TorrentState::Downloading, 0.5).with_error("oh no");
 
-        let rows = vec![downloading.clone(), seeding.clone(), paused.clone(), errored.clone()];
+        let rows = vec![
+            downloading.clone(),
+            seeding.clone(),
+            paused.clone(),
+            errored.clone(),
+        ];
         let c = library_counts(&rows);
         assert_eq!(c[&LibraryFilter::All], 4);
         // Downloading: the active downloader + the errored one.
@@ -1204,7 +1209,10 @@ mod tests {
         let _ = idx.update(&rows); // prime
         let second = idx.update(&rows);
         // Identical inputs → empty diff.
-        assert!(second.is_empty(), "expected no-op tick to emit zero changes, got: {second:?}");
+        assert!(
+            second.is_empty(),
+            "expected no-op tick to emit zero changes, got: {second:?}"
+        );
     }
 
     #[test]
@@ -1230,14 +1238,29 @@ mod tests {
 
         let library_movers: Vec<&SectionChange> = changes
             .iter()
-            .filter(|c| matches!(c, SectionChange::Changed { section: SidebarSection::Library(_), .. }))
+            .filter(|c| {
+                matches!(
+                    c,
+                    SectionChange::Changed {
+                        section: SidebarSection::Library(_),
+                        ..
+                    }
+                )
+            })
             .collect();
         // Exactly three library moves: Downloading, Paused, Active.
-        assert_eq!(library_movers.len(), 3, "expected 3 library moves, got: {library_movers:?}");
+        assert_eq!(
+            library_movers.len(),
+            3,
+            "expected 3 library moves, got: {library_movers:?}"
+        );
         let moved_filters: HashSet<LibraryFilter> = library_movers
             .iter()
             .filter_map(|c| match c {
-                SectionChange::Changed { section: SidebarSection::Library(f), .. } => Some(*f),
+                SectionChange::Changed {
+                    section: SidebarSection::Library(f),
+                    ..
+                } => Some(*f),
                 _ => None,
             })
             .collect();
@@ -1286,13 +1309,15 @@ mod tests {
         let changes = idx.update(&[r, r2]);
         let working_change = changes
             .iter()
-            .find(|c| matches!(
-                c,
-                SectionChange::Changed {
-                    section: SidebarSection::Tracker(TrackerBucket::Working),
-                    ..
-                }
-            ))
+            .find(|c| {
+                matches!(
+                    c,
+                    SectionChange::Changed {
+                        section: SidebarSection::Tracker(TrackerBucket::Working),
+                        ..
+                    }
+                )
+            })
             .expect("Working tracker should have moved");
         let SectionChange::Changed { old, new, .. } = working_change else {
             unreachable!()
@@ -1315,7 +1340,10 @@ mod tests {
         // After reset the next update treats it as a cold start again.
         assert!(after_reset.iter().any(|c| matches!(
             c,
-            SectionChange::Added { section: SidebarSection::Category(_), count: 1 }
+            SectionChange::Added {
+                section: SidebarSection::Category(_),
+                count: 1
+            }
         )));
     }
 

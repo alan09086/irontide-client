@@ -219,7 +219,10 @@ mod tests {
         assert!(QbtEncryption::try_from(3_u8).is_err());
         assert!(QbtEncryption::try_from(255_u8).is_err());
         // Valid values round-trip via the canonical int mapping.
-        assert_eq!(QbtEncryption::try_from(0_u8).unwrap(), QbtEncryption::Prefer);
+        assert_eq!(
+            QbtEncryption::try_from(0_u8).unwrap(),
+            QbtEncryption::Prefer
+        );
         assert_eq!(QbtEncryption::try_from(1_u8).unwrap(), QbtEncryption::Force);
         assert_eq!(
             QbtEncryption::try_from(2_u8).unwrap(),

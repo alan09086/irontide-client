@@ -666,7 +666,9 @@ mod tests {
         assert_eq!(reg.capacity(), 1, "capacity 0 must be clamped to 1");
         // And it must still accept an admit.
         let addr = ip(10, 0, 0, 1);
-        let _g = reg.check_and_admit(addr, 5, 60).expect("admit on clamped reg");
+        let _g = reg
+            .check_and_admit(addr, 5, 60)
+            .expect("admit on clamped reg");
     }
 
     #[tokio::test(flavor = "current_thread", start_paused = true)]
@@ -679,7 +681,10 @@ mod tests {
         let addr = ip(10, 0, 0, 99);
         reg.record_failure(addr, 5, 60);
         reg.record_success(addr);
-        assert!(reg.is_empty(), "record_* on unknown IP must not create entry");
+        assert!(
+            reg.is_empty(),
+            "record_* on unknown IP must not create entry"
+        );
         assert_eq!(reg.attempts_for(addr), 0);
     }
 
@@ -704,8 +709,16 @@ mod tests {
                 .expect("second admit (attempts 1 + pending 1 < 5)");
             assert_eq!(reg.pending_for(addr), 1);
         }
-        assert_eq!(reg.attempts_for(addr), 1, "attempts must not advance without record_failure");
-        assert_eq!(reg.pending_for(addr), 0, "pending must drop on guard release");
+        assert_eq!(
+            reg.attempts_for(addr),
+            1,
+            "attempts must not advance without record_failure"
+        );
+        assert_eq!(
+            reg.pending_for(addr),
+            0,
+            "pending must drop on guard release"
+        );
     }
 
     #[tokio::test(flavor = "current_thread", start_paused = true)]
@@ -742,7 +755,9 @@ mod tests {
         }
         assert_eq!(reg.attempts_for(addr), 0);
         {
-            let _g = reg.check_and_admit(addr, 5, 60).expect("admit post-success");
+            let _g = reg
+                .check_and_admit(addr, 5, 60)
+                .expect("admit post-success");
             reg.record_failure(addr, 5, 60);
         }
         assert_eq!(

@@ -16,15 +16,10 @@ use irontide_api::routes::build_router;
 
 static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-async fn test_session(
-    qbt_enabled: bool,
-) -> irontide::session::SessionHandle {
+async fn test_session(qbt_enabled: bool) -> irontide::session::SessionHandle {
     let n = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let resume_dir = std::env::temp_dir().join(format!(
-        "irontide-qbt-v2-hs-{}-{}",
-        std::process::id(),
-        n
-    ));
+    let resume_dir =
+        std::env::temp_dir().join(format!("irontide-qbt-v2-hs-{}-{}", std::process::id(), n));
     let _ = std::fs::remove_dir_all(&resume_dir);
 
     let mut settings = Settings {
@@ -170,7 +165,14 @@ async fn test_arr_handshake_with_expired_cookie_recovery() {
     let sid1 = login(&router).await;
 
     // Logout to simulate cookie expiry.
-    let (status, _) = post(&router, "/api/v2/auth/logout", Some(&sid1), None, Vec::new()).await;
+    let (status, _) = post(
+        &router,
+        "/api/v2/auth/logout",
+        Some(&sid1),
+        None,
+        Vec::new(),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
 
     // GET with old cookie → 403.
@@ -211,7 +213,11 @@ async fn test_arr_handshake_when_disabled_returns_404() {
         } else {
             get(&router, uri, None).await
         };
-        assert_eq!(status, StatusCode::NOT_FOUND, "uri {uri} must 404 when disabled");
+        assert_eq!(
+            status,
+            StatusCode::NOT_FOUND,
+            "uri {uri} must 404 when disabled"
+        );
     }
 }
 
@@ -363,10 +369,8 @@ async fn end_to_end_m170_arr_workflow() {
     // that this test owns exclusively.
     let n = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
-    let resume_dir = std::env::temp_dir()
-        .join(format!("irontide-qbt-v2-hs-m170-resume-{pid}-{n}"));
-    let reg_path = std::env::temp_dir()
-        .join(format!("irontide-qbt-v2-hs-m170-{pid}-{n}.toml"));
+    let resume_dir = std::env::temp_dir().join(format!("irontide-qbt-v2-hs-m170-resume-{pid}-{n}"));
+    let reg_path = std::env::temp_dir().join(format!("irontide-qbt-v2-hs-m170-{pid}-{n}.toml"));
     let _ = std::fs::remove_dir_all(&resume_dir);
     let _ = std::fs::remove_file(&reg_path);
 
@@ -421,7 +425,11 @@ async fn end_to_end_m170_arr_workflow() {
         body.into_bytes(),
     )
     .await;
-    assert_eq!(status, StatusCode::OK, "add with category=sonarr must succeed");
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "add with category=sonarr must succeed"
+    );
 
     // Wait for the torrent to appear + its category label to propagate.
     let mut hash = String::new();
@@ -449,7 +457,10 @@ async fn end_to_end_m170_arr_workflow() {
         }
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
-    assert!(!hash.is_empty(), "torrent never appeared under category=sonarr");
+    assert!(
+        !hash.is_empty(),
+        "torrent never appeared under category=sonarr"
+    );
 
     // 5. v0.173.2 (A12): the soft `OK | NOT_FOUND` assertion that was here
     //    has been removed. The tight assertion (`OK` after metadata resolves)

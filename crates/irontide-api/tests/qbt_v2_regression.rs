@@ -19,11 +19,8 @@ static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 async fn test_session_with_qbt(enabled: bool) -> irontide::session::SessionHandle {
     let n = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let resume_dir = std::env::temp_dir().join(format!(
-        "irontide-qbt-v2-reg-{}-{}",
-        std::process::id(),
-        n
-    ));
+    let resume_dir =
+        std::env::temp_dir().join(format!("irontide-qbt-v2-reg-{}-{}", std::process::id(), n));
     let _ = std::fs::remove_dir_all(&resume_dir);
 
     let mut settings = Settings {
@@ -82,7 +79,10 @@ async fn v1_list_torrents_unaffected_when_qbt_compat_enabled() {
     let (status_on, body_on) = send(&router_on, req).await;
     assert_eq!(status_on, StatusCode::OK);
     let v_on: serde_json::Value = serde_json::from_slice(&body_on).unwrap();
-    assert_eq!(v_off, v_on, "v1 list must be identical under qbt_compat toggles");
+    assert_eq!(
+        v_off, v_on,
+        "v1 list must be identical under qbt_compat toggles"
+    );
 }
 
 #[tokio::test]

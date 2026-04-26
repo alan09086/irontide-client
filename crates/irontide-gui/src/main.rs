@@ -392,8 +392,7 @@ fn main() -> Result<(), error::GuiError> {
             let Some(win) = weak.upgrade() else { return };
             let ctrl = win.get_ctrl_held();
             let meta = win.get_meta_held();
-            let Some(slot) = accel::parse_sidebar_shortcut(digit.as_str(), ctrl, meta)
-            else {
+            let Some(slot) = accel::parse_sidebar_shortcut(digit.as_str(), ctrl, meta) else {
                 return;
             };
             let Some(predicate) = sidebar_view::predicate_for_shortcut_slot(slot) else {

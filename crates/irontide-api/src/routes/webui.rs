@@ -308,8 +308,7 @@ pub async fn torrent_list_fragment(State(session): State<AppState>) -> impl Into
     let rows: Vec<TorrentRow> = summaries
         .into_iter()
         .map(|t| {
-            let state_label =
-                irontide_format::format_state(&t.state, t.user_seed_mode).to_owned();
+            let state_label = irontide_format::format_state(&t.state, t.user_seed_mode).to_owned();
             let css_class = state_css_class(&state_label).to_owned();
             let is_paused = matches!(t.state, TorrentState::Paused);
             let user_seed_mode = t.user_seed_mode;
@@ -366,10 +365,7 @@ pub async fn add_magnet_redirect(
 /// the torrent-list fragment refreshes and the button flips to "Resume".
 /// On failure (invalid hash, unknown torrent), responds with an HTML
 /// error fragment at the appropriate HTTP status.
-pub async fn pause_action(
-    State(session): State<AppState>,
-    Path(hash): Path<String>,
-) -> Response {
+pub async fn pause_action(State(session): State<AppState>, Path(hash): Path<String>) -> Response {
     let id = match crate::extractors::parse_info_hash(&hash) {
         Ok(id) => id,
         Err(e) => return api_error_fragment(e),
@@ -383,10 +379,7 @@ pub async fn pause_action(
 /// `POST /webui/torrents/{hash}/resume`
 ///
 /// Resume a paused torrent. Mirrors [`pause_action`] in response semantics.
-pub async fn resume_action(
-    State(session): State<AppState>,
-    Path(hash): Path<String>,
-) -> Response {
+pub async fn resume_action(State(session): State<AppState>, Path(hash): Path<String>) -> Response {
     let id = match crate::extractors::parse_info_hash(&hash) {
         Ok(id) => id,
         Err(e) => return api_error_fragment(e),
@@ -402,10 +395,7 @@ pub async fn resume_action(
 /// Remove a torrent from the session. Matches the v1 REST API's
 /// `DELETE /api/v1/torrents/{hash}` semantics, but returns the HTMX
 /// refresh header and an HTML error fragment on failure.
-pub async fn delete_action(
-    State(session): State<AppState>,
-    Path(hash): Path<String>,
-) -> Response {
+pub async fn delete_action(State(session): State<AppState>, Path(hash): Path<String>) -> Response {
     let id = match crate::extractors::parse_info_hash(&hash) {
         Ok(id) => id,
         Err(e) => return api_error_fragment(e),
@@ -425,10 +415,7 @@ pub async fn settings_fragment(State(session): State<AppState>) -> Response {
     let s = match session.settings().await {
         Ok(s) => s,
         Err(e) => {
-            return error_fragment(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                &e.to_string(),
-            );
+            return error_fragment(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string());
         }
     };
     let tmpl = SettingsFormTemplate {
@@ -580,10 +567,7 @@ pub async fn seed_mode_action(
 /// with `text/html` otherwise. When metadata has not yet arrived
 /// (`MetadataNotReady`), the page still renders with `metadata_pending=true`
 /// so the user at least sees a state chip, a breadcrumb, and the info hash.
-pub async fn torrent_detail(
-    State(session): State<AppState>,
-    Path(hash): Path<String>,
-) -> Response {
+pub async fn torrent_detail(State(session): State<AppState>, Path(hash): Path<String>) -> Response {
     let id = match crate::extractors::parse_info_hash(&hash) {
         Ok(id) => id,
         Err(e) => return api_error_fragment(e),
@@ -770,10 +754,7 @@ pub async fn patch_file_priority(
 /// × `file_priorities` via a length-safe `.zip()` that truncates to the
 /// shortest if metadata is arriving mid-request (warns on mismatch so
 /// operators can spot a systemic discrepancy).
-pub async fn files_fragment(
-    State(session): State<AppState>,
-    Path(hash): Path<String>,
-) -> Response {
+pub async fn files_fragment(State(session): State<AppState>, Path(hash): Path<String>) -> Response {
     let id = match crate::extractors::parse_info_hash(&hash) {
         Ok(id) => id,
         Err(e) => return api_error_fragment(e),
@@ -855,11 +836,9 @@ fn tracker_status_bits(
             "Pending",
             "Has not been contacted yet".to_string(),
         ),
-        irontide::session::TrackerStatus::Working => (
-            "working",
-            "OK",
-            "Last announce succeeded".to_string(),
-        ),
+        irontide::session::TrackerStatus::Working => {
+            ("working", "OK", "Last announce succeeded".to_string())
+        }
         irontide::session::TrackerStatus::Error => (
             "error",
             "Error",
@@ -950,10 +929,7 @@ fn peer_flags(p: &irontide::session::PeerInfo) -> Vec<(char, &'static str)> {
 /// Render the Peers tab as an HTML fragment. The flag column uses
 /// `<abbr>` tooltips; the footer has a `<details>` legend so users can
 /// expand the symbol→meaning mapping without needing a hover device.
-pub async fn peers_fragment(
-    State(session): State<AppState>,
-    Path(hash): Path<String>,
-) -> Response {
+pub async fn peers_fragment(State(session): State<AppState>, Path(hash): Path<String>) -> Response {
     let id = match crate::extractors::parse_info_hash(&hash) {
         Ok(id) => id,
         Err(e) => return api_error_fragment(e),
@@ -1009,8 +985,14 @@ pub async fn trackers_fragment(
                 status_class,
                 status_label,
                 status_title,
-                seeders: t.seeders.map(|n| n.to_string()).unwrap_or_else(|| "—".into()),
-                leechers: t.leechers.map(|n| n.to_string()).unwrap_or_else(|| "—".into()),
+                seeders: t
+                    .seeders
+                    .map(|n| n.to_string())
+                    .unwrap_or_else(|| "—".into()),
+                leechers: t
+                    .leechers
+                    .map(|n| n.to_string())
+                    .unwrap_or_else(|| "—".into()),
                 next_announce_text: format_relative_secs(t.next_announce_secs),
             }
         })
@@ -1049,10 +1031,7 @@ pub async fn reannounce_action(
 /// Renders ONLY the Info tab as a standalone fragment. Shares its template
 /// (`info_tab.html`) with the inline include on the detail page so the
 /// layout is identical regardless of code path.
-pub async fn info_fragment(
-    State(session): State<AppState>,
-    Path(hash): Path<String>,
-) -> Response {
+pub async fn info_fragment(State(session): State<AppState>, Path(hash): Path<String>) -> Response {
     let id = match crate::extractors::parse_info_hash(&hash) {
         Ok(id) => id,
         Err(e) => return api_error_fragment(e),
@@ -1173,19 +1152,28 @@ mod tests {
         let p = make_peer(false, false, false, true, false, 0);
         let glyphs: Vec<char> = peer_flags(&p).iter().map(|(c, _)| *c).collect();
         assert!(glyphs.contains(&'U'));
-        assert!(!glyphs.contains(&'I'), "I must NOT fire for interested; it's incoming-only now");
+        assert!(
+            !glyphs.contains(&'I'),
+            "I must NOT fire for interested; it's incoming-only now"
+        );
 
         // Snubbed (no data in snub-window) + we're choking them.
         let p = make_peer(true, false, false, false, true, 0);
         let glyphs: Vec<char> = peer_flags(&p).iter().map(|(c, _)| *c).collect();
         assert!(glyphs.contains(&'K'));
         assert!(glyphs.contains(&'S'));
-        assert!(!glyphs.contains(&'U'), "U must not appear when choking: {glyphs:?}");
+        assert!(
+            !glyphs.contains(&'U'),
+            "U must not appear when choking: {glyphs:?}"
+        );
 
         // Totally idle peer — no flags at all.
         let p = make_peer(false, false, false, false, false, 0);
         let glyphs: Vec<char> = peer_flags(&p).iter().map(|(c, _)| *c).collect();
-        assert!(glyphs.is_empty(), "idle peer should have no flags: {glyphs:?}");
+        assert!(
+            glyphs.is_empty(),
+            "idle peer should have no flags: {glyphs:?}"
+        );
     }
 
     /// M171 D5 / E0.11: every new glyph in the 15-flag superset fires when
@@ -1199,18 +1187,27 @@ mod tests {
         // `d` — interested + peer choking.
         let mut p = make_peer(false, true, true, false, false, 0);
         let glyphs: Vec<char> = peer_flags(&p).iter().map(|(c, _)| *c).collect();
-        assert!(glyphs.contains(&'d'), "d missing for interested+peer_choking: {glyphs:?}");
+        assert!(
+            glyphs.contains(&'d'),
+            "d missing for interested+peer_choking: {glyphs:?}"
+        );
 
         // `u` — peer interested + we choke.
         p = make_peer(true, false, false, true, false, 0);
         let glyphs: Vec<char> = peer_flags(&p).iter().map(|(c, _)| *c).collect();
-        assert!(glyphs.contains(&'u'), "u missing for peer_interested+am_choking: {glyphs:?}");
+        assert!(
+            glyphs.contains(&'u'),
+            "u missing for peer_interested+am_choking: {glyphs:?}"
+        );
 
         // `O` — optimistic unchoke.
         p = make_peer(false, false, false, false, false, 0);
         p.is_optimistic = true;
         let glyphs: Vec<char> = peer_flags(&p).iter().map(|(c, _)| *c).collect();
-        assert!(glyphs.contains(&'O'), "O missing for is_optimistic: {glyphs:?}");
+        assert!(
+            glyphs.contains(&'O'),
+            "O missing for is_optimistic: {glyphs:?}"
+        );
 
         // `I` — incoming connection (source == Incoming).
         p = make_peer(false, false, false, false, false, 0);
@@ -1222,25 +1219,37 @@ mod tests {
         p = make_peer(false, false, false, false, false, 0);
         p.source = PeerSource::Dht;
         let glyphs: Vec<char> = peer_flags(&p).iter().map(|(c, _)| *c).collect();
-        assert!(glyphs.contains(&'H'), "H missing for DHT source: {glyphs:?}");
+        assert!(
+            glyphs.contains(&'H'),
+            "H missing for DHT source: {glyphs:?}"
+        );
 
         // `X` — discovered via PeX.
         p = make_peer(false, false, false, false, false, 0);
         p.source = PeerSource::Pex;
         let glyphs: Vec<char> = peer_flags(&p).iter().map(|(c, _)| *c).collect();
-        assert!(glyphs.contains(&'X'), "X missing for PeX source: {glyphs:?}");
+        assert!(
+            glyphs.contains(&'X'),
+            "X missing for PeX source: {glyphs:?}"
+        );
 
         // `L` — discovered via LSD.
         p = make_peer(false, false, false, false, false, 0);
         p.source = PeerSource::Lsd;
         let glyphs: Vec<char> = peer_flags(&p).iter().map(|(c, _)| *c).collect();
-        assert!(glyphs.contains(&'L'), "L missing for LSD source: {glyphs:?}");
+        assert!(
+            glyphs.contains(&'L'),
+            "L missing for LSD source: {glyphs:?}"
+        );
 
         // `E` — encrypted MSE/PE.
         p = make_peer(false, false, false, false, false, 0);
         p.is_encrypted = true;
         let glyphs: Vec<char> = peer_flags(&p).iter().map(|(c, _)| *c).collect();
-        assert!(glyphs.contains(&'E'), "E missing for is_encrypted: {glyphs:?}");
+        assert!(
+            glyphs.contains(&'E'),
+            "E missing for is_encrypted: {glyphs:?}"
+        );
 
         // `P` — using uTP.
         p = make_peer(false, false, false, false, false, 0);
@@ -1252,7 +1261,10 @@ mod tests {
         p = make_peer(false, false, false, false, false, 0);
         p.supports_fast = true;
         let glyphs: Vec<char> = peer_flags(&p).iter().map(|(c, _)| *c).collect();
-        assert!(glyphs.contains(&'F'), "F missing for supports_fast: {glyphs:?}");
+        assert!(
+            glyphs.contains(&'F'),
+            "F missing for supports_fast: {glyphs:?}"
+        );
     }
 
     /// M171 D5: PeerInfo's new fields must round-trip through serde so old
@@ -1291,10 +1303,7 @@ mod tests {
         // — any change to the payload shape breaks that filter, so the
         // exact nesting is a contract locked in here.
         let resp = refresh_detail_response("abcdef0123456789");
-        let hv = resp
-            .headers()
-            .get("HX-Trigger")
-            .expect("HX-Trigger set");
+        let hv = resp.headers().get("HX-Trigger").expect("HX-Trigger set");
         let value = hv.to_str().expect("ascii header");
         let parsed: serde_json::Value =
             serde_json::from_str(value).expect("header must be valid JSON");

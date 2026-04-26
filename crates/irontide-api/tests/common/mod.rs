@@ -29,10 +29,7 @@ use irontide::session::{SessionAddTorrentParams, SessionHandle};
 /// piece states — depend on metadata being present. Without the gate,
 /// those assertions race the metadata-resolver and flake.
 #[allow(dead_code)]
-pub async fn add_and_wait(
-    session: &SessionHandle,
-    params: SessionAddTorrentParams,
-) -> String {
+pub async fn add_and_wait(session: &SessionHandle, params: SessionAddTorrentParams) -> String {
     let hash = session.add_torrent(params).await.expect("add torrent");
     for _ in 0..50 {
         if let Ok(stats) = session.torrent_stats(hash).await
@@ -142,7 +139,10 @@ pub async fn inject_magnet_and_resolve_meta(
     let magnet = format!("magnet:?xt=urn:btih:{}&dn={}", hash.to_hex(), name);
     let params = SessionAddTorrentParams::magnet(magnet);
     let added = session.add_torrent(params).await.expect("add magnet");
-    assert_eq!(added, hash, "session-assigned hash must match synth info hash");
+    assert_eq!(
+        added, hash,
+        "session-assigned hash must match synth info hash"
+    );
 
     // Synchronous round-trip via test-util feature: returns only when
     // the actor has processed the inject.

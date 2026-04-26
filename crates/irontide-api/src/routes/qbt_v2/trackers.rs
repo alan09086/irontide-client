@@ -142,8 +142,8 @@ pub async fn list(
     State(state): State<QbtState>,
     Query(q): Query<HashQuery>,
 ) -> Result<QbtResponse, QbtError> {
-    let id = Id20::from_hex(&q.hash)
-        .map_err(|e| QbtError::BadRequest(format!("invalid hash: {e}")))?;
+    let id =
+        Id20::from_hex(&q.hash).map_err(|e| QbtError::BadRequest(format!("invalid hash: {e}")))?;
 
     // Probe existence before anything else so unknown hashes produce a
     // 404 (not a 200 with just pseudo-trackers).
@@ -159,11 +159,7 @@ pub async fn list(
         .await
         .map_err(|e| QbtError::Internal(format!("read settings: {e}")))?;
 
-    let dht_node_count = state
-        .session
-        .dht_node_count()
-        .await
-        .unwrap_or(0) as i32;
+    let dht_node_count = state.session.dht_node_count().await.unwrap_or(0) as i32;
 
     let pseudo = make_pseudo_trackers(
         settings.enable_dht,
@@ -219,7 +215,10 @@ mod tests {
             assert_eq!(row.status, 2);
             assert_eq!(row.tier, -1);
         }
-        assert_eq!(rows[0].num_peers, 42, "DHT pseudo-tracker wires dht_node_count");
+        assert_eq!(
+            rows[0].num_peers, 42,
+            "DHT pseudo-tracker wires dht_node_count"
+        );
     }
 
     #[test]
@@ -236,7 +235,10 @@ mod tests {
     fn pseudo_trackers_mixed_state() {
         let rows = make_pseudo_trackers(true, false, true, 7);
         assert_eq!(rows[0].status, 2); // DHT enabled
-        assert_eq!(rows[0].num_peers, 7, "DHT num_peers must reflect count even in mixed state");
+        assert_eq!(
+            rows[0].num_peers, 7,
+            "DHT num_peers must reflect count even in mixed state"
+        );
         assert_eq!(rows[1].status, 0); // PeX disabled
         assert_eq!(rows[2].status, 2); // LSD enabled
     }
@@ -247,7 +249,10 @@ mod tests {
     #[test]
     fn pseudo_trackers_dht_num_peers_matches_count() {
         let rows = make_pseudo_trackers(true, false, false, 123);
-        assert_eq!(rows[0].num_peers, 123, "DHT pseudo-tracker wires dht_node_count");
+        assert_eq!(
+            rows[0].num_peers, 123,
+            "DHT pseudo-tracker wires dht_node_count"
+        );
         assert_eq!(rows[1].num_peers, 0, "PeX not wired to any count yet");
         assert_eq!(rows[2].num_peers, 0, "LSD not wired to any count yet");
     }

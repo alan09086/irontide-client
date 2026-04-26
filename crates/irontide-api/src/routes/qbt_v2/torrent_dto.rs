@@ -12,7 +12,7 @@
 //!   canonical state strings (downloading, stalledDL, uploading, pausedUP,
 //!   checkingUP, metaDL, error, etc.).
 
-use irontide::session::{TorrentStats, TorrentState};
+use irontide::session::{TorrentState, TorrentStats};
 use serde::{Deserialize, Serialize};
 
 /// qBt "infinite" sentinel for `eta` when the remaining time is unknown.

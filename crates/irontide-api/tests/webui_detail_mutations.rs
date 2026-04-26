@@ -143,8 +143,7 @@ async fn reannounce_succeeds_and_emits_scoped_hx_trigger() {
         .get("HX-Trigger")
         .and_then(|v| v.to_str().ok())
         .expect("HX-Trigger set");
-    let parsed: serde_json::Value =
-        serde_json::from_str(hv).expect("HX-Trigger must be JSON");
+    let parsed: serde_json::Value = serde_json::from_str(hv).expect("HX-Trigger must be JSON");
     assert_eq!(
         parsed["refreshDetail"]["hash"],
         serde_json::Value::String(hash.clone()),

@@ -24,11 +24,9 @@ static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 fn fresh_paths() -> (PathBuf, PathBuf) {
     let n = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
-    let resume_dir = std::env::temp_dir().join(format!(
-        "irontide-qbt-v2-info-cat-resume-{pid}-{n}"
-    ));
-    let reg_path =
-        std::env::temp_dir().join(format!("irontide-qbt-v2-info-cat-{pid}-{n}.toml"));
+    let resume_dir =
+        std::env::temp_dir().join(format!("irontide-qbt-v2-info-cat-resume-{pid}-{n}"));
+    let reg_path = std::env::temp_dir().join(format!("irontide-qbt-v2-info-cat-{pid}-{n}.toml"));
     let _ = std::fs::remove_dir_all(&resume_dir);
     let _ = std::fs::remove_file(&reg_path);
     (resume_dir, reg_path)
@@ -72,11 +70,7 @@ async fn login(router: &axum::Router) -> String {
         .expect("cookie utf-8")
         .to_owned();
     let _ = resp.into_body().collect().await.expect("drain");
-    cookie
-        .split(';')
-        .next()
-        .expect("empty cookie")
-        .to_owned()
+    cookie.split(';').next().expect("empty cookie").to_owned()
 }
 
 async fn get_json(router: &axum::Router, uri: &str, cookie: &str) -> Value {
@@ -101,11 +95,7 @@ async fn get_json(router: &axum::Router, uri: &str, cookie: &str) -> Value {
 /// Add a magnet and wait for its category label to propagate on stats.
 /// Lane A fires a post-add `set_category` task; it completes within a few
 /// hundred ms on an unloaded box, so we poll up to 1 s.
-async fn add_magnet_with_category(
-    session: &SessionHandle,
-    magnet: &str,
-    category: Option<&str>,
-) {
+async fn add_magnet_with_category(session: &SessionHandle, magnet: &str, category: Option<&str>) {
     let mut params = SessionAddTorrentParams::magnet(magnet);
     if let Some(name) = category {
         params = params.with_category(name);
@@ -152,7 +142,10 @@ async fn category_filter_by_name_returns_only_matching() {
 async fn category_filter_by_empty_string_returns_only_uncategorised() {
     let session = test_session().await;
     session
-        .create_category("sonarr".to_string(), PathBuf::from("/tmp/sonarr-info-empty"))
+        .create_category(
+            "sonarr".to_string(),
+            PathBuf::from("/tmp/sonarr-info-empty"),
+        )
         .await
         .expect("create category");
     let router = build_router(session.clone());

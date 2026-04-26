@@ -110,11 +110,7 @@ pub fn sidebar_shortcut_label(n: u8) -> SharedString {
 /// digit so multi-byte sequences (the macOS Cmd-prefixed text payload,
 /// e.g. some IMEs) are tolerated without panic.
 #[must_use]
-pub fn parse_sidebar_shortcut(
-    event_text: &str,
-    held_ctrl: bool,
-    held_meta: bool,
-) -> Option<u8> {
+pub fn parse_sidebar_shortcut(event_text: &str, held_ctrl: bool, held_meta: bool) -> Option<u8> {
     if !matches_accel(event_text, held_ctrl, held_meta) {
         return None;
     }
