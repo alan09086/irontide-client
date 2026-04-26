@@ -3,7 +3,7 @@
 //! Provides handlers for detailed torrent inspection (info, peers, trackers),
 //! torrent operations (reannounce, file priority), and peer ban management.
 
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -86,6 +86,46 @@ pub async fn set_file_priority(
 ) -> ApiResult<impl IntoResponse> {
     let id = crate::extractors::parse_info_hash(&hash)?;
     session.set_file_priority(id, idx, req.priority).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// JSON request body for the add-peers endpoint.
+#[derive(serde::Deserialize)]
+pub struct AddPeersRequest {
+    peers: Vec<String>,
+}
+
+/// Add peer addresses to a torrent's candidate pool.
+///
+/// Accepts a JSON body with a `peers` array of `"ip:port"` strings.
+/// Peers are injected with [`PeerSource::Api`] and deduplicated against
+/// the torrent's existing known-peer set.
+///
+/// Returns **204 No Content** on success.
+pub async fn add_peers(
+    State(session): State<AppState>,
+    Path(hash): Path<String>,
+    Json(req): Json<AddPeersRequest>,
+) -> ApiResult<impl IntoResponse> {
+    let id = crate::extractors::parse_info_hash(&hash)?;
+    let addrs: Vec<SocketAddr> = req
+        .peers
+        .iter()
+        .map(|s| {
+            s.parse::<SocketAddr>()
+                .map_err(|_| ApiError::bad_request(format!("invalid peer address: {s}")))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    if addrs.is_empty() {
+        return Err(ApiError::bad_request("peers array must not be empty"));
+    }
+    session
+        .add_peers(
+            id,
+            addrs,
+            irontide::session::PeerSource::Api,
+        )
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

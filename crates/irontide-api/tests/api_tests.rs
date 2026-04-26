@@ -1091,3 +1091,90 @@ async fn test_path_traversal_blocked() {
 
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+// ---------------------------------------------------------------------------
+// add_peers endpoint
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_add_peers_success() {
+    let router = test_router().await;
+    let magnet = "magnet:?xt=urn:btih:aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d&dn=test";
+    let body_json = serde_json::json!({ "uri": magnet });
+    let req = Request::post("/api/v1/torrents")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&body_json).unwrap()))
+        .unwrap();
+    let (status, _) = request(&router, req).await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let hash = "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d";
+    let url = format!("/api/v1/torrents/{hash}/peers");
+    let req = Request::post(&url)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            r#"{"peers":["127.0.0.1:6881","127.0.0.1:6882"]}"#,
+        ))
+        .unwrap();
+    let (status, _) = request(&router, req).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn test_add_peers_not_found() {
+    let router = test_router().await;
+    let url = format!("/api/v1/torrents/{NONEXISTENT_HASH}/peers");
+    let req = Request::post(&url)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"peers":["127.0.0.1:6881"]}"#))
+        .unwrap();
+    let (status, body) = request(&router, req).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(json(&body)["code"], "NOT_FOUND");
+}
+
+#[tokio::test]
+async fn test_add_peers_invalid_address() {
+    let router = test_router().await;
+    let magnet = "magnet:?xt=urn:btih:aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d&dn=test";
+    let body_json = serde_json::json!({ "uri": magnet });
+    let req = Request::post("/api/v1/torrents")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&body_json).unwrap()))
+        .unwrap();
+    let (status, _) = request(&router, req).await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let hash = "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d";
+    let url = format!("/api/v1/torrents/{hash}/peers");
+    let req = Request::post(&url)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"peers":["not-an-address"]}"#))
+        .unwrap();
+    let (status, body) = request(&router, req).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(json(&body)["code"], "INVALID_REQUEST");
+}
+
+#[tokio::test]
+async fn test_add_peers_empty_array() {
+    let router = test_router().await;
+    let magnet = "magnet:?xt=urn:btih:aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d&dn=test";
+    let body_json = serde_json::json!({ "uri": magnet });
+    let req = Request::post("/api/v1/torrents")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&body_json).unwrap()))
+        .unwrap();
+    let (status, _) = request(&router, req).await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let hash = "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d";
+    let url = format!("/api/v1/torrents/{hash}/peers");
+    let req = Request::post(&url)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"peers":[]}"#))
+        .unwrap();
+    let (status, body) = request(&router, req).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(json(&body)["code"], "INVALID_REQUEST");
+}
