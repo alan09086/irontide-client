@@ -340,16 +340,12 @@ pub fn sort_summaries(summaries: &mut [TorrentSummary], sort: &crate::columns::S
             ColumnId::Peers => a.num_peers.cmp(&b.num_peers),
             ColumnId::Eta => {
                 // Sort by effective ETA: rate=0 sorts last.
-                let eta_a = if a.download_rate > 0 {
-                    remaining_bytes(a) / a.download_rate
-                } else {
-                    u64::MAX
-                };
-                let eta_b = if b.download_rate > 0 {
-                    remaining_bytes(b) / b.download_rate
-                } else {
-                    u64::MAX
-                };
+                let eta_a = remaining_bytes(a)
+                    .checked_div(a.download_rate)
+                    .unwrap_or(u64::MAX);
+                let eta_b = remaining_bytes(b)
+                    .checked_div(b.download_rate)
+                    .unwrap_or(u64::MAX);
                 eta_a.cmp(&eta_b)
             }
             ColumnId::Size => a.total_size.cmp(&b.total_size),

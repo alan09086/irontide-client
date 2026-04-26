@@ -148,6 +148,12 @@ impl SessionStore {
     pub fn len(&self) -> usize {
         self.inner.read().sessions.len()
     }
+
+    /// Whether the store has any active sessions (test/debug only).
+    #[cfg(test)]
+    pub fn is_empty(&self) -> bool {
+        self.inner.read().sessions.is_empty()
+    }
 }
 
 #[cfg(test)]

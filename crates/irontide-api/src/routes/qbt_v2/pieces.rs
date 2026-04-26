@@ -122,12 +122,12 @@ mod tests {
 
     #[test]
     fn default_limit_constants_are_sensible() {
-        assert!(DEFAULT_PIECE_HASH_LIMIT > 0);
-        assert!(DEFAULT_PIECE_HASH_LIMIT <= MAX_PIECE_HASH_LIMIT);
+        const _: () = assert!(DEFAULT_PIECE_HASH_LIMIT > 0);
+        const _: () = assert!(DEFAULT_PIECE_HASH_LIMIT <= MAX_PIECE_HASH_LIMIT);
         // 4096 default × 40-char SHA-1 hex ≈ 160 KiB per page —
         // comfortably under 1 MiB on the wire.
-        assert!(DEFAULT_PIECE_HASH_LIMIT <= 4096);
+        const _: () = assert!(DEFAULT_PIECE_HASH_LIMIT <= 4096);
         // 16384 max × 64-char SHA-256 hex ≈ 1 MiB — our hard ceiling.
-        assert!(MAX_PIECE_HASH_LIMIT <= 16_384);
+        const _: () = assert!(MAX_PIECE_HASH_LIMIT <= 16_384);
     }
 }

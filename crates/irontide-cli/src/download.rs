@@ -543,7 +543,7 @@ fn print_pipeline_diagnostics(
 
     // Top 10 peers by throughput
     let mut top10: Vec<_> = peers.iter().filter(|p| p.download_rate > 0).collect();
-    top10.sort_by(|a, b| b.download_rate.cmp(&a.download_rate));
+    top10.sort_by_key(|p| std::cmp::Reverse(p.download_rate));
     top10.truncate(10);
 
     let choke_pct = if total > 0 {
@@ -659,7 +659,7 @@ fn print_final_summary(
     eprintln!("  Contributing peers (had throughput): {contributing}");
 
     let mut active: Vec<_> = peers.iter().filter(|p| p.download_rate > 0).collect();
-    active.sort_by(|a, b| b.download_rate.cmp(&a.download_rate));
+    active.sort_by_key(|p| std::cmp::Reverse(p.download_rate));
 
     if !active.is_empty() {
         eprintln!("  Active peers at completion:");

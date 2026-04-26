@@ -280,24 +280,25 @@ mod tests {
     use irontide::core::{Id20, InfoHashes};
 
     fn sample_stats() -> TorrentStats {
-        let mut s = TorrentStats::default();
-        s.info_hashes = InfoHashes::v1_only(Id20::from([0xAB; 20]));
-        s.name = "Sample".into();
-        s.total = 1_000_000;
-        s.total_done = 500_000;
-        s.total_wanted = 1_000_000;
-        s.total_wanted_done = 500_000;
-        s.progress = 0.5;
-        s.download_rate = 1024;
-        s.upload_rate = 512;
-        s.num_peers = 10;
-        s.num_seeds = 4;
-        s.num_complete = 20;
-        s.num_incomplete = 5;
-        s.all_time_download = 2_000_000;
-        s.all_time_upload = 1_000_000;
-        s.added_time = 1_700_000_000;
-        s
+        TorrentStats {
+            info_hashes: InfoHashes::v1_only(Id20::from([0xAB; 20])),
+            name: "Sample".into(),
+            total: 1_000_000,
+            total_done: 500_000,
+            total_wanted: 1_000_000,
+            total_wanted_done: 500_000,
+            progress: 0.5,
+            download_rate: 1024,
+            upload_rate: 512,
+            num_peers: 10,
+            num_seeds: 4,
+            num_complete: 20,
+            num_incomplete: 5,
+            all_time_download: 2_000_000,
+            all_time_upload: 1_000_000,
+            added_time: 1_700_000_000,
+            ..TorrentStats::default()
+        }
     }
 
     #[test]

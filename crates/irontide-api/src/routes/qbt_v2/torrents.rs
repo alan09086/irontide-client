@@ -440,15 +440,11 @@ async fn parse_urlencoded_add(req: axum::extract::Request) -> Result<AddFormStat
                     out.magnet_uris.push(uri.to_owned());
                 }
             }
-            "category" => {
-                if !v.is_empty() {
-                    out.category = Some(v);
-                }
+            "category" if !v.is_empty() => {
+                out.category = Some(v);
             }
-            "savepath" => {
-                if !v.is_empty() {
-                    out.savepath = Some(v);
-                }
+            "savepath" if !v.is_empty() => {
+                out.savepath = Some(v);
             }
             "paused" => out.paused = parse_bool_flag(&v),
             _ => {}
