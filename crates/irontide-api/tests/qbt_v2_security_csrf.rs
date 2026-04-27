@@ -500,3 +500,35 @@ async fn xff_bare_peer_without_xff_header() {
     let ip = resolve_client_ip(&req, &state);
     assert_eq!(ip.to_string(), "192.0.2.1");
 }
+
+// ── M174: v1 API routes are CSRF protected ────────────────────────────
+
+#[tokio::test]
+async fn v1_api_post_rejected_by_csrf_with_cross_origin() {
+    let (base, _handle, _session) = tcp_server(|_| {}).await;
+    let client = reqwest_client();
+    let resp = client
+        .post(format!("{base}/api/v1/session/shutdown"))
+        .header("Origin", "http://evil.example.com")
+        .send()
+        .await
+        .expect("send");
+    assert_eq!(resp.status().as_u16(), 403);
+}
+
+#[tokio::test]
+async fn v1_api_get_passes_csrf_with_cross_origin() {
+    let (base, _handle, _session) = tcp_server(|_| {}).await;
+    let client = reqwest_client();
+    let resp = client
+        .get(format!("{base}/api/v1/session/stats"))
+        .header("Origin", "http://evil.example.com")
+        .send()
+        .await
+        .expect("send");
+    assert_ne!(
+        resp.status().as_u16(),
+        403,
+        "GET requests must bypass CSRF guard"
+    );
+}
