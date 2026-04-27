@@ -75,6 +75,7 @@ fn pick_free_port() -> u16 {
 fn setup_daemon() -> DaemonHandle {
     let port = pick_free_port();
     let tempdir = tempfile::tempdir().expect("create tempdir");
+    let resume_dir = tempdir.path().join("resume");
 
     let mut child = Command::new(env!("CARGO_BIN_EXE_irontide"))
         .args([
@@ -85,6 +86,8 @@ fn setup_daemon() -> DaemonHandle {
             "127.0.0.1",
             "--download-dir",
             tempdir.path().to_str().expect("tempdir utf-8"),
+            "--resume-dir",
+            resume_dir.to_str().expect("resume dir utf-8"),
             "--no-dht",
         ])
         .stdin(Stdio::null())
