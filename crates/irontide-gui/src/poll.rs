@@ -1,3 +1,11 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    reason = "M175: Slint UI poll-loop — counters bounded by torrent count and refresh cadence; precision loss intentional for display formatting"
+)]
+
 //! 500ms polling loop that fetches torrent data from the session,
 //! formats it into Slint `TorrentRow` structs, and pushes updates
 //! to the main window.

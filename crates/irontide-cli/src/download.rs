@@ -1,3 +1,11 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    reason = "M175: CLI download command — display formatting and progress bar arithmetic with values bounded by realistic torrent sizes"
+)]
+
 use anyhow::Context;
 use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};

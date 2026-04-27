@@ -1,3 +1,11 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    reason = "M175: integration test code — fixtures use bounded sizes that fit narrower types"
+)]
+
 //! Integration tests for `POST /api/v2/torrents/delete?deleteFiles=...`
 //! (M170 Lane D). Exercises Lane A's
 //! [`remove_torrent_with_files`](irontide::session::SessionHandle::remove_torrent_with_files)

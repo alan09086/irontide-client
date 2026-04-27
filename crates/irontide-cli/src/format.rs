@@ -1,3 +1,10 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    reason = "M175: byte-count/rate formatting — values bounded by realistic torrent sizes; precision loss intentional for short readable strings"
+)]
+
 //! Shared byte-count and rate formatting helpers for CLI output.
 //!
 //! `format_size` and `format_rate` are thin wrappers around [`irontide_format`]

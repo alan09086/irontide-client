@@ -1,3 +1,11 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    reason = "M175: qBt trackers DTO — tracker tier/peer-counts follow qBt wire-format integer widths"
+)]
+
 //! qBt v2 `GET /api/v2/torrents/trackers?hash=X` (M171 Lane B).
 //!
 //! Returns an array of `QbtTrackerInfo` rows. qBt-compat quirk: the first

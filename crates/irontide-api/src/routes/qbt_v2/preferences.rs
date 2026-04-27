@@ -1,3 +1,11 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    reason = "M175: qBt preferences DTO — settings projection follows qBt wire-format integer widths"
+)]
+
 //! qBt v2 preferences DTO (M168, full impl in Task 7).
 //!
 //! Projects IronTide `Settings` onto the qBt WebUI v2 preferences JSON shape

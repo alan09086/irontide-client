@@ -1,3 +1,11 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    reason = "M175: CLI info command — display formatting and progress bar arithmetic with values bounded by realistic torrent sizes"
+)]
+
 use std::path::Path;
 
 pub fn run(path: &Path) -> anyhow::Result<()> {

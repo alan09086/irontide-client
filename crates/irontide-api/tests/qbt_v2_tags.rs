@@ -1,3 +1,11 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    reason = "M175: integration test code — fixtures use bounded sizes that fit narrower types"
+)]
+
 //! Integration tests for M171 Lane C: qBt v2 tags CRUD + per-torrent
 //! assignment.
 //!

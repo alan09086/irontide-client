@@ -1,3 +1,11 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    reason = "M175: qBt wire format — preferences/transferInfo follow qBittorrent's signed-i64 encoding for unsigned counters"
+)]
+
 //! qBt v2 `app/*` endpoints (M168, M171).
 //!
 //! Implemented:

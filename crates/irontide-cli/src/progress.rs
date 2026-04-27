@@ -1,3 +1,11 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    reason = "M175: CLI progress rendering — display formatting and progress bar arithmetic with values bounded by realistic torrent sizes"
+)]
+
 //! Pure rendering of `TorrentStatsDto` / `TorrentInfoDto` pairs into
 //! either a `Vec<String>` of human-readable lines or a
 //! `serde_json::Value` for JSON output.

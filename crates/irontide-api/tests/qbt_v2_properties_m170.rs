@@ -1,3 +1,11 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    reason = "M175: integration test code — fixtures use bounded sizes that fit narrower types"
+)]
+
 //! Integration tests for M170 additions to `/api/v2/torrents/properties`
 //! (Lane D). Covers the four DTO fields populated from real
 //! [`TorrentStats`](irontide::session::TorrentStats) state:

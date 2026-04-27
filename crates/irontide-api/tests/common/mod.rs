@@ -1,3 +1,11 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    reason = "M175: integration test helpers — fixtures use bounded sizes that fit narrower types"
+)]
+
 //! Common test helpers for qBt v2 integration tests.
 //!
 //! Integration test files under `tests/` are compiled as separate binaries,

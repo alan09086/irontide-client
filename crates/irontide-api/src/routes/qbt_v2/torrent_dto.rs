@@ -1,3 +1,11 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    reason = "M175: qBt wire format uses signed-i64 for unsigned counters; truncation/sign-loss is intentional protocol-level behaviour matched to qBittorrent reference"
+)]
+
 //! qBt v2 torrent DTO shapes (M168 Task 9).
 //!
 //! IronTide's internal torrent model is richer than qBt's — the qBt DTOs

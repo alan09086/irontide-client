@@ -1,3 +1,11 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    reason = "M175: HTMX Web UI — display formatting and progress arithmetic with values bounded by torrent counts/sizes"
+)]
+
 //! HTMX-driven Web UI handlers.
 //!
 //! Endpoints:

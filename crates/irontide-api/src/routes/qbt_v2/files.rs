@@ -1,3 +1,11 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    reason = "M175: qBt files DTO — file sizes follow qBt's signed-i64 wire format"
+)]
+
 //! qBt v2 `GET /api/v2/torrents/files?hash=X` (M170 Lane B).
 //!
 //! Returns an array of `QbtFile` rows describing each file within a torrent.
