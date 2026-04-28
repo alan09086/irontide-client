@@ -20,7 +20,7 @@ crypto-openssl = ["irontide/crypto-openssl"]
 crypto-aws-lc = ["irontide/crypto-aws-lc"]
 
 [dependencies]
-irontide = { path = "../irontide", version = "0.175.0", default-features = false }
+irontide = { path = "../irontide", version = "0.176.0", default-features = false }
 irontide-config = { workspace = true }
 irontide-format = { workspace = true }
 slint = { workspace = true }
