@@ -59,11 +59,13 @@ export component TweaksOverlay {
     in property <string> current-theme: "dark";
     in property <string> current-density: "balanced";
     in property <string> current-radius: "balanced";
+    in property <string> current-layout-label: "3-pane";
 
     callback skin-changed(string);
     callback theme-changed(string);
     callback density-changed(string);
     callback radius-changed(string);
+    callback layout-changed(string);
 
     // x/y/width are set by the consumer (main.slint positions the
     // overlay near the top-right corner of MainWindow).
@@ -117,9 +119,11 @@ export component TweaksOverlay {
             }
             PillRow {
                 label: "Layout";
-                options: ["compact", "balanced", "spacious"];
-                selected: "balanced";
-                disabled: true;
+                // Persisted as L1/L2/L3 tokens; the user-facing labels here
+                // come from the design spec at `components/tweaks.jsx:83`.
+                options: ["3-pane", "Drawer", "Command"];
+                selected: root.current-layout-label;
+                option-clicked(o) => { root.layout-changed(o); }
             }
         }
     }

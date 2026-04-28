@@ -19,6 +19,40 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 use slint::Model as _;
 
+/// Wire a Tweaks-overlay axis callback that follows the
+/// "parse string → mutate field → apply tokens → update Slint
+/// property" template (M172b skin/theme/density/radius axes).
+///
+/// Usage:
+/// ```ignore
+/// wire_skin_axis!(main_window, state, on_tweaks_skin_changed,
+///                 skin, skin::Skin, set_current_skin);
+/// ```
+///
+/// For axes that don't fit this template — Layout (label↔token mapping)
+/// and the toggles (no string to parse) — use a hand-written block.
+macro_rules! wire_skin_axis {
+    ($window:ident, $state:ident, $callback:ident, $field:ident, $enum_ty:ty, $setter:ident) => {{
+        use std::str::FromStr as _;
+        let weak = $window.as_weak();
+        let cb_state = $state.clone();
+        $window.$callback(move |s| {
+            if let Ok(new_value) = <$enum_ty>::from_str(s.as_str()) {
+                let skin_settings = {
+                    let mut st = cb_state.lock();
+                    st.skin.$field = new_value;
+                    st.skin_dirty = true;
+                    st.skin
+                };
+                skin_settings.apply(&weak);
+                if let Some(win) = weak.upgrade() {
+                    win.$setter(s.clone());
+                }
+            }
+        });
+    }};
+}
+
 fn main() -> Result<(), error::GuiError> {
     // 1. Install panic hook.
     panic_hook::install();
@@ -71,6 +105,14 @@ fn main() -> Result<(), error::GuiError> {
         main_window.set_current_theme(st.skin.theme.to_string().into());
         main_window.set_current_density(st.skin.density.to_string().into());
         main_window.set_current_radius(st.skin.radius.to_string().into());
+        // M176: layout / L3 sidebar mode / inspector visibility.
+        main_window.set_current_layout_label(st.skin.layout.label().into());
+        main_window.set_current_l3_sidebar_mode(st.skin.l3_sidebar_mode.to_string().into());
+        let effective_inspector = st
+            .skin
+            .inspector_shown
+            .unwrap_or_else(|| skin::default_inspector_shown(st.skin.layout));
+        main_window.set_inspector_shown(effective_inspector);
         // M173 Lane A task A9: seed sidebar collapsed flags from
         // persisted state so the first-paint sidebar matches the
         // user's last session.
@@ -423,80 +465,120 @@ fn main() -> Result<(), error::GuiError> {
         });
     }
 
-    // 6j. Wire Tweaks overlay callbacks (M172b Lane B).
+    // 6j. Wire Tweaks overlay callbacks (M172b Lane B + M176 D12).
+    // The four token-affecting axes use the `wire_skin_axis!` macro so
+    // every new axis is one line, not twelve.
+    wire_skin_axis!(
+        main_window,
+        state,
+        on_tweaks_skin_changed,
+        skin,
+        skin::Skin,
+        set_current_skin
+    );
+    wire_skin_axis!(
+        main_window,
+        state,
+        on_tweaks_theme_changed,
+        theme,
+        skin::Theme,
+        set_current_theme
+    );
+    wire_skin_axis!(
+        main_window,
+        state,
+        on_tweaks_density_changed,
+        density,
+        skin::Density,
+        set_current_density
+    );
+    wire_skin_axis!(
+        main_window,
+        state,
+        on_tweaks_radius_changed,
+        radius,
+        skin::RadiusPreset,
+        set_current_radius
+    );
+
+    // M176: Layout. Doesn't fit `wire_skin_axis!` because (1) the
+    // user-facing label ("3-pane" / "Drawer" / "Command") is mapped to
+    // an L1/L2/L3 token via `Layout::from_label`, not `FromStr`, and
+    // (2) Layout doesn't affect Tokens, so `apply()` is a no-op for
+    // this axis. We also refresh `inspector-shown` because its effective
+    // value depends on the active layout when the user hasn't set an
+    // override.
     {
-        use std::str::FromStr as _;
         let weak = main_window.as_weak();
         let cb_state = state.clone();
-        main_window.on_tweaks_skin_changed(move |s| {
-            if let Ok(new_skin) = skin::Skin::from_str(s.as_str()) {
-                let skin_settings = {
-                    let mut st = cb_state.lock();
-                    st.skin.skin = new_skin;
-                    st.skin_dirty = true;
-                    st.skin
-                };
-                skin_settings.apply(&weak);
-                if let Some(win) = weak.upgrade() {
-                    win.set_current_skin(s.clone());
-                }
+        main_window.on_tweaks_layout_changed(move |label| {
+            let Some(new_layout) = skin::Layout::from_label(label.as_str()) else {
+                tracing::warn!(invalid = label.as_str(), "unknown layout label, ignored");
+                return;
+            };
+            let inspector_shown = {
+                let mut st = cb_state.lock();
+                st.skin.layout = new_layout;
+                st.skin_dirty = true;
+                st.skin
+                    .inspector_shown
+                    .unwrap_or_else(|| skin::default_inspector_shown(new_layout))
+            };
+            if let Some(win) = weak.upgrade() {
+                win.set_current_layout_label(label.clone());
+                win.set_inspector_shown(inspector_shown);
             }
         });
     }
+
+    // M176: Inspector toggle (⌘I). Captures the user's explicit
+    // preference so layout switches don't clobber it. No-op in L1
+    // because the inline detail-pane is always visible there.
     {
-        use std::str::FromStr as _;
         let weak = main_window.as_weak();
         let cb_state = state.clone();
-        main_window.on_tweaks_theme_changed(move |s| {
-            if let Ok(new_theme) = skin::Theme::from_str(s.as_str()) {
-                let skin_settings = {
-                    let mut st = cb_state.lock();
-                    st.skin.theme = new_theme;
-                    st.skin_dirty = true;
-                    st.skin
-                };
-                skin_settings.apply(&weak);
-                if let Some(win) = weak.upgrade() {
-                    win.set_current_theme(s.clone());
+        main_window.on_inspector_toggle(move || {
+            let new_value = {
+                let mut st = cb_state.lock();
+                if st.skin.layout == skin::Layout::L1 {
+                    return;
                 }
+                let current = st
+                    .skin
+                    .inspector_shown
+                    .unwrap_or_else(|| skin::default_inspector_shown(st.skin.layout));
+                let v = !current;
+                st.skin.inspector_shown = Some(v);
+                st.skin_dirty = true;
+                v
+            };
+            if let Some(win) = weak.upgrade() {
+                win.set_inspector_shown(new_value);
             }
         });
     }
+
+    // M176: L3 sidebar toggle (Ctrl+Shift+S / Cmd+Shift+S). Cycles
+    // between icons-only and hidden. No-op outside L3.
     {
-        use std::str::FromStr as _;
         let weak = main_window.as_weak();
         let cb_state = state.clone();
-        main_window.on_tweaks_density_changed(move |s| {
-            if let Ok(new_density) = skin::Density::from_str(s.as_str()) {
-                let skin_settings = {
-                    let mut st = cb_state.lock();
-                    st.skin.density = new_density;
-                    st.skin_dirty = true;
-                    st.skin
-                };
-                skin_settings.apply(&weak);
-                if let Some(win) = weak.upgrade() {
-                    win.set_current_density(s.clone());
+        main_window.on_l3_sidebar_toggle(move || {
+            let new_mode = {
+                let mut st = cb_state.lock();
+                if st.skin.layout != skin::Layout::L3 {
+                    return;
                 }
-            }
-        });
-    }
-    {
-        use std::str::FromStr as _;
-        let weak = main_window.as_weak();
-        let cb_state = state.clone();
-        main_window.on_tweaks_radius_changed(move |s| {
-            if let Ok(new_radius) = skin::RadiusPreset::from_str(s.as_str()) {
-                let skin_settings = {
-                    let mut st = cb_state.lock();
-                    st.skin.radius = new_radius;
-                    st.skin_dirty = true;
-                    st.skin
+                let next = match st.skin.l3_sidebar_mode {
+                    skin::L3SidebarMode::Icons => skin::L3SidebarMode::Hidden,
+                    skin::L3SidebarMode::Hidden => skin::L3SidebarMode::Icons,
                 };
-                skin_settings.apply(&weak);
-                if let Some(win) = weak.upgrade() {
-                    win.set_current_radius(s.clone());
-                }
+                st.skin.l3_sidebar_mode = next;
+                st.skin_dirty = true;
+                next
+            };
+            if let Some(win) = weak.upgrade() {
+                win.set_current_l3_sidebar_mode(new_mode.to_string().into());
             }
         });
     }

@@ -48,6 +48,12 @@ export component Sidebar {
     in-out property <bool> tag-collapsed: false;
     in-out property <bool> tracker-collapsed: false;
 
+    // M176: render mode. "full" (default) shows the four sections with
+    // labels and counts. "icons" collapses to a narrow vertical strip
+    // of section glyphs — used by L3 (command workspace) to keep the
+    // sidebar readable without giving up horizontal space.
+    in property <string> mode: "full";
+
     // ── Out-bound callbacks ───────────────────────────────────────────
     // Fired when a row is clicked. Rust receives the `to_token` slug.
     callback predicate-changed(string);
@@ -55,7 +61,7 @@ export component Sidebar {
     // state to `config.toml` (task A9).
     callback section-toggled(string, bool);
 
-    width: Tokens.sidebar-w;
+    width: root.mode == "icons" ? Tokens.sp-10 : Tokens.sidebar-w;
     horizontal-stretch: 0;
     vertical-stretch: 1;
 
@@ -71,7 +77,113 @@ export component Sidebar {
             background: Tokens.border-1;
         }
 
-        Flickable {
+        // ── Icons-only mode (M176, L3) ──
+        // Render a narrow strip of four section glyphs. Clicking a glyph
+        // jumps to that section's first row via predicate-changed,
+        // reusing the existing predicate plumbing.
+        if root.mode == "icons": VerticalLayout {
+            x: 0;
+            y: 0;
+            width: parent.width - Tokens.border-width-thin;
+            padding: Tokens.sp-2;
+            spacing: Tokens.sp-2;
+            alignment: start;
+
+            // Library
+            Rectangle {
+                height: Tokens.sp-9;
+                background: lib-touch.has-hover ? Tokens.bg-hover : transparent;
+                border-radius: Tokens.r-sm;
+                Text {
+                    text: "L";
+                    color: Tokens.fg-1;
+                    font-size: Tokens.fs-14;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                lib-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        if root.library-rows.length > 0 {
+                            root.predicate-changed(root.library-rows[0].token);
+                        }
+                    }
+                }
+            }
+
+            // Categories
+            Rectangle {
+                height: Tokens.sp-9;
+                background: cat-touch.has-hover ? Tokens.bg-hover : transparent;
+                border-radius: Tokens.r-sm;
+                Text {
+                    text: "C";
+                    color: Tokens.fg-1;
+                    font-size: Tokens.fs-14;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                cat-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        if root.category-rows.length > 0 {
+                            root.predicate-changed(root.category-rows[0].token);
+                        }
+                    }
+                }
+            }
+
+            // Tags
+            Rectangle {
+                height: Tokens.sp-9;
+                background: tag-touch.has-hover ? Tokens.bg-hover : transparent;
+                border-radius: Tokens.r-sm;
+                Text {
+                    text: "T";
+                    color: Tokens.fg-1;
+                    font-size: Tokens.fs-14;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                tag-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        if root.tag-rows.length > 0 {
+                            root.predicate-changed(root.tag-rows[0].token);
+                        }
+                    }
+                }
+            }
+
+            // Trackers
+            Rectangle {
+                height: Tokens.sp-9;
+                background: trk-touch.has-hover ? Tokens.bg-hover : transparent;
+                border-radius: Tokens.r-sm;
+                Text {
+                    text: "R";
+                    color: Tokens.fg-1;
+                    font-size: Tokens.fs-14;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                trk-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        if root.tracker-rows.length > 0 {
+                            root.predicate-changed(root.tracker-rows[0].token);
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Full mode (default) ──
+        if root.mode != "icons": Flickable {
             x: 0;
             y: 0;
             width: parent.width - Tokens.border-width-thin;

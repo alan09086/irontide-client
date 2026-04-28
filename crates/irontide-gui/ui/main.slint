@@ -1,9 +1,11 @@
 // IronTide GUI — dark-theme Slint scaffold (M162) + torrent list (M163)
 // Custom widgets only — no std-widgets (hit-region issues on native backends).
 // Retrofitted to the Tokens design-system globals in M172b Lane B.
+// M176: layout-variant infrastructure — L1 (3-pane), L2 (drawer),
+// L3 (command workspace). The body dispatches on `current-layout-label`
+// with the M173 sidebar gate owned exactly once.
 
 import { Tokens, Shadow } from "tokens.slint";
-import { TorrentProgressBar } from "widgets/progress_bar.slint";
 import { StatusBar } from "widgets/status_bar.slint";
 import { AddMagnetDialog } from "widgets/add_magnet_dialog.slint";
 import { AddTorrentDialog } from "widgets/add_torrent_dialog.slint";
@@ -15,25 +17,13 @@ import { TweaksOverlay } from "tweaks.slint";
 // MainWindow body (below) wires the `Sidebar` into the layout in task
 // A8.
 import { Sidebar, SidebarRow } from "organisms/sidebar.slint";
+// M176: TorrentListView extracted into its own organism so M177–M178
+// can render it inside the detail-tabs container with `compact-mode`.
+import { TorrentListView, TorrentRow } from "organisms/torrent_list.slint";
+// M176 D13: Toolbar with layout-icon switcher.
+import { Toolbar } from "organisms/toolbar.slint";
 
-export { Tokens, Shadow, SidebarRow }
-
-export struct TorrentRow {
-    info-hash: string,
-    name: string,
-    total-size: string,
-    progress: float,
-    progress-text: string,
-    down-rate: string,
-    up-rate: string,
-    seeds: string,
-    peers: string,
-    eta: string,
-    state: string,
-    state-color: color,
-    ratio: string,
-    selected: bool,
-}
+export { Tokens, Shadow, SidebarRow, TorrentRow }
 
 component MenuButton {
     in property <string> text;
@@ -164,45 +154,6 @@ component MenuBar {
             }
         }
     }
-}
-
-component Spinner {
-    width: Tokens.sp-9;
-    height: Tokens.sp-9;
-
-    rect := Rectangle {
-        width: Tokens.sp-9;
-        height: Tokens.sp-9;
-        border-radius: Tokens.r-md;
-        border-width: Tokens.border-width-thick - Tokens.border-width-thin;
-        border-color: Tokens.accent;
-        background: transparent;
-        clip: true;
-
-        // Animated indicator bar
-        indicator := Rectangle {
-            x: -Tokens.sp-6;
-            y: Tokens.sp-3;
-            width: Tokens.sp-7;
-            height: Tokens.sp-7;
-            border-radius: Tokens.r-lg;
-            background: Tokens.fg-0;
-            opacity: 0.6;
-
-            animate x {
-                duration: 1200ms;
-                iteration-count: -1;
-                easing: ease-in-out;
-            }
-        }
-    }
-
-    // Drive animation via states
-    states [
-        spinning when true: {
-            indicator.x: Tokens.row-h;
-        }
-    ]
 }
 
 export component MainWindow inherits Window {
@@ -336,6 +287,17 @@ export component MainWindow inherits Window {
     callback tweaks-density-changed(string);
     callback tweaks-radius-changed(string);
 
+    // ── Layout variants (M176) ──
+    // `current-layout-label` is the user-facing string ("3-pane" /
+    // "Drawer" / "Command"). Rust persists L1/L2/L3 tokens via
+    // `Layout::from_label`/`Layout::label`.
+    in-out property <string> current-layout-label: "3-pane";
+    in-out property <string> current-l3-sidebar-mode: "icons";
+    in-out property <bool> inspector-shown: true;
+    callback tweaks-layout-changed(string);
+    callback inspector-toggle();
+    callback l3-sidebar-toggle();
+
     public function close-tweaks() {
         root.show-tweaks = false;
     }
@@ -391,6 +353,22 @@ export component MainWindow inherits Window {
                        || event.text == "7" || event.text == "8"
                        || event.text == "9") {
                     root.sidebar-shortcut(event.text);
+                    return accept;
+                }
+                // M176: Ctrl+Shift+S (Cmd+Shift+S) — toggle the L3
+                // sidebar between icons-only and hidden. Rust no-ops
+                // outside L3.
+                if root.shift-held && (root.ctrl-held || root.meta-held)
+                   && (event.text == "s" || event.text == "S") {
+                    root.l3-sidebar-toggle();
+                    return accept;
+                }
+                // M176: Ctrl+I (Cmd+I) — toggle the inspector pane.
+                // Rust no-ops in L1 (inline detail always visible);
+                // toggles drawer in L2 and popover in L3.
+                if (root.ctrl-held || root.meta-held)
+                   && (event.text == "i" || event.text == "I") {
+                    root.inspector-toggle();
                     return accept;
                 }
             }
@@ -450,15 +428,33 @@ export component MainWindow inherits Window {
                 }
             }
 
-            // M173 Lane A: sidebar lives left of the main content. The
-            // sidebar is hidden while the session is still loading so
-            // the loading spinner remains centred on the full window
-            // width.
+            // M176 D13: Toolbar with layout-icon switcher between
+            // MenuBar and the body. Shares its `tweaks-layout-changed`
+            // callback with the Tweaks pill — both surfaces fire the
+            // same Rust handler.
+            Toolbar {
+                current-layout-label: root.current-layout-label;
+                layout-changed(label) => { root.tweaks-layout-changed(label); }
+            }
+
+            // ── M176 layout dispatch ──────────────────────────────────
+            //
+            // M173 sidebar gate (`session-ready && error-text == ""`)
+            // owned ONCE — the Sidebar instance below is the only one
+            // that consults the gate, with mode varying by layout.
+            //
+            // L3 + `current-l3-sidebar-mode == "hidden"` suppresses
+            // the Sidebar entirely. L1's detail-placeholder and L2's
+            // drawer carry their own gates so they also stay hidden
+            // during loading/error.
             HorizontalLayout {
                 spacing: 0;
                 vertical-stretch: 1;
 
-                if root.session-ready && root.error-text == "": Sidebar {
+                if root.session-ready && root.error-text == ""
+                   && !(root.current-layout-label == "Command"
+                        && root.current-l3-sidebar-mode == "hidden"):
+                Sidebar {
                     library-rows: root.sidebar-library-rows;
                     category-rows: root.sidebar-category-rows;
                     tag-rows: root.sidebar-tag-rows;
@@ -467,6 +463,7 @@ export component MainWindow inherits Window {
                     category-collapsed <=> root.sidebar-category-collapsed;
                     tag-collapsed <=> root.sidebar-tag-collapsed;
                     tracker-collapsed <=> root.sidebar-tracker-collapsed;
+                    mode: root.current-layout-label == "Command" ? "icons" : "full";
                     predicate-changed(token) => {
                         root.sidebar-predicate-changed(token);
                     }
@@ -475,464 +472,128 @@ export component MainWindow inherits Window {
                     }
                 }
 
-                // Main content area
-                Rectangle {
-                    background: Tokens.bg-0;
-                    horizontal-stretch: 1;
-                    vertical-stretch: 1;
-
-                // Loading state: spinner + message
-                if !root.session-ready && root.error-text == "": VerticalLayout {
-                    alignment: center;
-
-                    HorizontalLayout {
-                        alignment: center;
-                        Spinner { }
-                    }
-
-                    Text {
-                        text: "Starting session...";
-                        color: Tokens.fg-3;
-                        font-size: Tokens.fs-16;
-                        horizontal-alignment: center;
-                    }
-                }
-
-                // Ready state with empty model: empty placeholder
-                if root.session-ready && root.error-text == "" && root.torrent-model.length == 0: VerticalLayout {
-                    alignment: center;
-                    spacing: Tokens.sp-4;
-
-                    Text {
-                        text: "No torrents yet.";
-                        color: Tokens.fg-0;
-                        font-size: Tokens.fs-18;
-                        horizontal-alignment: center;
-                    }
-
-                    Text {
-                        text: "Use File > Add Magnet to get started.";
-                        color: Tokens.fg-3;
-                        font-size: Tokens.fs-14;
-                        horizontal-alignment: center;
-                    }
-                }
-
-                // Ready state with torrents: table header + list
-                if root.session-ready && root.error-text == "" && root.torrent-model.length > 0: VerticalLayout {
+                // ── L1: 3-pane (list above + detail-placeholder below) ──
+                // M177 fills the placeholder with General + Content tabs.
+                if root.current-layout-label == "3-pane": VerticalLayout {
                     spacing: 0;
+                    horizontal-stretch: 1;
 
-                    // ── Table Header ──
-                    Rectangle {
-                        height: Tokens.chrome-h - Tokens.sp-5;
-                        background: Tokens.bg-2;
+                    TorrentListView {
+                        vertical-stretch: 1;
+                        session-ready: root.session-ready;
+                        error-text: root.error-text;
+                        torrent-model: root.torrent-model;
+                        sort-column: root.sort-column;
+                        sort-ascending: root.sort-ascending;
+                        col-name-width: root.col-name-width;
+                        col-progress-width: root.col-progress-width;
+                        col-state-width: root.col-state-width;
+                        col-down-rate-width: root.col-down-rate-width;
+                        col-up-rate-width: root.col-up-rate-width;
+                        col-seeds-width: root.col-seeds-width;
+                        col-peers-width: root.col-peers-width;
+                        col-eta-width: root.col-eta-width;
+                        col-size-width: root.col-size-width;
+                        col-ratio-width: root.col-ratio-width;
+                        shift-held: root.shift-held;
+                        ctrl-held: root.ctrl-held;
+                        sort-requested(c) => { root.sort-requested(c); }
+                        row-clicked(h, s, c) => { root.row-clicked(h, s, c); }
+                        row-right-clicked(h, x, y) => { root.row-right-clicked(h, x, y); }
+                    }
 
-                        // Name
+                    if root.session-ready && root.error-text == "": Rectangle {
+                        height: Tokens.sp-10 * 6;
+                        background: Tokens.bg-1;
+
                         Rectangle {
-                            x: 0;
-                            width: root.col-name-width;
-                            height: parent.height;
-
-                            hdr-name-touch := TouchArea {
-                                clicked => { root.sort-requested(0); }
-                                mouse-cursor: pointer;
-                            }
-                            Text {
-                                text: "Name" + (root.sort-column == 0 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
-                                color: Tokens.fg-0;
-                                font-size: Tokens.fs-12;
-                                font-weight: 700;
-                                vertical-alignment: center;
-                                horizontal-alignment: left;
-                                x: Tokens.sp-3;
-                            }
-                        }
-
-                        // Progress
-                        Rectangle {
-                            x: root.col-name-width;
-                            width: root.col-progress-width;
-                            height: parent.height;
-
-                            hdr-progress-touch := TouchArea {
-                                clicked => { root.sort-requested(1); }
-                                mouse-cursor: pointer;
-                            }
-                            Text {
-                                text: "Progress" + (root.sort-column == 1 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
-                                color: Tokens.fg-0;
-                                font-size: Tokens.fs-12;
-                                font-weight: 700;
-                                vertical-alignment: center;
-                                horizontal-alignment: left;
-                                x: Tokens.sp-2;
-                            }
-                        }
-
-                        // State
-                        Rectangle {
-                            x: root.col-name-width + root.col-progress-width;
-                            width: root.col-state-width;
-                            height: parent.height;
-
-                            hdr-state-touch := TouchArea {
-                                clicked => { root.sort-requested(2); }
-                                mouse-cursor: pointer;
-                            }
-                            Text {
-                                text: "State" + (root.sort-column == 2 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
-                                color: Tokens.fg-0;
-                                font-size: Tokens.fs-12;
-                                font-weight: 700;
-                                vertical-alignment: center;
-                                horizontal-alignment: left;
-                                x: Tokens.sp-2;
-                            }
-                        }
-
-                        // Down Rate
-                        Rectangle {
-                            x: root.col-name-width + root.col-progress-width + root.col-state-width;
-                            width: root.col-down-rate-width;
-                            height: parent.height;
-
-                            hdr-down-rate-touch := TouchArea {
-                                clicked => { root.sort-requested(3); }
-                                mouse-cursor: pointer;
-                            }
-                            Text {
-                                text: "\u{2193}" + (root.sort-column == 3 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
-                                color: Tokens.fg-0;
-                                font-size: Tokens.fs-12;
-                                font-weight: 700;
-                                vertical-alignment: center;
-                                horizontal-alignment: right;
-                                x: 0;
-                                width: parent.width - Tokens.sp-3;
-                            }
-                        }
-
-                        // Up Rate
-                        Rectangle {
-                            x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width;
-                            width: root.col-up-rate-width;
-                            height: parent.height;
-
-                            hdr-up-rate-touch := TouchArea {
-                                clicked => { root.sort-requested(4); }
-                                mouse-cursor: pointer;
-                            }
-                            Text {
-                                text: "\u{2191}" + (root.sort-column == 4 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
-                                color: Tokens.fg-0;
-                                font-size: Tokens.fs-12;
-                                font-weight: 700;
-                                vertical-alignment: center;
-                                horizontal-alignment: right;
-                                x: 0;
-                                width: parent.width - Tokens.sp-3;
-                            }
-                        }
-
-                        // Seeds
-                        Rectangle {
-                            x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width;
-                            width: root.col-seeds-width;
-                            height: parent.height;
-
-                            hdr-seeds-touch := TouchArea {
-                                clicked => { root.sort-requested(5); }
-                                mouse-cursor: pointer;
-                            }
-                            Text {
-                                text: "Seeds" + (root.sort-column == 5 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
-                                color: Tokens.fg-0;
-                                font-size: Tokens.fs-12;
-                                font-weight: 700;
-                                vertical-alignment: center;
-                                horizontal-alignment: right;
-                                x: 0;
-                                width: parent.width - Tokens.sp-3;
-                            }
-                        }
-
-                        // Peers
-                        Rectangle {
-                            x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width;
-                            width: root.col-peers-width;
-                            height: parent.height;
-
-                            hdr-peers-touch := TouchArea {
-                                clicked => { root.sort-requested(6); }
-                                mouse-cursor: pointer;
-                            }
-                            Text {
-                                text: "Peers" + (root.sort-column == 6 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
-                                color: Tokens.fg-0;
-                                font-size: Tokens.fs-12;
-                                font-weight: 700;
-                                vertical-alignment: center;
-                                horizontal-alignment: right;
-                                x: 0;
-                                width: parent.width - Tokens.sp-3;
-                            }
-                        }
-
-                        // ETA
-                        Rectangle {
-                            x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width;
-                            width: root.col-eta-width;
-                            height: parent.height;
-
-                            hdr-eta-touch := TouchArea {
-                                clicked => { root.sort-requested(7); }
-                                mouse-cursor: pointer;
-                            }
-                            Text {
-                                text: "ETA" + (root.sort-column == 7 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
-                                color: Tokens.fg-0;
-                                font-size: Tokens.fs-12;
-                                font-weight: 700;
-                                vertical-alignment: center;
-                                horizontal-alignment: right;
-                                x: 0;
-                                width: parent.width - Tokens.sp-3;
-                            }
-                        }
-
-                        // Size
-                        Rectangle {
-                            x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width;
-                            width: root.col-size-width;
-                            height: parent.height;
-
-                            hdr-size-touch := TouchArea {
-                                clicked => { root.sort-requested(8); }
-                                mouse-cursor: pointer;
-                            }
-                            Text {
-                                text: "Size" + (root.sort-column == 8 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
-                                color: Tokens.fg-0;
-                                font-size: Tokens.fs-12;
-                                font-weight: 700;
-                                vertical-alignment: center;
-                                horizontal-alignment: right;
-                                x: 0;
-                                width: parent.width - Tokens.sp-3;
-                            }
-                        }
-
-                        // Ratio
-                        Rectangle {
-                            x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width + root.col-size-width;
-                            width: root.col-ratio-width;
-                            height: parent.height;
-
-                            hdr-ratio-touch := TouchArea {
-                                clicked => { root.sort-requested(9); }
-                                mouse-cursor: pointer;
-                            }
-                            Text {
-                                text: "Ratio" + (root.sort-column == 9 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
-                                color: Tokens.fg-0;
-                                font-size: Tokens.fs-12;
-                                font-weight: 700;
-                                vertical-alignment: center;
-                                horizontal-alignment: right;
-                                x: 0;
-                                width: parent.width - Tokens.sp-3;
-                            }
-                        }
-
-                        // Column separator lines (vertical)
-                        Rectangle { x: root.col-name-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
-                        Rectangle { x: root.col-name-width + root.col-progress-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
-                        Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
-                        Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
-                        Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
-                        Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
-                        Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
-                        Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
-                        Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width + root.col-size-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
-
-                        // Header bottom border
-                        Rectangle {
-                            y: parent.height - Tokens.border-width-thin;
+                            y: 0;
+                            width: parent.width;
                             height: Tokens.border-width-thin;
                             background: Tokens.border-1;
                         }
-                    }
 
-                    // ── Torrent List (scrollable) ──
-                    Flickable {
-                        vertical-stretch: 1;
-                        viewport-height: root.torrent-model.length * Tokens.row-h;
-
-                        for item[index] in root.torrent-model: Rectangle {
-                            y: index * Tokens.row-h;
-                            height: Tokens.row-h;
-                            width: parent.width;
-                            background: item.selected
-                                ? Tokens.accent
-                                : (row-touch.has-hover
-                                    ? Tokens.bg-hover
-                                    : (mod(index, 2) == 0 ? Tokens.bg-0 : Tokens.bg-1));
-
-                            row-touch := TouchArea {
-                                clicked => {
-                                    root.row-clicked(item.info-hash, root.shift-held, root.ctrl-held);
-                                }
-                                pointer-event(event) => {
-                                    if event.kind == PointerEventKind.down && event.button == PointerEventButton.right {
-                                        root.row-right-clicked(item.info-hash, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
-                                    }
-                                }
-                                mouse-cursor: pointer;
-                            }
-
-                            // Name
-                            Text {
-                                text: item.name;
-                                color: Tokens.fg-0;
-                                font-size: Tokens.fs-13;
-                                vertical-alignment: center;
-                                horizontal-alignment: left;
-                                overflow: elide;
-                                x: Tokens.sp-3;
-                                width: root.col-name-width - Tokens.sp-5;
-                            }
-
-                            // Progress bar
-                            TorrentProgressBar {
-                                x: root.col-name-width + Tokens.sp-2;
-                                y: (parent.height - Tokens.sp-6) / 2;
-                                width: root.col-progress-width - Tokens.sp-4;
-                                progress: item.progress;
-                                fill-color: item.state-color;
-                                progress-text: item.progress-text;
-                            }
-
-                            // State
-                            Text {
-                                text: item.state;
-                                color: item.state-color;
-                                font-size: Tokens.fs-13;
-                                vertical-alignment: center;
-                                horizontal-alignment: left;
-                                overflow: elide;
-                                x: root.col-name-width + root.col-progress-width + Tokens.sp-2;
-                                width: root.col-state-width - Tokens.sp-4;
-                            }
-
-                            // Down Rate
-                            Text {
-                                text: item.down-rate;
-                                color: Tokens.fg-0;
-                                font-size: Tokens.fs-13;
-                                vertical-alignment: center;
-                                horizontal-alignment: right;
-                                x: root.col-name-width + root.col-progress-width + root.col-state-width;
-                                width: root.col-down-rate-width - Tokens.sp-3;
-                            }
-
-                            // Up Rate
-                            Text {
-                                text: item.up-rate;
-                                color: Tokens.fg-0;
-                                font-size: Tokens.fs-13;
-                                vertical-alignment: center;
-                                horizontal-alignment: right;
-                                x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width;
-                                width: root.col-up-rate-width - Tokens.sp-3;
-                            }
-
-                            // Seeds
-                            Text {
-                                text: item.seeds;
-                                color: Tokens.fg-0;
-                                font-size: Tokens.fs-13;
-                                vertical-alignment: center;
-                                horizontal-alignment: right;
-                                x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width;
-                                width: root.col-seeds-width - Tokens.sp-3;
-                            }
-
-                            // Peers
-                            Text {
-                                text: item.peers;
-                                color: Tokens.fg-0;
-                                font-size: Tokens.fs-13;
-                                vertical-alignment: center;
-                                horizontal-alignment: right;
-                                x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width;
-                                width: root.col-peers-width - Tokens.sp-3;
-                            }
-
-                            // ETA
-                            Text {
-                                text: item.eta;
-                                color: Tokens.fg-0;
-                                font-size: Tokens.fs-13;
-                                vertical-alignment: center;
-                                horizontal-alignment: right;
-                                x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width;
-                                width: root.col-eta-width - Tokens.sp-3;
-                            }
-
-                            // Size
-                            Text {
-                                text: item.total-size;
-                                color: Tokens.fg-0;
-                                font-size: Tokens.fs-13;
-                                vertical-alignment: center;
-                                horizontal-alignment: right;
-                                x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width;
-                                width: root.col-size-width - Tokens.sp-3;
-                            }
-
-                            // Ratio
-                            Text {
-                                text: item.ratio;
-                                color: Tokens.fg-0;
-                                font-size: Tokens.fs-13;
-                                vertical-alignment: center;
-                                horizontal-alignment: right;
-                                x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width + root.col-size-width;
-                                width: root.col-ratio-width - Tokens.sp-3;
-                            }
-
-                            // Row bottom border
-                            Rectangle {
-                                y: parent.height - Tokens.border-width-thin;
-                                width: parent.width;
-                                height: Tokens.border-width-thin;
-                                background: Tokens.divider;
-                            }
+                        Text {
+                            text: "Select a torrent to see details";
+                            color: Tokens.fg-3;
+                            font-size: Tokens.fs-14;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
                         }
                     }
                 }
 
-                // Error state
-                if root.error-text != "": VerticalLayout {
-                    alignment: center;
-                    spacing: Tokens.sp-4;
+                // ── L2: Drawer (list full-height + collapsible drawer) ──
+                if root.current-layout-label == "Drawer": TorrentListView {
+                    horizontal-stretch: 1;
+                    session-ready: root.session-ready;
+                    error-text: root.error-text;
+                    torrent-model: root.torrent-model;
+                    sort-column: root.sort-column;
+                    sort-ascending: root.sort-ascending;
+                    col-name-width: root.col-name-width;
+                    col-progress-width: root.col-progress-width;
+                    col-state-width: root.col-state-width;
+                    col-down-rate-width: root.col-down-rate-width;
+                    col-up-rate-width: root.col-up-rate-width;
+                    col-seeds-width: root.col-seeds-width;
+                    col-peers-width: root.col-peers-width;
+                    col-eta-width: root.col-eta-width;
+                    col-size-width: root.col-size-width;
+                    col-ratio-width: root.col-ratio-width;
+                    shift-held: root.shift-held;
+                    ctrl-held: root.ctrl-held;
+                    sort-requested(c) => { root.sort-requested(c); }
+                    row-clicked(h, s, c) => { root.row-clicked(h, s, c); }
+                    row-right-clicked(h, x, y) => { root.row-right-clicked(h, x, y); }
+                }
 
-                    Text {
-                        text: "Error";
-                        color: Tokens.status-error;
-                        font-size: Tokens.fs-18;
-                        font-weight: 700;
-                        horizontal-alignment: center;
+                if root.current-layout-label == "Drawer"
+                   && root.session-ready && root.error-text == ""
+                   && root.inspector-shown: Rectangle {
+                    width: 460px;
+                    background: Tokens.bg-1;
+
+                    Rectangle {
+                        x: 0;
+                        width: Tokens.border-width-thin;
+                        height: parent.height;
+                        background: Tokens.border-1;
                     }
 
                     Text {
-                        text: root.error-text;
-                        color: Tokens.status-error;
+                        text: "Select a torrent to see details";
+                        color: Tokens.fg-3;
                         font-size: Tokens.fs-14;
                         horizontal-alignment: center;
-                        wrap: word-wrap;
+                        vertical-alignment: center;
                     }
                 }
+
+                // ── L3: Command (full-bleed compact list) ──
+                if root.current-layout-label == "Command": TorrentListView {
+                    horizontal-stretch: 1;
+                    compact-mode: true;
+                    session-ready: root.session-ready;
+                    error-text: root.error-text;
+                    torrent-model: root.torrent-model;
+                    sort-column: root.sort-column;
+                    sort-ascending: root.sort-ascending;
+                    col-name-width: root.col-name-width;
+                    col-progress-width: root.col-progress-width;
+                    col-state-width: root.col-state-width;
+                    col-down-rate-width: root.col-down-rate-width;
+                    col-up-rate-width: root.col-up-rate-width;
+                    col-seeds-width: root.col-seeds-width;
+                    col-peers-width: root.col-peers-width;
+                    col-eta-width: root.col-eta-width;
+                    col-size-width: root.col-size-width;
+                    col-ratio-width: root.col-ratio-width;
+                    shift-held: root.shift-held;
+                    ctrl-held: root.ctrl-held;
+                    sort-requested(c) => { root.sort-requested(c); }
+                    row-clicked(h, s, c) => { root.row-clicked(h, s, c); }
+                    row-right-clicked(h, x, y) => { root.row-right-clicked(h, x, y); }
                 }
             }
 
@@ -1047,7 +708,55 @@ export component MainWindow inherits Window {
         }
     }
 
-    // Tweaks overlay (Ctrl+Shift+T / Cmd+Shift+T)
+    // ─────── M176 D3: overlay z-order (LOAD-BEARING) ──────────
+    //
+    // Slint renders later children on top, so the order at the root
+    // level of MainWindow is itself the z-order from back to front.
+    // The required order here is:
+    //
+    //   1. AddMagnetDialog
+    //   2. AddTorrentDialog
+    //   3. ContextMenu
+    //   4. ConfirmDeleteDialog
+    //   5. DetailPopover (L3-only, M176)
+    //   6. TweaksOverlay  ◄── MUST be the very last child of MainWindow.
+    //
+    // Moving TweaksOverlay earlier breaks its readability when the L3
+    // detail popover is visible (the popover would float on top of
+    // Tweaks, hiding the controls the user is actively driving).
+    //
+    // Verified manually in M176 QA — see `Verification` in the plan.
+    // ──────────────────────────────────────────────────────────
+
+    // L3 detail popover overlay (M176). Visible only in L3 with
+    // inspector-shown true. M177 replaces this placeholder with the
+    // real detail tabs.
+    if root.current-layout-label == "Command"
+       && root.session-ready && root.error-text == ""
+       && root.inspector-shown: Rectangle {
+        x: root.width - self.width - Tokens.sp-5;
+        y: Tokens.chrome-h * 2 + Tokens.sp-4;
+        width: Tokens.sp-10 * 12;
+        height: Tokens.sp-10 * 8;
+        background: Tokens.bg-1;
+        border-color: Tokens.border-2;
+        border-width: Tokens.border-width-thin;
+        border-radius: Tokens.r-lg;
+        drop-shadow-color: Tokens.shadow-lg.color;
+        drop-shadow-blur: Tokens.shadow-lg.blur;
+        drop-shadow-offset-y: Tokens.shadow-lg.offset-y;
+
+        Text {
+            text: "Select a torrent to see details";
+            color: Tokens.fg-3;
+            font-size: Tokens.fs-14;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    // Tweaks overlay (Ctrl+Shift+T / Cmd+Shift+T) — MUST stay LAST
+    // child of MainWindow per the z-order spec above.
     TweaksOverlay {
         show: root.show-tweaks;
         x: root.width - self.width - Tokens.sp-4;
@@ -1056,9 +765,11 @@ export component MainWindow inherits Window {
         current-theme: root.current-theme;
         current-density: root.current-density;
         current-radius: root.current-radius;
+        current-layout-label: root.current-layout-label;
         skin-changed(v)    => { root.tweaks-skin-changed(v); }
         theme-changed(v)   => { root.tweaks-theme-changed(v); }
         density-changed(v) => { root.tweaks-density-changed(v); }
         radius-changed(v)  => { root.tweaks-radius-changed(v); }
+        layout-changed(v)  => { root.tweaks-layout-changed(v); }
     }
 }

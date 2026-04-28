@@ -1,0 +1,130 @@
+// Toolbar organism (M176 D13) — slim chrome bar between the menu and
+// the main content area. M176 ships only the three layout-icon buttons
+// (3-pane / Drawer / Command), which mirror the Tweaks Layout pill so
+// users have both a primary surface and a discoverable in-chrome
+// switcher. Add / Search / Settings icons land with their backing
+// functionality in later milestones (M184 / M196 / M180+).
+//
+// Spec reference: `components/toolbar.jsx:57–60`. M176 uses the L1/L2/L3
+// text glyphs as placeholders; real Path icons come with the rest of
+// the toolbar surface.
+
+import { Tokens } from "../tokens.slint";
+
+export component Toolbar {
+    in property <string> current-layout-label: "3-pane";
+    callback layout-changed(string);
+
+    height: Tokens.chrome-h - Tokens.sp-2;
+    horizontal-stretch: 1;
+
+    Rectangle {
+        background: Tokens.bg-1;
+
+        HorizontalLayout {
+            padding-left: Tokens.sp-3;
+            padding-right: Tokens.sp-3;
+            padding-top: Tokens.sp-1;
+            padding-bottom: Tokens.sp-1;
+            spacing: Tokens.sp-2;
+            alignment: start;
+
+            // L1 — 3-pane
+            Rectangle {
+                width: Tokens.sp-9;
+                height: parent.height - Tokens.sp-2;
+                background: root.current-layout-label == "3-pane"
+                    ? Tokens.accent
+                    : (l1-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1);
+                border-radius: Tokens.r-sm;
+                border-width: Tokens.border-width-thin;
+                border-color: root.current-layout-label == "3-pane"
+                    ? Tokens.accent
+                    : Tokens.border-1;
+
+                Text {
+                    text: "L1";
+                    color: root.current-layout-label == "3-pane"
+                        ? Tokens.accent-fg
+                        : Tokens.fg-0;
+                    font-size: Tokens.fs-12;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                l1-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.layout-changed("3-pane"); }
+                }
+            }
+
+            // L2 — Drawer
+            Rectangle {
+                width: Tokens.sp-9;
+                height: parent.height - Tokens.sp-2;
+                background: root.current-layout-label == "Drawer"
+                    ? Tokens.accent
+                    : (l2-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1);
+                border-radius: Tokens.r-sm;
+                border-width: Tokens.border-width-thin;
+                border-color: root.current-layout-label == "Drawer"
+                    ? Tokens.accent
+                    : Tokens.border-1;
+
+                Text {
+                    text: "L2";
+                    color: root.current-layout-label == "Drawer"
+                        ? Tokens.accent-fg
+                        : Tokens.fg-0;
+                    font-size: Tokens.fs-12;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                l2-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.layout-changed("Drawer"); }
+                }
+            }
+
+            // L3 — Command
+            Rectangle {
+                width: Tokens.sp-9;
+                height: parent.height - Tokens.sp-2;
+                background: root.current-layout-label == "Command"
+                    ? Tokens.accent
+                    : (l3-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1);
+                border-radius: Tokens.r-sm;
+                border-width: Tokens.border-width-thin;
+                border-color: root.current-layout-label == "Command"
+                    ? Tokens.accent
+                    : Tokens.border-1;
+
+                Text {
+                    text: "L3";
+                    color: root.current-layout-label == "Command"
+                        ? Tokens.accent-fg
+                        : Tokens.fg-0;
+                    font-size: Tokens.fs-12;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                l3-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.layout-changed("Command"); }
+                }
+            }
+        }
+
+        // Bottom border
+        Rectangle {
+            y: parent.height - Tokens.border-width-thin;
+            height: Tokens.border-width-thin;
+            background: Tokens.border-1;
+        }
+    }
+}

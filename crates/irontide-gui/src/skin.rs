@@ -1,12 +1,14 @@
-//! Skin / theme / density / radius settings.
+//! Skin / theme / density / radius / layout settings.
 //!
-//! Four parallel enums make up the user-facing design-system state:
+//! Six parallel axes make up the user-facing design-system state:
 //! [`Skin`] (palette family), [`Theme`] (light/dark), [`Density`]
-//! (row + chrome dimensions), and [`RadiusPreset`] (corner rounding).
+//! (row + chrome dimensions), [`RadiusPreset`] (corner rounding),
+//! [`Layout`] (overall window shape: 3-pane / drawer / command),
+//! and [`L3SidebarMode`] (icons-only or hidden, only meaningful in L3).
 //!
 //! The pipeline is:
 //!
-//! 1. TOML config on disk (`~/.config/irontide/config.toml`) holds four
+//! 1. TOML config on disk (`~/.config/irontide/config.toml`) holds the
 //!    optional strings; [`SkinSettings::from_gui_config`] parses them
 //!    via `strum::EnumString`, falling back to the default on an invalid
 //!    value (with a `tracing::warn!`).
@@ -19,6 +21,10 @@
 //!    with `skin-applied = true` so the main layout can unmask.
 //! 4. On shutdown, [`SkinSettings::populate_gui_config`] writes the
 //!    current state back into `GuiConfig` for persistence.
+//! 5. [`Layout`], [`L3SidebarMode`], and `inspector_shown` bypass
+//!    `resolve` + `apply` — they are persisted via `populate_gui_config`
+//!    but consumed directly by `main.slint` property bindings, since
+//!    they change the layout tree rather than `Tokens` values.
 
 use strum::{Display, EnumString};
 
@@ -76,7 +82,80 @@ pub enum RadiusPreset {
     Rounded,
 }
 
-/// Combined skin/theme/density/radius state.
+/// Active layout variant (overall window shape).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Display, EnumString)]
+#[strum(serialize_all = "UPPERCASE")]
+pub enum Layout {
+    /// 3-pane (default): sidebar | (list / detail-placeholder).
+    #[default]
+    L1,
+    /// Drawer: sidebar | list (full height) | inspector drawer.
+    L2,
+    /// Command workspace: minimal chrome, optional icon-only sidebar,
+    /// detail surfaces as overlay popover.
+    L3,
+}
+
+impl Layout {
+    /// Friendly label for the Tweaks pill / toolbar tooltip.
+    /// Spec: `components/tweaks.jsx:83`.
+    #[must_use]
+    pub fn label(&self) -> &'static str {
+        match self {
+            Layout::L1 => "3-pane",
+            Layout::L2 => "Drawer",
+            Layout::L3 => "Command",
+        }
+    }
+
+    /// Parse from a friendly label (Tweaks pill / toolbar callback).
+    /// Returns `None` on an unknown label; caller decides whether to warn.
+    #[must_use]
+    pub fn from_label(label: &str) -> Option<Layout> {
+        match label {
+            "3-pane" => Some(Layout::L1),
+            "Drawer" => Some(Layout::L2),
+            "Command" => Some(Layout::L3),
+            _ => None,
+        }
+    }
+}
+
+/// L3-only sidebar collapse mode.
+///
+/// Outside of [`Layout::L3`] this field is meaningless — the L1 and L2
+/// branches always render the full sidebar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Display, EnumString)]
+#[strum(serialize_all = "lowercase")]
+pub enum L3SidebarMode {
+    /// Render section icons only at a narrower width.
+    #[default]
+    Icons,
+    /// Hide the sidebar entirely.
+    Hidden,
+}
+
+/// Default inspector visibility for a given layout.
+///
+/// Used when `gui.inspector_shown` is `None` (first-time-this-layout).
+/// L2's drawer is the *point* of L2, so the inspector is on by default
+/// there; L1 and L3 default the inspector off (L1's detail-pane is
+/// always visible inline; L3's popover is opt-in via ⌘I).
+#[must_use]
+pub fn default_inspector_shown(layout: Layout) -> bool {
+    matches!(layout, Layout::L2)
+}
+
+/// Combined design-system state persisted in `[gui]` config.
+///
+/// Token-affecting axes (skin, theme, density, radius) flow through
+/// [`SkinSettings::resolve`] → [`SkinSettings::apply`] to mutate the
+/// Slint `Tokens` global on each change.
+///
+/// Structural axes (layout, l3_sidebar_mode, inspector_shown) bypass
+/// resolve/apply: they are persisted via [`SkinSettings::populate_gui_config`]
+/// and consumed directly by `main.slint` property bindings, since they
+/// change the layout tree rather than design-token values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct SkinSettings {
     /// Active skin.
@@ -87,6 +166,13 @@ pub struct SkinSettings {
     pub density: Density,
     /// Active radius preset.
     pub radius: RadiusPreset,
+    /// Active layout variant (3-pane / drawer / command).
+    pub layout: Layout,
+    /// Sidebar mode within L3 (icons-only / hidden); ignored otherwise.
+    pub l3_sidebar_mode: L3SidebarMode,
+    /// Inspector toggle override (⌘I). `None` defers to
+    /// [`default_inspector_shown`] for the active layout.
+    pub inspector_shown: Option<bool>,
 }
 
 /// Fully-materialised token values for a given [`SkinSettings`].
@@ -559,12 +645,34 @@ impl SkinSettings {
                     RadiusPreset::default()
                 })
             });
+        let layout = gui.layout.as_deref().map_or(Layout::default(), |s| {
+            s.parse::<Layout>().unwrap_or_else(|_| {
+                tracing::warn!(invalid = s, "unknown layout in config, using default");
+                Layout::default()
+            })
+        });
+        let l3_sidebar_mode = gui
+            .l3_sidebar_mode
+            .as_deref()
+            .map_or(L3SidebarMode::default(), |s| {
+                s.parse::<L3SidebarMode>().unwrap_or_else(|_| {
+                    tracing::warn!(
+                        invalid = s,
+                        "unknown l3_sidebar_mode in config, using default"
+                    );
+                    L3SidebarMode::default()
+                })
+            });
+        let inspector_shown = gui.inspector_shown;
 
         Self {
             skin,
             theme,
             density,
             radius,
+            layout,
+            l3_sidebar_mode,
+            inspector_shown,
         }
     }
 
@@ -576,6 +684,9 @@ impl SkinSettings {
         gui.theme = Some(self.theme.to_string());
         gui.density = Some(self.density.to_string());
         gui.radius_preset = Some(self.radius.to_string());
+        gui.layout = Some(self.layout.to_string());
+        gui.l3_sidebar_mode = Some(self.l3_sidebar_mode.to_string());
+        gui.inspector_shown = self.inspector_shown;
     }
 }
 
@@ -638,6 +749,67 @@ mod tests {
         );
     }
 
+    #[test]
+    fn layout_from_str_happy_path() {
+        assert_eq!("L1".parse::<Layout>().unwrap(), Layout::L1);
+        assert_eq!("L2".parse::<Layout>().unwrap(), Layout::L2);
+        assert_eq!("L3".parse::<Layout>().unwrap(), Layout::L3);
+    }
+
+    #[test]
+    fn layout_from_str_invalid_returns_err() {
+        assert!("balanced".parse::<Layout>().is_err());
+        assert!("L4".parse::<Layout>().is_err());
+        assert!("".parse::<Layout>().is_err());
+    }
+
+    #[test]
+    fn layout_label_round_trip() {
+        for layout in [Layout::L1, Layout::L2, Layout::L3] {
+            let label = layout.label();
+            assert_eq!(
+                Layout::from_label(label),
+                Some(layout),
+                "label round-trip failed for {layout:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn layout_from_label_unknown_returns_none() {
+        assert_eq!(Layout::from_label("Compact"), None);
+        assert_eq!(Layout::from_label(""), None);
+        assert_eq!(Layout::from_label("L1"), None); // tokens are not labels
+    }
+
+    #[test]
+    fn l3_sidebar_mode_from_str_happy_path() {
+        assert_eq!(
+            "icons".parse::<L3SidebarMode>().unwrap(),
+            L3SidebarMode::Icons
+        );
+        assert_eq!(
+            "hidden".parse::<L3SidebarMode>().unwrap(),
+            L3SidebarMode::Hidden
+        );
+    }
+
+    #[test]
+    fn l3_sidebar_mode_from_str_invalid_returns_err() {
+        assert!("collapsed".parse::<L3SidebarMode>().is_err());
+        assert!("".parse::<L3SidebarMode>().is_err());
+    }
+
+    #[test]
+    fn default_inspector_shown_per_layout() {
+        // L2's drawer is the *point* of L2 — inspector on by default.
+        // L1 always shows the inline detail-pane, so no override.
+        // L3 keeps the popover off until the user opts in via ⌘I.
+        assert!(!default_inspector_shown(Layout::L1));
+        assert!(default_inspector_shown(Layout::L2));
+        assert!(!default_inspector_shown(Layout::L3));
+    }
+
     // ── Invalid-string fallback ──
 
     #[test]
@@ -680,6 +852,48 @@ mod tests {
         assert_eq!(s.radius, RadiusPreset::default());
     }
 
+    #[test]
+    fn layout_invalid_falls_back_to_default() {
+        let gui = GuiConfig {
+            layout: Some("balanced".into()),
+            ..Default::default()
+        };
+        let s = SkinSettings::from_gui_config(&gui);
+        assert_eq!(s.layout, Layout::default());
+    }
+
+    #[test]
+    fn l3_sidebar_mode_invalid_falls_back_to_default() {
+        let gui = GuiConfig {
+            l3_sidebar_mode: Some("collapsed".into()),
+            ..Default::default()
+        };
+        let s = SkinSettings::from_gui_config(&gui);
+        assert_eq!(s.l3_sidebar_mode, L3SidebarMode::default());
+    }
+
+    #[test]
+    #[tracing_test::traced_test]
+    fn invalid_layout_emits_warn_log() {
+        let gui = GuiConfig {
+            layout: Some("balanced".into()),
+            ..Default::default()
+        };
+        let _s = SkinSettings::from_gui_config(&gui);
+        assert!(logs_contain("unknown layout"));
+    }
+
+    #[test]
+    #[tracing_test::traced_test]
+    fn invalid_l3_sidebar_mode_emits_warn_log() {
+        let gui = GuiConfig {
+            l3_sidebar_mode: Some("collapsed".into()),
+            ..Default::default()
+        };
+        let _s = SkinSettings::from_gui_config(&gui);
+        assert!(logs_contain("unknown l3_sidebar_mode"));
+    }
+
     // ── Warn log capture for invalid skin ──
 
     #[test]
@@ -704,6 +918,9 @@ mod tests {
         assert_eq!(gui.theme.as_deref(), Some("dark"));
         assert_eq!(gui.density.as_deref(), Some("balanced"));
         assert_eq!(gui.radius_preset.as_deref(), Some("balanced"));
+        assert_eq!(gui.layout.as_deref(), Some("L1"));
+        assert_eq!(gui.l3_sidebar_mode.as_deref(), Some("icons"));
+        assert_eq!(gui.inspector_shown, None);
 
         // Round-trip back through from_gui_config should be lossless.
         let restored = SkinSettings::from_gui_config(&gui);
@@ -717,6 +934,9 @@ mod tests {
             theme: Theme::Light,
             density: Density::Compact,
             radius: RadiusPreset::Sharp,
+            layout: Layout::L3,
+            l3_sidebar_mode: L3SidebarMode::Hidden,
+            inspector_shown: Some(true),
         };
         let mut gui = GuiConfig::default();
         s.populate_gui_config(&mut gui);
@@ -724,6 +944,9 @@ mod tests {
         assert_eq!(gui.theme.as_deref(), Some("light"));
         assert_eq!(gui.density.as_deref(), Some("compact"));
         assert_eq!(gui.radius_preset.as_deref(), Some("sharp"));
+        assert_eq!(gui.layout.as_deref(), Some("L3"));
+        assert_eq!(gui.l3_sidebar_mode.as_deref(), Some("hidden"));
+        assert_eq!(gui.inspector_shown, Some(true));
 
         let restored = SkinSettings::from_gui_config(&gui);
         assert_eq!(restored, s);
@@ -738,6 +961,7 @@ mod tests {
             theme: Theme::Dark,
             density: Density::Balanced,
             radius: RadiusPreset::Balanced,
+            ..Default::default()
         };
         let r = s.resolve();
         assert_eq!(r.bg_0, TIDE_DARK.bg_0);
@@ -752,6 +976,7 @@ mod tests {
             theme: Theme::Light,
             density: Density::Balanced,
             radius: RadiusPreset::Balanced,
+            ..Default::default()
         };
         let r = s.resolve();
         assert_eq!(r.bg_0, FORGE_LIGHT.bg_0);
@@ -831,6 +1056,7 @@ mod tests {
                             theme,
                             density,
                             radius,
+                            ..Default::default()
                         };
                         let r = s.resolve();
 

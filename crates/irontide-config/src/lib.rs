@@ -112,6 +112,15 @@ pub struct GuiConfig {
     /// Corner radius preset (`sharp` / `balanced` / `rounded`). None → default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub radius_preset: Option<String>,
+    /// M176: active layout variant (`L1` / `L2` / `L3`). None → default L1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout: Option<String>,
+    /// M176: L3 sidebar mode (`icons` / `hidden`). None → default icons.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub l3_sidebar_mode: Option<String>,
+    /// M176: inspector visibility (⌘I toggle state). None → layout-default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inspector_shown: Option<bool>,
     /// M173 Lane A: persisted sidebar state (collapsed sections,
     /// selected predicate, scroll position). All fields inside
     /// [`SidebarConfig`] are `Option<_>` so an absent `[gui.sidebar]`
@@ -1245,6 +1254,9 @@ column_widths = [200.0, 80.0]
             theme: Some("light".into()),
             density: Some("compact".into()),
             radius_preset: Some("sharp".into()),
+            layout: None,
+            l3_sidebar_mode: None,
+            inspector_shown: None,
             sidebar: None,
         };
         let serialized = toml::to_string_pretty(&original).expect("serialize");
@@ -1258,6 +1270,59 @@ column_widths = [200.0, 80.0]
         assert!(
             !serialized.contains("[gui.sidebar]"),
             "absent sidebar table must not be emitted: {serialized}"
+        );
+    }
+
+    // ── M176: layout / l3_sidebar_mode / inspector_shown ────────────────
+
+    #[test]
+    fn test_gui_config_pre_m176_loads_with_none_for_layout_fields() {
+        // Pre-M176 config.toml — only the M163/M172b/M173 GUI fields.
+        let toml_str = r#"
+[gui]
+column_order = ["name", "size"]
+skin = "tide"
+theme = "dark"
+"#;
+        let config: ConfigFile = toml::from_str(toml_str).expect("valid TOML");
+        assert_eq!(config.gui.layout, None);
+        assert_eq!(config.gui.l3_sidebar_mode, None);
+        assert_eq!(config.gui.inspector_shown, None);
+        // Existing fields still load.
+        assert_eq!(config.gui.skin.as_deref(), Some("tide"));
+    }
+
+    #[test]
+    fn test_gui_config_layout_fields_round_trip() {
+        let original = GuiConfig {
+            layout: Some("L3".into()),
+            l3_sidebar_mode: Some("hidden".into()),
+            inspector_shown: Some(true),
+            ..Default::default()
+        };
+        let serialized = toml::to_string_pretty(&original).expect("serialize");
+        let deserialized: GuiConfig = toml::from_str(&serialized).expect("deserialize");
+        assert_eq!(deserialized.layout, Some("L3".into()));
+        assert_eq!(deserialized.l3_sidebar_mode, Some("hidden".into()));
+        assert_eq!(deserialized.inspector_shown, Some(true));
+    }
+
+    #[test]
+    fn test_gui_config_layout_default_omits_fields_in_serialization() {
+        let config = GuiConfig {
+            skin: Some("tide".into()),
+            ..Default::default()
+        };
+        let serialized = toml::to_string_pretty(&config).expect("serialize");
+        // None layout fields must not appear in TOML.
+        assert!(!serialized.contains("layout"), "absent layout: {serialized}");
+        assert!(
+            !serialized.contains("l3_sidebar_mode"),
+            "absent l3_sidebar_mode: {serialized}"
+        );
+        assert!(
+            !serialized.contains("inspector_shown"),
+            "absent inspector_shown: {serialized}"
         );
     }
 

@@ -1,0 +1,569 @@
+// TorrentListView organism (M176 Lane A) — encapsulates the four
+// mutually-exclusive states of the main content surface: loading
+// spinner, empty placeholder, table-with-rows, and error message.
+//
+// Extracted from main.slint:485–936 so M177–M178 can render this same
+// organism inside the detail-tabs container with `compact-mode: true`,
+// and so the M176 layout-variant branches (L1/L2/L3) can compose the
+// list without duplicating ~450 lines of header/row plumbing per branch.
+//
+// Visual properties flow through the M172b `Tokens` global. No literal
+// colours/sizes here.
+
+import { Tokens } from "../tokens.slint";
+import { TorrentProgressBar } from "../widgets/progress_bar.slint";
+
+// Plain-data row produced by the Rust poll loop. `selected` drives the
+// row highlight; `state-color` is the resolved status colour for the
+// progress bar fill and state cell.
+export struct TorrentRow {
+    info-hash: string,
+    name: string,
+    total-size: string,
+    progress: float,
+    progress-text: string,
+    down-rate: string,
+    up-rate: string,
+    seeds: string,
+    peers: string,
+    eta: string,
+    state: string,
+    state-color: color,
+    ratio: string,
+    selected: bool,
+}
+
+// Loading-state spinner (private). Matches the M162 design: a circular
+// border with an animated indicator that slides left-to-right.
+component Spinner {
+    width: Tokens.sp-9;
+    height: Tokens.sp-9;
+
+    rect := Rectangle {
+        width: Tokens.sp-9;
+        height: Tokens.sp-9;
+        border-radius: Tokens.r-md;
+        border-width: Tokens.border-width-thick - Tokens.border-width-thin;
+        border-color: Tokens.accent;
+        background: transparent;
+        clip: true;
+
+        indicator := Rectangle {
+            x: -Tokens.sp-6;
+            y: Tokens.sp-3;
+            width: Tokens.sp-7;
+            height: Tokens.sp-7;
+            border-radius: Tokens.r-lg;
+            background: Tokens.fg-0;
+            opacity: 0.6;
+
+            animate x {
+                duration: 1200ms;
+                iteration-count: -1;
+                easing: ease-in-out;
+            }
+        }
+    }
+
+    states [
+        spinning when true: {
+            indicator.x: Tokens.row-h;
+        }
+    ]
+}
+
+export component TorrentListView {
+    // ── Session state ─────────────────────────────────────────────────
+    in property <bool> session-ready: false;
+    in property <string> error-text: "";
+    in property <[TorrentRow]> torrent-model;
+
+    // ── Sort state ────────────────────────────────────────────────────
+    in property <int> sort-column: 0;
+    in property <bool> sort-ascending: true;
+
+    // ── Compact mode (M176) ───────────────────────────────────────────
+    // When true: skip the table header chrome — used by L3 (full-bleed
+    // command workspace) and by future M177–M178 detail-tab embedding.
+    in property <bool> compact-mode: false;
+
+    // ── Column widths ────────────────────────────────────────────────
+    in property <length> col-name-width;
+    in property <length> col-progress-width;
+    in property <length> col-state-width;
+    in property <length> col-down-rate-width;
+    in property <length> col-up-rate-width;
+    in property <length> col-seeds-width;
+    in property <length> col-peers-width;
+    in property <length> col-eta-width;
+    in property <length> col-size-width;
+    in property <length> col-ratio-width;
+
+    // ── Modifier tracking (forwarded from MainWindow) ────────────────
+    in property <bool> shift-held: false;
+    in property <bool> ctrl-held: false;
+
+    // ── Out-bound callbacks ──────────────────────────────────────────
+    callback sort-requested(/* column index */ int);
+    callback row-clicked(/* info-hash */ string, /* shift */ bool, /* ctrl */ bool);
+    callback row-right-clicked(/* info-hash */ string, /* x */ length, /* y */ length);
+
+    Rectangle {
+        background: Tokens.bg-0;
+        horizontal-stretch: 1;
+        vertical-stretch: 1;
+
+        // Loading state: spinner + message
+        if !root.session-ready && root.error-text == "": VerticalLayout {
+            alignment: center;
+
+            HorizontalLayout {
+                alignment: center;
+                Spinner { }
+            }
+
+            Text {
+                text: "Starting session...";
+                color: Tokens.fg-3;
+                font-size: Tokens.fs-16;
+                horizontal-alignment: center;
+            }
+        }
+
+        // Ready state with empty model: empty placeholder
+        if root.session-ready && root.error-text == "" && root.torrent-model.length == 0: VerticalLayout {
+            alignment: center;
+            spacing: Tokens.sp-4;
+
+            Text {
+                text: "No torrents yet.";
+                color: Tokens.fg-0;
+                font-size: Tokens.fs-18;
+                horizontal-alignment: center;
+            }
+
+            Text {
+                text: "Use File > Add Magnet to get started.";
+                color: Tokens.fg-3;
+                font-size: Tokens.fs-14;
+                horizontal-alignment: center;
+            }
+        }
+
+        // Ready state with torrents: table header + list
+        if root.session-ready && root.error-text == "" && root.torrent-model.length > 0: VerticalLayout {
+            spacing: 0;
+
+            // ── Table Header (suppressed in compact-mode) ──
+            if !root.compact-mode: Rectangle {
+                height: Tokens.chrome-h - Tokens.sp-5;
+                background: Tokens.bg-2;
+
+                // Name
+                Rectangle {
+                    x: 0;
+                    width: root.col-name-width;
+                    height: parent.height;
+
+                    hdr-name-touch := TouchArea {
+                        clicked => { root.sort-requested(0); }
+                        mouse-cursor: pointer;
+                    }
+                    Text {
+                        text: "Name" + (root.sort-column == 0 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-12;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-3;
+                    }
+                }
+
+                // Progress
+                Rectangle {
+                    x: root.col-name-width;
+                    width: root.col-progress-width;
+                    height: parent.height;
+
+                    hdr-progress-touch := TouchArea {
+                        clicked => { root.sort-requested(1); }
+                        mouse-cursor: pointer;
+                    }
+                    Text {
+                        text: "Progress" + (root.sort-column == 1 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-12;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-2;
+                    }
+                }
+
+                // State
+                Rectangle {
+                    x: root.col-name-width + root.col-progress-width;
+                    width: root.col-state-width;
+                    height: parent.height;
+
+                    hdr-state-touch := TouchArea {
+                        clicked => { root.sort-requested(2); }
+                        mouse-cursor: pointer;
+                    }
+                    Text {
+                        text: "State" + (root.sort-column == 2 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-12;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-2;
+                    }
+                }
+
+                // Down Rate
+                Rectangle {
+                    x: root.col-name-width + root.col-progress-width + root.col-state-width;
+                    width: root.col-down-rate-width;
+                    height: parent.height;
+
+                    hdr-down-rate-touch := TouchArea {
+                        clicked => { root.sort-requested(3); }
+                        mouse-cursor: pointer;
+                    }
+                    Text {
+                        text: "\u{2193}" + (root.sort-column == 3 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-12;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                        x: 0;
+                        width: parent.width - Tokens.sp-3;
+                    }
+                }
+
+                // Up Rate
+                Rectangle {
+                    x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width;
+                    width: root.col-up-rate-width;
+                    height: parent.height;
+
+                    hdr-up-rate-touch := TouchArea {
+                        clicked => { root.sort-requested(4); }
+                        mouse-cursor: pointer;
+                    }
+                    Text {
+                        text: "\u{2191}" + (root.sort-column == 4 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-12;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                        x: 0;
+                        width: parent.width - Tokens.sp-3;
+                    }
+                }
+
+                // Seeds
+                Rectangle {
+                    x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width;
+                    width: root.col-seeds-width;
+                    height: parent.height;
+
+                    hdr-seeds-touch := TouchArea {
+                        clicked => { root.sort-requested(5); }
+                        mouse-cursor: pointer;
+                    }
+                    Text {
+                        text: "Seeds" + (root.sort-column == 5 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-12;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                        x: 0;
+                        width: parent.width - Tokens.sp-3;
+                    }
+                }
+
+                // Peers
+                Rectangle {
+                    x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width;
+                    width: root.col-peers-width;
+                    height: parent.height;
+
+                    hdr-peers-touch := TouchArea {
+                        clicked => { root.sort-requested(6); }
+                        mouse-cursor: pointer;
+                    }
+                    Text {
+                        text: "Peers" + (root.sort-column == 6 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-12;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                        x: 0;
+                        width: parent.width - Tokens.sp-3;
+                    }
+                }
+
+                // ETA
+                Rectangle {
+                    x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width;
+                    width: root.col-eta-width;
+                    height: parent.height;
+
+                    hdr-eta-touch := TouchArea {
+                        clicked => { root.sort-requested(7); }
+                        mouse-cursor: pointer;
+                    }
+                    Text {
+                        text: "ETA" + (root.sort-column == 7 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-12;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                        x: 0;
+                        width: parent.width - Tokens.sp-3;
+                    }
+                }
+
+                // Size
+                Rectangle {
+                    x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width;
+                    width: root.col-size-width;
+                    height: parent.height;
+
+                    hdr-size-touch := TouchArea {
+                        clicked => { root.sort-requested(8); }
+                        mouse-cursor: pointer;
+                    }
+                    Text {
+                        text: "Size" + (root.sort-column == 8 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-12;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                        x: 0;
+                        width: parent.width - Tokens.sp-3;
+                    }
+                }
+
+                // Ratio
+                Rectangle {
+                    x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width + root.col-size-width;
+                    width: root.col-ratio-width;
+                    height: parent.height;
+
+                    hdr-ratio-touch := TouchArea {
+                        clicked => { root.sort-requested(9); }
+                        mouse-cursor: pointer;
+                    }
+                    Text {
+                        text: "Ratio" + (root.sort-column == 9 ? (root.sort-ascending ? " \u{25B2}" : " \u{25BC}") : "");
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-12;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                        x: 0;
+                        width: parent.width - Tokens.sp-3;
+                    }
+                }
+
+                // Column separator lines (vertical)
+                Rectangle { x: root.col-name-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
+                Rectangle { x: root.col-name-width + root.col-progress-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
+                Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
+                Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
+                Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
+                Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
+                Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
+                Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
+                Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width + root.col-size-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
+
+                // Header bottom border
+                Rectangle {
+                    y: parent.height - Tokens.border-width-thin;
+                    height: Tokens.border-width-thin;
+                    background: Tokens.border-1;
+                }
+            }
+
+            // ── Torrent List (scrollable) ──
+            Flickable {
+                vertical-stretch: 1;
+                viewport-height: root.torrent-model.length * Tokens.row-h;
+
+                for item[index] in root.torrent-model: Rectangle {
+                    y: index * Tokens.row-h;
+                    height: Tokens.row-h;
+                    width: parent.width;
+                    background: item.selected
+                        ? Tokens.accent
+                        : (row-touch.has-hover
+                            ? Tokens.bg-hover
+                            : (mod(index, 2) == 0 ? Tokens.bg-0 : Tokens.bg-1));
+
+                    row-touch := TouchArea {
+                        clicked => {
+                            root.row-clicked(item.info-hash, root.shift-held, root.ctrl-held);
+                        }
+                        pointer-event(event) => {
+                            if event.kind == PointerEventKind.down && event.button == PointerEventButton.right {
+                                root.row-right-clicked(item.info-hash, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                            }
+                        }
+                        mouse-cursor: pointer;
+                    }
+
+                    // Name
+                    Text {
+                        text: item.name;
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        overflow: elide;
+                        x: Tokens.sp-3;
+                        width: root.col-name-width - Tokens.sp-5;
+                    }
+
+                    // Progress bar
+                    TorrentProgressBar {
+                        x: root.col-name-width + Tokens.sp-2;
+                        y: (parent.height - Tokens.sp-6) / 2;
+                        width: root.col-progress-width - Tokens.sp-4;
+                        progress: item.progress;
+                        fill-color: item.state-color;
+                        progress-text: item.progress-text;
+                    }
+
+                    // State
+                    Text {
+                        text: item.state;
+                        color: item.state-color;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        overflow: elide;
+                        x: root.col-name-width + root.col-progress-width + Tokens.sp-2;
+                        width: root.col-state-width - Tokens.sp-4;
+                    }
+
+                    // Down Rate
+                    Text {
+                        text: item.down-rate;
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                        x: root.col-name-width + root.col-progress-width + root.col-state-width;
+                        width: root.col-down-rate-width - Tokens.sp-3;
+                    }
+
+                    // Up Rate
+                    Text {
+                        text: item.up-rate;
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                        x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width;
+                        width: root.col-up-rate-width - Tokens.sp-3;
+                    }
+
+                    // Seeds
+                    Text {
+                        text: item.seeds;
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                        x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width;
+                        width: root.col-seeds-width - Tokens.sp-3;
+                    }
+
+                    // Peers
+                    Text {
+                        text: item.peers;
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                        x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width;
+                        width: root.col-peers-width - Tokens.sp-3;
+                    }
+
+                    // ETA
+                    Text {
+                        text: item.eta;
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                        x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width;
+                        width: root.col-eta-width - Tokens.sp-3;
+                    }
+
+                    // Size
+                    Text {
+                        text: item.total-size;
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                        x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width;
+                        width: root.col-size-width - Tokens.sp-3;
+                    }
+
+                    // Ratio
+                    Text {
+                        text: item.ratio;
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                        x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width + root.col-size-width;
+                        width: root.col-ratio-width - Tokens.sp-3;
+                    }
+
+                    // Row bottom border
+                    Rectangle {
+                        y: parent.height - Tokens.border-width-thin;
+                        width: parent.width;
+                        height: Tokens.border-width-thin;
+                        background: Tokens.divider;
+                    }
+                }
+            }
+        }
+
+        // Error state
+        if root.error-text != "": VerticalLayout {
+            alignment: center;
+            spacing: Tokens.sp-4;
+
+            Text {
+                text: "Error";
+                color: Tokens.status-error;
+                font-size: Tokens.fs-18;
+                font-weight: 700;
+                horizontal-alignment: center;
+            }
+
+            Text {
+                text: root.error-text;
+                color: Tokens.status-error;
+                font-size: Tokens.fs-14;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+            }
+        }
+    }
+}
