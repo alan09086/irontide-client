@@ -663,6 +663,7 @@ pub fn save_session_download_dir(config_path: Option<&Path>, download_dir: &Path
 /// Worker thread count is taken from `settings.runtime_worker_threads`
 /// (0 = auto-detect, capped at 8). When `settings.pin_cores` is true,
 /// each worker thread is pinned to a CPU core via `core_affinity`.
+#[must_use] 
 pub fn build_runtime(settings: &Settings) -> tokio::runtime::Runtime {
     let worker_count = if settings.runtime_worker_threads == 0 {
         std::thread::available_parallelism()
