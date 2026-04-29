@@ -100,6 +100,7 @@ pub enum WsCommand {
 /// - Decimal: `"4095"`, `"65"`
 ///
 /// Returns `None` if the string cannot be parsed.
+#[must_use] 
 pub fn parse_mask(s: &str) -> Option<u32> {
     let trimmed = s.trim();
     if trimmed.is_empty() {
@@ -126,6 +127,7 @@ pub fn parse_mask(s: &str) -> Option<u32> {
 ///
 /// The returned map contains one entry per session metric (currently 70),
 /// keyed by the dotted metric name (e.g. `"net.bytes_sent"`).
+#[must_use] 
 pub fn build_counters_map(session: &SessionHandle) -> serde_json::Map<String, serde_json::Value> {
     let metrics = session_stats_metrics();
     let values = session.counters().snapshot();
@@ -146,6 +148,7 @@ pub fn build_counters_map(session: &SessionHandle) -> serde_json::Map<String, se
 ///
 /// Produces names like `"STATUS"`, `"PEER | ERROR"`, or `"UNKNOWN(0x1000)"`
 /// for unrecognized bits.
+#[must_use] 
 pub fn format_category(category: irontide::session::AlertCategory) -> String {
     let formatted = format!("{category:?}");
     // bitflags Debug format uses ` | ` separators and the flag names,

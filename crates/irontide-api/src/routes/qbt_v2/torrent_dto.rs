@@ -32,6 +32,7 @@ pub const QBT_ETA_INFINITE: i64 = 8_640_000;
 /// qBt's state enum is richer than a plain enum because it reflects dynamics:
 /// a Downloading torrent with zero down-rate is `stalledDL`, not
 /// `downloading`. Real qBt's Web UI and *arr clients depend on these strings.
+#[must_use] 
 pub fn qbt_state_string(s: &TorrentStats) -> &'static str {
     // Paused takes precedence over other flags (real qBt behaviour).
     if s.is_paused {

@@ -28,6 +28,7 @@ pub enum QbtResponse {
 
 impl QbtResponse {
     /// Convenience for "empty success" with no cookie.
+    #[must_use] 
     pub fn ok() -> Self {
         QbtResponse::Ok { set_cookie: None }
     }

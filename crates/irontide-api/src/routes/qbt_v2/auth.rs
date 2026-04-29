@@ -450,6 +450,7 @@ pub async fn require_sid(
 }
 
 /// Build the auth store handle that the rest of the qbt_v2 module shares.
+#[must_use] 
 pub fn build_session_store(ttl_secs: u64, max_sessions: usize) -> Arc<SessionStore> {
     Arc::new(SessionStore::new(
         std::time::Duration::from_secs(ttl_secs),
