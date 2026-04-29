@@ -13,10 +13,11 @@
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
 use http_body_util::BodyExt;
+use serde::Serialize;
 use tempfile::TempDir;
 use tower::ServiceExt;
 
-use irontide::session::Settings;
+use irontide::session::{SessionHandle, Settings};
 use irontide_api::routes::build_router;
 
 const NONEXISTENT_HASH: &str = "0000000000000000000000000000000000000000";
@@ -460,5 +461,166 @@ async fn detail_page_lazy_panels_hx_get_urls_are_lowercase_hex() {
     assert!(
         text.contains(&format!("detail.hash=='{hash}'")),
         "lazy panel hx-trigger must filter on lowercase hash: {text}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// M177: regression coverage for the irontide-format::build_flat refactor.
+//
+// Files-fragment rendering must stay byte-identical for the matched-length
+// case after the Web UI files-row builder is refactored to consume the new
+// shared `FlatFileEntry` / `build_flat` helper (D-eng-3). Two tests:
+//
+// 1. Three-file torrent → three rows, each with path + formatted size.
+// 2. Same torrent → priority `<select>` dropdowns mark the current
+//    priority as `selected` (proves `priority_slug` survives the rewrite).
+//
+// Both add a synthesised 3-file v1 torrent via the session handle so the
+// fragment endpoint actually has metadata + file_progress + file_priorities
+// to project. `seed_magnet`-only flows (used elsewhere in this file) hit
+// the empty-state branch and don't exercise the refactor surface.
+// ---------------------------------------------------------------------------
+
+fn make_three_file_torrent_bytes() -> Vec<u8> {
+    #[derive(Serialize)]
+    struct RawFile<'a> {
+        length: u64,
+        path: &'a [String],
+    }
+
+    #[derive(Serialize)]
+    struct Info<'a> {
+        files: Vec<RawFile<'a>>,
+        name: &'a str,
+        #[serde(rename = "piece length")]
+        piece_length: u64,
+        #[serde(with = "serde_bytes")]
+        pieces: &'a [u8],
+    }
+
+    #[derive(Serialize)]
+    struct Torrent<'a> {
+        info: Info<'a>,
+    }
+
+    let piece_length: u64 = 65_536;
+    let total: u64 = 100 + 50_000 + 80_000;
+    let num_pieces = total.div_ceil(piece_length).max(1);
+    let pieces = vec![0u8; usize::try_from(num_pieces).unwrap_or(usize::MAX).saturating_mul(20)];
+
+    let readme: Vec<String> = vec!["readme.txt".into()];
+    let intro: Vec<String> = vec!["video".into(), "intro.mp4".into()];
+    let bts: Vec<String> = vec!["video".into(), "extras".into(), "bts.mkv".into()];
+
+    let raw_files: Vec<RawFile<'_>> = vec![
+        RawFile {
+            length: 100,
+            path: &readme,
+        },
+        RawFile {
+            length: 50_000,
+            path: &intro,
+        },
+        RawFile {
+            length: 80_000,
+            path: &bts,
+        },
+    ];
+
+    let t = Torrent {
+        info: Info {
+            files: raw_files,
+            name: "m177-three-file",
+            piece_length,
+            pieces: &pieces,
+        },
+    };
+    irontide::bencode::to_bytes(&t).expect("bencode serialize")
+}
+
+async fn make_three_file_router_and_hash() -> (axum::Router, TempDir, String) {
+    let dir = tempfile::tempdir().expect("create tempdir");
+    let settings = Settings {
+        listen_port: 0,
+        download_dir: dir.path().join("downloads"),
+        enable_dht: false,
+        enable_lsd: false,
+        enable_upnp: false,
+        enable_natpmp: false,
+        resume_data_dir: Some(dir.path().join("resume")),
+        save_resume_interval_secs: 0,
+        ..Settings::default()
+    };
+    let session: SessionHandle = irontide::ClientBuilder::from_settings(settings)
+        .start()
+        .await
+        .expect("start test session");
+
+    let bytes = make_three_file_torrent_bytes();
+    let hashes = session
+        .add_torrent_bytes(&bytes)
+        .await
+        .expect("add multi-file torrent");
+    let hash = hashes.v1.expect("v1 hash").to_hex();
+    let router = build_router(session);
+    (router, dir, hash)
+}
+
+#[tokio::test]
+async fn files_fragment_three_file_torrent_renders_all_rows_after_build_flat_refactor() {
+    let (router, _tempdir, hash) = make_three_file_router_and_hash().await;
+
+    let req = Request::get(format!("/webui/fragments/torrent/{hash}/files"))
+        .body(Body::empty())
+        .expect("build request");
+    let response = router.clone().oneshot(req).await.expect("files fragment");
+    assert_eq!(response.status(), StatusCode::OK);
+    let text = body_text(response).await;
+
+    // Each file path appears in the rendered table.
+    for path in ["readme.txt", "video/intro.mp4", "video/extras/bts.mkv"] {
+        assert!(
+            text.contains(path),
+            "expected file path {path} in fragment, got {text}"
+        );
+    }
+    // Sizes are formatted via `irontide_format::format_size`.
+    // 100 B → "100 B"; 50_000 B → "48.8 KiB"; 80_000 B → "78.1 KiB".
+    for size_label in ["100 B", "48.8 KiB", "78.1 KiB"] {
+        assert!(
+            text.contains(size_label),
+            "expected size {size_label} in fragment, got {text}"
+        );
+    }
+    // Three rows means three PATCH endpoints, one per file index.
+    for idx in 0..3 {
+        assert!(
+            text.contains(&format!(
+                r#"hx-patch="/webui/torrents/{hash}/files/{idx}""#
+            )),
+            "row {idx} missing hx-patch URL, got {text}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn files_fragment_three_file_torrent_priority_select_marks_normal_after_refactor() {
+    let (router, _tempdir, hash) = make_three_file_router_and_hash().await;
+
+    let req = Request::get(format!("/webui/fragments/torrent/{hash}/files"))
+        .body(Body::empty())
+        .expect("build request");
+    let response = router.clone().oneshot(req).await.expect("files fragment");
+    assert_eq!(response.status(), StatusCode::OK);
+    let text = body_text(response).await;
+
+    // Default priority for a freshly-added torrent is Normal — the
+    // priority_slug helper must still emit `selected` on that option.
+    let normal_selected_count = text
+        .matches(r#"<option value="normal" selected>Normal</option>"#)
+        .count();
+    assert_eq!(
+        normal_selected_count, 3,
+        "expected three rows with `Normal` selected, got {normal_selected_count}: {text}"
     );
 }

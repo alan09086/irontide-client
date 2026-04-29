@@ -5,53 +5,10 @@
 // calling `apply()` against the live window.
 
 import { Tokens } from "tokens.slint";
-
-// Small row of pill-shaped option buttons with a label on the left.
-component PillRow {
-    in property <string> label;
-    in property <[string]> options;
-    in property <string> selected;
-    in property <bool> disabled: false;
-    callback option-clicked(string);
-
-    HorizontalLayout {
-        spacing: Tokens.sp-4;
-        alignment: start;
-
-        Text {
-            text: root.label;
-            color: Tokens.fg-2;
-            font-size: Tokens.fs-13;
-            width: Tokens.sp-10 * 2;
-            vertical-alignment: center;
-        }
-
-        for opt[idx] in root.options: Rectangle {
-            background: root.selected == opt ? Tokens.accent : Tokens.bg-2;
-            border-radius: Tokens.r-md;
-            border-width: Tokens.border-width-thin;
-            border-color: Tokens.border-1;
-
-            Text {
-                x: Tokens.sp-4;
-                y: Tokens.sp-2;
-                text: opt;
-                color: root.selected == opt
-                    ? Tokens.accent-fg
-                    : (root.disabled ? Tokens.fg-3 : Tokens.fg-1);
-                font-size: Tokens.fs-12;
-            }
-
-            width: self.preferred-width + Tokens.sp-8;
-            height: Tokens.row-h;
-
-            touch := TouchArea {
-                enabled: !root.disabled;
-                clicked => { root.option-clicked(opt); }
-            }
-        }
-    }
-}
+// M177: PillRow promoted to a shared molecule so the DetailPane can
+// reuse it for the General/Content tab switcher without duplicating
+// the row of pill-shaped buttons.
+import { PillRow } from "molecules/pill_row.slint";
 
 export component TweaksOverlay {
     in-out property <bool> show: false;

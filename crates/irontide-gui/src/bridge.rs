@@ -88,7 +88,7 @@ async fn run_session(
     // Signal UI ready + initialise the torrent model.
     state.lock().phase = AppPhase::Ready;
     let _ = weak.upgrade_in_event_loop(move |win| {
-        crate::poll::init_model(&win);
+        crate::poll::init_window(&win);
         win.set_session_ready(true);
         win.set_status_text("Ready".into());
         win.set_default_download_dir(default_download_dir.into());
@@ -348,6 +348,9 @@ async fn handle_gui_command(
         }
         GuiCommand::SetDefaultDownloadDir { dir } => {
             handle_set_default_download_dir(&dir, session, weak).await;
+        }
+        GuiCommand::SetSequentialDownload { info_hash, enabled } => {
+            handle_set_sequential_download(&info_hash, enabled, session, weak).await;
         }
     }
 
@@ -696,6 +699,36 @@ async fn handle_set_default_download_dir(
     });
 
     show_toast(weak, &format!("Download directory: {dir}"), false);
+}
+
+/// Toggle sequential-download mode for a torrent (M177 Content tab).
+///
+/// Mirrors the existing batch-action pattern but for a single torrent.
+/// On failure, surfaces the engine error string in a toast so the user
+/// knows the toggle didn't take.
+async fn handle_set_sequential_download(
+    info_hash: &str,
+    enabled: bool,
+    session: &irontide::session::SessionHandle,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    let Ok(id) = irontide::core::Id20::from_hex(info_hash) else {
+        show_toast(weak, &format!("Bad info-hash: {info_hash}"), true);
+        return;
+    };
+    match session.set_sequential_download(id, enabled).await {
+        Ok(()) => {
+            let label = if enabled {
+                "Sequential download enabled"
+            } else {
+                "Sequential download disabled"
+            };
+            show_toast(weak, label, false);
+        }
+        Err(e) => {
+            show_toast(weak, &format!("Sequential toggle failed: {e}"), true);
+        }
+    }
 }
 
 #[cfg(test)]

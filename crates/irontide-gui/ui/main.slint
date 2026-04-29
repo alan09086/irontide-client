@@ -22,8 +22,12 @@ import { Sidebar, SidebarRow } from "organisms/sidebar.slint";
 import { TorrentListView, TorrentRow } from "organisms/torrent_list.slint";
 // M176 D13: Toolbar with layout-icon switcher.
 import { Toolbar } from "organisms/toolbar.slint";
+// M177: DetailPane organism + FileTreeRow data struct. Replaces the
+// M176 placeholder text in all three layouts (L1 inline / L2 drawer /
+// L3 popover). Step 4 lights up the populated tab body.
+import { DetailPane, FileTreeRow } from "organisms/detail_pane.slint";
 
-export { Tokens, Shadow, SidebarRow, TorrentRow }
+export { Tokens, Shadow, SidebarRow, TorrentRow, FileTreeRow }
 
 component MenuButton {
     in property <string> text;
@@ -180,6 +184,56 @@ export component MainWindow inherits Window {
 
     // ── Torrent model ──
     in-out property <[TorrentRow]> torrent-model;
+
+    // ── Detail pane (M177) ──
+    // Primary selection — drives which torrent the detail pane fetches.
+    // Empty string ("") means deselected → render the empty state.
+    // Pushed by Rust via `update_primary_selection` (selection
+    // callbacks) and by the poll-loop detail-snapshot path. The
+    // DetailPane organism reads `info-hash` bound from this property.
+    in-out property <string> detail-info-hash: "";
+    // Active detail-pane tab. `"General"` (default) or `"Content"`.
+    // Survives `if`-branch re-mount when the user toggles layout. The
+    // poll loop's per-tick `file_priorities` + `file_progress` fetches
+    // are gated on `"Content"` (D-eng-2).
+    in-out property <string> detail-active-tab: "General";
+
+    // ── Detail header / Transfer / Info block (filled by poll loop) ──
+    in-out property <string> detail-name: "";
+    in-out property <string> detail-error: "";
+    in-out property <string> detail-state-label: "";
+    in-out property <string> detail-down-rate: "\u{2014}";
+    in-out property <string> detail-up-rate: "\u{2014}";
+    in-out property <string> detail-all-time-down: "0 B";
+    in-out property <string> detail-all-time-up: "0 B";
+    in-out property <string> detail-ratio: "0.00";
+    in-out property <string> detail-eta: "\u{2014}";
+    in-out property <string> detail-num-peers: "0 / 0";
+    in-out property <string> detail-num-seeds: "0";
+    in-out property <string> detail-share-fraction: "—";
+    in-out property <string> detail-save-path: "";
+    in-out property <string> detail-total-size: "";
+    in-out property <string> detail-piece-count-text: "";
+    in-out property <string> detail-piece-size: "";
+    in-out property <string> detail-added-time: "";
+    in-out property <string> detail-last-seen-complete: "";
+    in-out property <string> detail-active-duration: "";
+
+    // ── Heatmap ──
+    in-out property <[int]> detail-piece-buckets: [];
+    in-out property <string> detail-pieces-text: "0 / 0 pieces (0%)";
+
+    // ── Content tab ──
+    in-out property <bool> detail-sequential: false;
+    in-out property <[FileTreeRow]> detail-files: [];
+
+    // ── Detail-pane callbacks (Step 6) ──
+    callback detail-tab-changed(/* tab label */ string);
+    // The folder key is `"{info_hash}/{folder_path}"`. Rust toggles
+    // membership in `AppState.detail_expanded` (semantically tracking
+    // the *collapsed* set per the M177 plan).
+    callback detail-folder-toggled(/* folder key */ string);
+    callback detail-sequential-toggled(/* enabled */ bool);
 
     // ── Sort state ──
     in-out property <int> sort-column: 0;
@@ -513,12 +567,39 @@ export component MainWindow inherits Window {
                             background: Tokens.border-1;
                         }
 
-                        Text {
-                            text: "Select a torrent to see details";
-                            color: Tokens.fg-3;
-                            font-size: Tokens.fs-14;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
+                        // M177: L1 inline detail pane.
+                        DetailPane {
+                            y: Tokens.border-width-thin;
+                            width: parent.width;
+                            height: parent.height - Tokens.border-width-thin;
+                            info-hash: root.detail-info-hash;
+                            active-tab: root.detail-active-tab;
+                            name: root.detail-name;
+                            error: root.detail-error;
+                            state-label: root.detail-state-label;
+                            down-rate: root.detail-down-rate;
+                            up-rate: root.detail-up-rate;
+                            all-time-down: root.detail-all-time-down;
+                            all-time-up: root.detail-all-time-up;
+                            ratio: root.detail-ratio;
+                            eta: root.detail-eta;
+                            num-peers: root.detail-num-peers;
+                            num-seeds: root.detail-num-seeds;
+                            share-fraction: root.detail-share-fraction;
+                            save-path: root.detail-save-path;
+                            total-size: root.detail-total-size;
+                            piece-count-text: root.detail-piece-count-text;
+                            piece-size: root.detail-piece-size;
+                            added-time: root.detail-added-time;
+                            last-seen-complete: root.detail-last-seen-complete;
+                            active-duration: root.detail-active-duration;
+                            piece-buckets: root.detail-piece-buckets;
+                            pieces-text: root.detail-pieces-text;
+                            sequential: root.detail-sequential;
+                            files: root.detail-files;
+                            tab-changed(t) => { root.detail-tab-changed(t); }
+                            folder-toggled(i) => { root.detail-folder-toggled(i); }
+                            sequential-toggled(b) => { root.detail-sequential-toggled(b); }
                         }
                     }
                 }
@@ -561,12 +642,39 @@ export component MainWindow inherits Window {
                         background: Tokens.border-1;
                     }
 
-                    Text {
-                        text: "Select a torrent to see details";
-                        color: Tokens.fg-3;
-                        font-size: Tokens.fs-14;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
+                    // M177: L2 drawer detail pane.
+                    DetailPane {
+                        x: Tokens.border-width-thin;
+                        width: parent.width - Tokens.border-width-thin;
+                        height: parent.height;
+                        info-hash: root.detail-info-hash;
+                        active-tab: root.detail-active-tab;
+                        name: root.detail-name;
+                        error: root.detail-error;
+                        state-label: root.detail-state-label;
+                        down-rate: root.detail-down-rate;
+                        up-rate: root.detail-up-rate;
+                        all-time-down: root.detail-all-time-down;
+                        all-time-up: root.detail-all-time-up;
+                        ratio: root.detail-ratio;
+                        eta: root.detail-eta;
+                        num-peers: root.detail-num-peers;
+                        num-seeds: root.detail-num-seeds;
+                        share-fraction: root.detail-share-fraction;
+                        save-path: root.detail-save-path;
+                        total-size: root.detail-total-size;
+                        piece-count-text: root.detail-piece-count-text;
+                        piece-size: root.detail-piece-size;
+                        added-time: root.detail-added-time;
+                        last-seen-complete: root.detail-last-seen-complete;
+                        active-duration: root.detail-active-duration;
+                        piece-buckets: root.detail-piece-buckets;
+                        pieces-text: root.detail-pieces-text;
+                        sequential: root.detail-sequential;
+                        files: root.detail-files;
+                        tab-changed(t) => { root.detail-tab-changed(t); }
+                        folder-toggled(i) => { root.detail-folder-toggled(i); }
+                        sequential-toggled(b) => { root.detail-sequential-toggled(b); }
                     }
                 }
 
@@ -728,9 +836,9 @@ export component MainWindow inherits Window {
     // Verified manually in M176 QA — see `Verification` in the plan.
     // ──────────────────────────────────────────────────────────
 
-    // L3 detail popover overlay (M176). Visible only in L3 with
-    // inspector-shown true. M177 replaces this placeholder with the
-    // real detail tabs.
+    // L3 detail popover overlay (M176 wrapper, M177 detail content).
+    // The wrapper Rectangle stays load-bearing for the popover sizing
+    // + drop-shadow; DetailPane fills the interior.
     if root.current-layout-label == "Command"
        && root.session-ready && root.error-text == ""
        && root.inspector-shown: Rectangle {
@@ -746,12 +854,38 @@ export component MainWindow inherits Window {
         drop-shadow-blur: Tokens.shadow-lg.blur;
         drop-shadow-offset-y: Tokens.shadow-lg.offset-y;
 
-        Text {
-            text: "Select a torrent to see details";
-            color: Tokens.fg-3;
-            font-size: Tokens.fs-14;
-            horizontal-alignment: center;
-            vertical-alignment: center;
+        // M177: L3 popover detail pane.
+        DetailPane {
+            width: parent.width;
+            height: parent.height;
+            info-hash: root.detail-info-hash;
+            active-tab: root.detail-active-tab;
+            name: root.detail-name;
+            error: root.detail-error;
+            state-label: root.detail-state-label;
+            down-rate: root.detail-down-rate;
+            up-rate: root.detail-up-rate;
+            all-time-down: root.detail-all-time-down;
+            all-time-up: root.detail-all-time-up;
+            ratio: root.detail-ratio;
+            eta: root.detail-eta;
+            num-peers: root.detail-num-peers;
+            num-seeds: root.detail-num-seeds;
+            share-fraction: root.detail-share-fraction;
+            save-path: root.detail-save-path;
+            total-size: root.detail-total-size;
+            piece-count-text: root.detail-piece-count-text;
+            piece-size: root.detail-piece-size;
+            added-time: root.detail-added-time;
+            last-seen-complete: root.detail-last-seen-complete;
+            active-duration: root.detail-active-duration;
+            piece-buckets: root.detail-piece-buckets;
+            pieces-text: root.detail-pieces-text;
+            sequential: root.detail-sequential;
+            files: root.detail-files;
+            tab-changed(t) => { root.detail-tab-changed(t); }
+            folder-toggled(i) => { root.detail-folder-toggled(i); }
+            sequential-toggled(b) => { root.detail-sequential-toggled(b); }
         }
     }
 

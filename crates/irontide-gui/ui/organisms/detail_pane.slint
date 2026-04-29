@@ -1,0 +1,468 @@
+// DetailPane organism (M177) — the per-torrent detail surface that
+// replaces the M176 "Select a torrent to see details" placeholder in
+// all three layouts (L1 inline, L2 drawer, L3 popover). Two tabs:
+// General (Transfer + Info + Heatmap + error) and Content (Sequential
+// toggle + flattened file tree).
+//
+// All inputs are forwarded from the surrounding MainWindow scope; the
+// DetailPane owns no fetch logic and no per-tick caches. When
+// `info-hash == ""` the empty-state branch renders so deselection looks
+// the same across all layouts.
+//
+// Visual properties flow through the M172b `Tokens` global. No literal
+// colours / sizes here.
+
+import { Tokens } from "../tokens.slint";
+import { PillRow } from "../molecules/pill_row.slint";
+import { TorrentProgressBar } from "../widgets/progress_bar.slint";
+
+// One row in the flattened-file-tree view (Step 3 / Step 6). Produced
+// by the Rust `flatten_files` helper in `crate::detail`. Folders and
+// files are interleaved; `depth` drives indent, `is-folder` drives
+// the triangle / icon, `key` matches against `AppState.detail_expanded`.
+//
+// `priority` is display-only in M177 — editing lives on the M164
+// right-click context menu in M178.
+export struct FileTreeRow {
+    key: string,
+    depth: int,
+    is-folder: bool,
+    expanded: bool,
+    name: string,
+    progress: float,
+    progress-text: string,
+    size: string,
+    priority: string,
+}
+
+// One key-value row in the General tab. Private.
+component InfoLineRow inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> value;
+    spacing: Tokens.sp-4;
+
+    Text {
+        text: root.label;
+        color: Tokens.fg-2;
+        font-size: Tokens.fs-12;
+        width: Tokens.sp-10 * 4;
+        vertical-alignment: center;
+    }
+    Text {
+        text: root.value;
+        color: Tokens.fg-1;
+        font-size: Tokens.fs-12;
+        vertical-alignment: center;
+        horizontal-stretch: 1;
+        overflow: elide;
+    }
+}
+
+// Bucketed piece-availability heatmap (Step 5). One Rectangle per
+// bucket value; missing/downloading/have map to status colours.
+component HeatmapRow inherits Rectangle {
+    in property <[int]> buckets;
+    height: Tokens.sp-6;
+    background: Tokens.bg-2;
+    border-radius: Tokens.r-sm;
+
+    HorizontalLayout {
+        spacing: 0px;
+        for cell[idx] in root.buckets: Rectangle {
+            background: cell == 2
+                ? Tokens.status-seeding
+                : (cell == 1
+                    ? Tokens.status-downloading
+                    : Tokens.fg-3);
+            horizontal-stretch: 1;
+        }
+    }
+}
+
+// General tab body. Three groups stacked: Transfer / Info / Heatmap +
+// error card.
+component GeneralTab inherits VerticalLayout {
+    in property <string> name;
+    in property <string> error;
+    in property <string> state-label;
+    in property <string> down-rate;
+    in property <string> up-rate;
+    in property <string> all-time-down;
+    in property <string> all-time-up;
+    in property <string> ratio;
+    in property <string> eta;
+    in property <string> num-peers;
+    in property <string> num-seeds;
+    in property <string> share-fraction;
+    in property <string> save-path;
+    in property <string> total-size;
+    in property <string> piece-count-text;
+    in property <string> piece-size;
+    in property <string> added-time;
+    in property <string> last-seen-complete;
+    in property <string> active-duration;
+    in property <[int]> piece-buckets;
+    in property <string> pieces-text;
+
+    spacing: Tokens.sp-5;
+    padding: Tokens.sp-5;
+
+    // ── Header (torrent name + state) ──
+    VerticalLayout {
+        spacing: Tokens.sp-2;
+        Text {
+            text: root.name;
+            color: Tokens.fg-0;
+            font-size: Tokens.fs-14;
+            font-weight: 600;
+            overflow: elide;
+        }
+        Text {
+            text: root.state-label;
+            color: Tokens.fg-2;
+            font-size: Tokens.fs-12;
+        }
+    }
+
+    // ── Transfer group ──
+    VerticalLayout {
+        spacing: Tokens.sp-2;
+        Text {
+            text: "Transfer";
+            color: Tokens.fg-2;
+            font-size: Tokens.fs-11;
+        }
+        InfoLineRow { label: "DL"; value: root.down-rate; }
+        InfoLineRow { label: "UL"; value: root.up-rate; }
+        InfoLineRow { label: "All-time DL"; value: root.all-time-down; }
+        InfoLineRow { label: "All-time UL"; value: root.all-time-up; }
+        InfoLineRow { label: "Ratio"; value: root.ratio; }
+        InfoLineRow { label: "ETA"; value: root.eta; }
+        InfoLineRow { label: "Peers"; value: root.num-peers; }
+        InfoLineRow { label: "Seeds"; value: root.num-seeds; }
+        InfoLineRow { label: "Share"; value: root.share-fraction; }
+    }
+
+    // ── Info group ──
+    VerticalLayout {
+        spacing: Tokens.sp-2;
+        Text {
+            text: "Info";
+            color: Tokens.fg-2;
+            font-size: Tokens.fs-11;
+        }
+        InfoLineRow { label: "Save path"; value: root.save-path; }
+        InfoLineRow { label: "Total size"; value: root.total-size; }
+        InfoLineRow { label: "Pieces"; value: root.piece-count-text; }
+        InfoLineRow { label: "Piece size"; value: root.piece-size; }
+        InfoLineRow { label: "Added"; value: root.added-time; }
+        InfoLineRow { label: "Last seen complete"; value: root.last-seen-complete; }
+        InfoLineRow { label: "Active duration"; value: root.active-duration; }
+    }
+
+    // ── Heatmap + label ──
+    VerticalLayout {
+        spacing: Tokens.sp-2;
+        Text {
+            text: root.pieces-text;
+            color: Tokens.fg-2;
+            font-size: Tokens.fs-11;
+        }
+        if root.piece-buckets.length > 0 : HeatmapRow {
+            buckets: root.piece-buckets;
+        }
+    }
+
+    // ── Error card (only when error is non-empty) ──
+    if root.error != "" : Rectangle {
+        background: Tokens.bg-2;
+        border-color: Tokens.status-error;
+        border-width: Tokens.border-width-thin;
+        border-radius: Tokens.r-sm;
+        height: Tokens.sp-10 * 2;
+
+        HorizontalLayout {
+            padding: Tokens.sp-4;
+            spacing: Tokens.sp-3;
+            Text {
+                text: "Error";
+                color: Tokens.status-error;
+                font-size: Tokens.fs-12;
+                font-weight: 600;
+                width: Tokens.sp-10;
+                vertical-alignment: center;
+            }
+            Text {
+                text: root.error;
+                color: Tokens.fg-1;
+                font-size: Tokens.fs-12;
+                wrap: word-wrap;
+                horizontal-stretch: 1;
+            }
+        }
+    }
+}
+
+// One file-tree row view, private to the Content tab. Folder rows show
+// a unicode triangle that flips on `expanded`. File rows show name +
+// progress + priority label. Tap on the folder triangle area fires
+// `folder-toggled(idx)` upward.
+component FileTreeRowView inherits Rectangle {
+    in property <FileTreeRow> data;
+    callback folder-toggled(string);
+
+    height: Tokens.row-h;
+    background: Tokens.bg-1;
+
+    HorizontalLayout {
+        spacing: Tokens.sp-3;
+        padding-left: Tokens.sp-4 + Tokens.sp-4 * root.data.depth;
+        padding-right: Tokens.sp-4;
+        alignment: stretch;
+
+        if root.data.is-folder : Rectangle {
+            width: Tokens.sp-6;
+            height: Tokens.sp-6;
+            Text {
+                text: root.data.expanded ? "\u{25BE}" : "\u{25B8}";
+                color: Tokens.fg-1;
+                font-size: Tokens.fs-12;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            TouchArea {
+                clicked => { root.folder-toggled(root.data.key); }
+            }
+        }
+        if !root.data.is-folder : Rectangle {
+            width: Tokens.sp-6;
+            // empty spacer to align with folder rows
+        }
+
+        Text {
+            text: root.data.name;
+            color: Tokens.fg-1;
+            font-size: Tokens.fs-12;
+            vertical-alignment: center;
+            horizontal-stretch: 2;
+            overflow: elide;
+        }
+
+        TorrentProgressBar {
+            width: Tokens.sp-10 * 3;
+            height: Tokens.sp-4;
+            progress: root.data.progress;
+            fill-color: Tokens.status-seeding;
+        }
+
+        Text {
+            text: root.data.progress-text;
+            color: Tokens.fg-2;
+            font-size: Tokens.fs-11;
+            width: Tokens.sp-10 + Tokens.sp-5;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+        }
+
+        Text {
+            text: root.data.size;
+            color: Tokens.fg-2;
+            font-size: Tokens.fs-11;
+            width: Tokens.sp-10 + Tokens.sp-5;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+        }
+
+        Text {
+            text: root.data.priority;
+            color: Tokens.fg-2;
+            font-size: Tokens.fs-11;
+            width: Tokens.sp-10 + Tokens.sp-5;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// Content tab body. Sequential toggle at top, file-tree rows below.
+component ContentTab inherits VerticalLayout {
+    in property <bool> sequential;
+    in property <[FileTreeRow]> files;
+    callback folder-toggled(string);
+    callback sequential-toggled(bool);
+
+    spacing: Tokens.sp-3;
+    padding: Tokens.sp-5;
+
+    // Sequential toggle (M163-style row checkbox).
+    HorizontalLayout {
+        spacing: Tokens.sp-3;
+        height: Tokens.row-h;
+
+        Rectangle {
+            width: Tokens.sp-5;
+            height: Tokens.sp-5;
+            border-color: Tokens.border-2;
+            border-width: Tokens.border-width-thin;
+            border-radius: Tokens.r-sm;
+            background: root.sequential ? Tokens.accent : Tokens.bg-2;
+            y: (parent.height - self.height) / 2;
+
+            if root.sequential : Text {
+                text: "\u{2713}"; // ✓
+                color: Tokens.accent-fg;
+                font-size: Tokens.fs-11;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            TouchArea {
+                clicked => {
+                    root.sequential-toggled(!root.sequential);
+                }
+            }
+        }
+        Text {
+            text: "Sequential download";
+            color: Tokens.fg-1;
+            font-size: Tokens.fs-12;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+    }
+
+    // File tree.
+    Rectangle {
+        background: Tokens.bg-1;
+        border-color: Tokens.border-1;
+        border-width: Tokens.border-width-thin;
+        border-radius: Tokens.r-sm;
+        vertical-stretch: 1;
+
+        if root.files.length == 0 : Text {
+            text: "No file metadata yet";
+            color: Tokens.fg-3;
+            font-size: Tokens.fs-12;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+
+        if root.files.length > 0 : Flickable {
+            VerticalLayout {
+                for fileRow[idx] in root.files: FileTreeRowView {
+                    data: fileRow;
+                    folder-toggled(k) => { root.folder-toggled(k); }
+                }
+            }
+        }
+    }
+}
+
+// DetailPane — instantiated three times (L1 inline / L2 drawer / L3
+// popover). All inputs are forwarded from the surrounding MainWindow
+// scope. When `info-hash == ""` we render the M176 empty-state copy
+// so deselection always returns the same look across layouts.
+export component DetailPane inherits Rectangle {
+    in property <string> info-hash: "";
+    in property <string> active-tab: "General";
+    callback tab-changed(string);
+
+    // General tab inputs (passthrough to GeneralTab).
+    in property <string> name;
+    in property <string> error;
+    in property <string> state-label;
+    in property <string> down-rate;
+    in property <string> up-rate;
+    in property <string> all-time-down;
+    in property <string> all-time-up;
+    in property <string> ratio;
+    in property <string> eta;
+    in property <string> num-peers;
+    in property <string> num-seeds;
+    in property <string> share-fraction;
+    in property <string> save-path;
+    in property <string> total-size;
+    in property <string> piece-count-text;
+    in property <string> piece-size;
+    in property <string> added-time;
+    in property <string> last-seen-complete;
+    in property <string> active-duration;
+    in property <[int]> piece-buckets;
+    in property <string> pieces-text;
+
+    // Content tab inputs (passthrough to ContentTab).
+    in property <bool> sequential;
+    in property <[FileTreeRow]> files;
+    callback folder-toggled(string);
+    callback sequential-toggled(bool);
+
+    background: Tokens.bg-1;
+    border-color: Tokens.border-1;
+    border-width: Tokens.border-width-thin;
+    border-radius: Tokens.r-sm;
+
+    if root.info-hash == "" : Rectangle {
+        Text {
+            text: "Select a torrent to see details";
+            font-size: Tokens.fs-13;
+            color: Tokens.fg-2;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    if root.info-hash != "" : VerticalLayout {
+        spacing: 0px;
+
+        // Tab pills row.
+        Rectangle {
+            height: Tokens.chrome-h;
+            background: Tokens.bg-2;
+            HorizontalLayout {
+                padding-left: Tokens.sp-5;
+                padding-right: Tokens.sp-5;
+                spacing: Tokens.sp-3;
+                alignment: start;
+
+                PillRow {
+                    label: "";
+                    options: ["General", "Content"];
+                    selected: root.active-tab;
+                    option-clicked(opt) => { root.tab-changed(opt); }
+                }
+            }
+        }
+
+        // Tab body — branches on active-tab. Both branches produce a
+        // VerticalLayout so the parent's vertical-stretch slot is
+        // filled regardless of which tab is active.
+        if root.active-tab == "General" : GeneralTab {
+            name: root.name;
+            error: root.error;
+            state-label: root.state-label;
+            down-rate: root.down-rate;
+            up-rate: root.up-rate;
+            all-time-down: root.all-time-down;
+            all-time-up: root.all-time-up;
+            ratio: root.ratio;
+            eta: root.eta;
+            num-peers: root.num-peers;
+            num-seeds: root.num-seeds;
+            share-fraction: root.share-fraction;
+            save-path: root.save-path;
+            total-size: root.total-size;
+            piece-count-text: root.piece-count-text;
+            piece-size: root.piece-size;
+            added-time: root.added-time;
+            last-seen-complete: root.last-seen-complete;
+            active-duration: root.active-duration;
+            piece-buckets: root.piece-buckets;
+            pieces-text: root.pieces-text;
+        }
+        if root.active-tab == "Content" : ContentTab {
+            sequential: root.sequential;
+            files: root.files;
+            folder-toggled(i) => { root.folder-toggled(i); }
+            sequential-toggled(b) => { root.sequential-toggled(b); }
+        }
+    }
+}

@@ -1,0 +1,56 @@
+// PillRow molecule (M177) — extracted from `tweaks.slint`.
+//
+// A small row of pill-shaped option buttons with a label on the left.
+// First introduced for the Tweaks overlay (M172b) and now reused by the
+// DetailPane organism for its General/Content tab switcher.
+//
+// Visual properties flow through the M172b `Tokens` global. No literal
+// colours / sizes here.
+
+import { Tokens } from "../tokens.slint";
+
+export component PillRow {
+    in property <string> label;
+    in property <[string]> options;
+    in property <string> selected;
+    in property <bool> disabled: false;
+    callback option-clicked(string);
+
+    HorizontalLayout {
+        spacing: Tokens.sp-4;
+        alignment: start;
+
+        Text {
+            text: root.label;
+            color: Tokens.fg-2;
+            font-size: Tokens.fs-13;
+            width: Tokens.sp-10 * 2;
+            vertical-alignment: center;
+        }
+
+        for opt[idx] in root.options: Rectangle {
+            background: root.selected == opt ? Tokens.accent : Tokens.bg-2;
+            border-radius: Tokens.r-md;
+            border-width: Tokens.border-width-thin;
+            border-color: Tokens.border-1;
+
+            Text {
+                x: Tokens.sp-4;
+                y: Tokens.sp-2;
+                text: opt;
+                color: root.selected == opt
+                    ? Tokens.accent-fg
+                    : (root.disabled ? Tokens.fg-3 : Tokens.fg-1);
+                font-size: Tokens.fs-12;
+            }
+
+            width: self.preferred-width + Tokens.sp-8;
+            height: Tokens.row-h;
+
+            touch := TouchArea {
+                enabled: !root.disabled;
+                clicked => { root.option-clicked(opt); }
+            }
+        }
+    }
+}

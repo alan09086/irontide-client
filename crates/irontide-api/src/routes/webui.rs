@@ -758,10 +758,9 @@ pub async fn patch_file_priority(
 
 /// `GET /webui/fragments/torrent/{hash}/files`
 ///
-/// Render the Files tab as an HTML fragment. Uses `info.files` × `file_progress`
-/// × `file_priorities` via a length-safe `.zip()` that truncates to the
-/// shortest if metadata is arriving mid-request (warns on mismatch so
-/// operators can spot a systemic discrepancy).
+/// Render the Files tab as an HTML fragment. Delegates row construction
+/// to [`irontide_format::build_flat`] so the GUI Content tab and Web UI
+/// share the same length-mismatch saturation rules (D-eng-3, M177).
 pub async fn files_fragment(State(session): State<AppState>, Path(hash): Path<String>) -> Response {
     let id = match crate::extractors::parse_info_hash(&hash) {
         Ok(id) => id,
@@ -795,32 +794,27 @@ pub async fn files_fragment(State(session): State<AppState>, Path(hash): Path<St
             files = info.files.len(),
             progress = progress.len(),
             priorities = priorities.len(),
-            "file metadata length mismatch — rendering the common prefix only"
+            "file metadata length mismatch — saturating missing entries to defaults"
         );
     }
 
-    // Length-safe zip — truncates to the shortest of the three. Rows that
-    // share all three pieces of state render fully; the rest wait for the
-    // next refresh cycle.
-    let rows: Vec<FileRow> = info
-        .files
-        .iter()
-        .zip(progress.iter().copied())
-        .zip(priorities.iter().copied())
+    let flat = irontide_format::build_flat(&info, &progress, &priorities);
+    let rows: Vec<FileRow> = flat
+        .into_iter()
         .enumerate()
-        .map(|(idx, ((entry, done), prio))| {
-            let progress = if entry.length == 0 {
+        .map(|(idx, entry)| {
+            let progress = if entry.size == 0 {
                 1.0
             } else {
-                (done as f64 / entry.length as f64).clamp(0.0, 1.0)
+                (entry.progress as f64 / entry.size as f64).clamp(0.0, 1.0)
             };
             FileRow {
                 idx,
                 path: entry.path.to_string_lossy().into_owned(),
-                size: irontide_format::format_size(entry.length),
+                size: irontide_format::format_size(entry.size),
                 progress,
                 progress_pct: format!("{:.1}%", progress * 100.0),
-                priority: priority_slug(prio),
+                priority: priority_slug(entry.priority),
             }
         })
         .collect();

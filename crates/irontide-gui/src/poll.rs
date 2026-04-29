@@ -17,7 +17,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use parking_lot::Mutex;
-use slint::{Model, ModelRc, SharedString, VecModel};
+use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
 use irontide::session::{SessionHandle, TorrentState, TorrentSummary};
 
@@ -29,6 +29,32 @@ use crate::sidebar_view;
 // closure can access it without moving it into each closure.
 thread_local! {
     static TORRENT_MODEL: RefCell<Option<Rc<VecModel<crate::TorrentRow>>>> = const { RefCell::new(None) };
+    // M177: Weak handle to the main window so non-poll-loop callbacks
+    // (row click, select-all, right-click) can push the primary
+    // selection to Slint without owning a strong reference.
+    static MAIN_WINDOW_WEAK: RefCell<Option<slint::Weak<crate::MainWindow>>> = const { RefCell::new(None) };
+}
+
+/// Push the *primary* selected info-hash to Slint (M177).
+///
+/// Per D-eng-1, this is split out from [`update_selection`] so that the
+/// poll loop's per-tick model rebuild can refresh `selected: bool` on
+/// every row without re-pushing the primary hash. Selection callbacks
+/// (row click, Ctrl+A, right-click) call both helpers.
+///
+/// `None` clears the property — the detail pane then renders its empty
+/// state. The Slint event loop is invoked synchronously via
+/// `upgrade_in_event_loop`; the call is a no-op if the weak handle has
+/// not yet been initialised (poll loop not yet running).
+pub fn update_primary_selection(primary: Option<&str>) {
+    let value = primary.unwrap_or("").to_owned();
+    MAIN_WINDOW_WEAK.with(|w| {
+        if let Some(weak) = w.borrow().as_ref() {
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_detail_info_hash(SharedString::from(value));
+            });
+        }
+    });
 }
 
 /// Update selection state on the model immediately (called from main-thread callbacks).
@@ -84,13 +110,17 @@ pub fn check_all_paused(hashes: &HashSet<String>) -> bool {
     })
 }
 
-/// Initialise the thread-local torrent model and bind it to the window.
+/// Initialise the thread-local torrent model and weak window handle,
+/// binding the model to the window. M177: also caches a `slint::Weak`
+/// for [`update_primary_selection`] so non-poll callbacks can push the
+/// primary info-hash without owning a strong reference.
 ///
 /// Must be called on the Slint main thread (inside `upgrade_in_event_loop`)
 /// exactly once during startup.
-pub fn init_model(win: &crate::MainWindow) {
+pub fn init_window(win: &crate::MainWindow) {
     let model = Rc::new(VecModel::<crate::TorrentRow>::default());
     TORRENT_MODEL.with(|m| *m.borrow_mut() = Some(model.clone()));
+    MAIN_WINDOW_WEAK.with(|w| *w.borrow_mut() = Some(win.as_weak()));
     win.set_torrent_model(ModelRc::from(model));
 }
 
@@ -114,6 +144,16 @@ pub async fn poll_loop(
     // sidebar updates. The first call returns the full Added/Changed mix
     // for cold-start population.
     let mut tracker_index = TrackerIndex::new();
+
+    // M177 detail-pane state carried across ticks:
+    //   * `last_detail_hash` lets us detect selection changes so we know
+    //     when to invalidate `cached_info` and emit a tracing::debug! to
+    //     show snapshot deltas during development.
+    //   * `cached_info` stays populated for the duration of a single
+    //     selection — `torrent_info` is a one-shot per selection (it
+    //     only changes on metadata resolve, which is rare).
+    let mut last_detail_hash: Option<String> = None;
+    let mut cached_info: Option<irontide::session::TorrentInfo> = None;
 
     loop {
         tokio::time::sleep(Duration::from_millis(500)).await;
@@ -196,6 +236,89 @@ pub async fn poll_loop(
             "\u{2014}".to_owned()
         };
 
+        // ── M177 detail-pane snapshot (Step 3) ──────────────────────
+        // Reads the primary selection + active tab from AppState while
+        // holding the lock briefly, then performs all session fetches
+        // outside the lock. The snapshot stays Rust-side for now —
+        // Step 4+ adds the Slint property push.
+        let (detail_primary, detail_active_tab, detail_expanded) = {
+            let st = state.lock();
+            (
+                st.primary_selected().map(str::to_owned),
+                st.detail_active_tab.clone(),
+                st.detail_expanded.clone(),
+            )
+        };
+
+        // Selection-change handling: invalidate cached_info on a hash
+        // change, log the new selection at debug level for dev tracing.
+        if detail_primary != last_detail_hash {
+            cached_info = None;
+            tracing::debug!(
+                ?last_detail_hash,
+                ?detail_primary,
+                "detail: primary selection changed"
+            );
+            last_detail_hash = detail_primary.clone();
+        }
+
+        if let Some(hash_hex) = detail_primary.as_deref() {
+            // Parse the hex hash into the typed Id20 the session APIs
+            // require. A failed parse means the AppState had a malformed
+            // hash, which would be a bug — log and skip.
+            let id_opt = irontide::core::Id20::from_hex(hash_hex).ok();
+            if let Some(id) = id_opt {
+                // Fetch torrent_info one-shot per selection.
+                if cached_info.is_none() {
+                    match session.torrent_info(id).await {
+                        Ok(info) => cached_info = Some(info),
+                        Err(e) => {
+                            tracing::debug!(hash = hash_hex, ?e, "detail: torrent_info failed");
+                        }
+                    }
+                }
+
+                let detail_stats = match session.torrent_stats(id).await {
+                    Ok(s) => s,
+                    Err(_) => continue,
+                };
+
+                // Piece states drive the General-tab heatmap — small,
+                // fetch every tick.
+                let piece_states = session.get_piece_states(id).await.unwrap_or_default();
+                let buckets = crate::detail::bucket_piece_states(&piece_states, 512);
+
+                // Content-tab gated fetches (D-eng-2).
+                let files: Vec<crate::FileTreeRow> = if detail_active_tab == "Content"
+                    && let Some(info) = cached_info.as_ref()
+                {
+                    let priorities = session.file_priorities(id).await.unwrap_or_default();
+                    let progress = session.file_progress(id).await.unwrap_or_default();
+                    let flat = irontide_format::build_flat(info, &progress, &priorities);
+                    crate::detail::flatten_files(&flat, &detail_expanded, hash_hex)
+                } else {
+                    Vec::new()
+                };
+
+                let snapshot = build_detail_props(
+                    &detail_stats,
+                    cached_info.as_ref(),
+                    buckets,
+                    files,
+                );
+
+                let _ = weak.upgrade_in_event_loop(move |win| {
+                    apply_detail_props(&win, snapshot);
+                });
+            }
+        } else {
+            // Empty selection → clear the detail-* properties so the
+            // empty-state branch renders.
+            let _ = weak.upgrade_in_event_loop(|win| {
+                clear_detail_props(&win);
+            });
+        }
+
         // M173 Lane A: refresh the TrackerIndex + build sidebar rows.
         // The Index is owned by the loop (per-tick state) so the diff is
         // computed against the previous tick. We discard the diff for
@@ -271,6 +394,176 @@ pub async fn poll_loop(
             )));
         });
     }
+}
+
+// ── M177 detail-pane snapshot push ──────────────────────────────────────
+
+/// Plain-data bag of every Slint detail-* property value, computed
+/// off the UI thread and applied inside `upgrade_in_event_loop`.
+struct DetailProps {
+    info_hash: String,
+    name: String,
+    error: String,
+    state_label: String,
+    down_rate: String,
+    up_rate: String,
+    all_time_down: String,
+    all_time_up: String,
+    ratio: String,
+    eta: String,
+    num_peers: String,
+    num_seeds: String,
+    share_fraction: String,
+    save_path: String,
+    total_size: String,
+    piece_count_text: String,
+    piece_size: String,
+    added_time: String,
+    last_seen_complete: String,
+    active_duration: String,
+    piece_buckets: Vec<i32>,
+    pieces_text: String,
+    sequential: bool,
+    files: Vec<crate::FileTreeRow>,
+}
+
+fn build_detail_props(
+    stats: &irontide::session::TorrentStats,
+    info: Option<&irontide::session::TorrentInfo>,
+    buckets: Vec<i32>,
+    files: Vec<crate::FileTreeRow>,
+) -> DetailProps {
+    let info_hash = stats.info_hashes.best_v1().to_hex();
+    let down_rate = if stats.download_rate > 0 {
+        crate::format::format_rate(stats.download_rate)
+    } else {
+        "\u{2014}".to_owned()
+    };
+    let up_rate = if stats.upload_rate > 0 {
+        crate::format::format_rate(stats.upload_rate)
+    } else {
+        "\u{2014}".to_owned()
+    };
+    let remaining = stats.total_wanted.saturating_sub(stats.total_wanted_done);
+    let eta = crate::format::format_eta_from_rates(remaining, stats.download_rate);
+    let ratio = crate::format::format_ratio(stats.all_time_upload, stats.all_time_download);
+    let num_peers = format!(
+        "{} / {}",
+        stats.peers_connected,
+        stats.peers_available
+    );
+    let num_seeds = stats.num_seeds.to_string();
+    let share_fraction = if stats.distributed_copies > 0.0 {
+        format!("{:.3}", stats.distributed_copies)
+    } else {
+        "\u{2014}".to_owned()
+    };
+    let total_size = crate::format::format_size(stats.total);
+    let piece_count_text = if stats.pieces_total == 0 {
+        "0".to_owned()
+    } else {
+        format!("{}", stats.pieces_total)
+    };
+    let piece_size = if stats.piece_size == 0 {
+        "\u{2014}".to_owned()
+    } else {
+        crate::format::format_size(stats.piece_size)
+    };
+    let added_time = crate::format::format_relative_time(stats.added_time);
+    let last_seen_complete = crate::format::format_relative_time(stats.last_seen_complete);
+    let active_duration = crate::format::format_duration_secs(stats.active_duration);
+    let pieces_pct = if stats.pieces_total > 0 {
+        f64::from(stats.pieces_have) / f64::from(stats.pieces_total) * 100.0
+    } else {
+        0.0
+    };
+    let pieces_text = format!(
+        "{} / {} pieces ({:.1}%)",
+        stats.pieces_have, stats.pieces_total, pieces_pct
+    );
+    let state_label = crate::format::format_state(&stats.state, stats.user_seed_mode).to_owned();
+    let save_path = info.map_or_else(|| stats.save_path.clone(), |_| stats.save_path.clone());
+
+    DetailProps {
+        info_hash,
+        name: stats.name.clone(),
+        error: stats.error.clone(),
+        state_label,
+        down_rate,
+        up_rate,
+        all_time_down: crate::format::format_size(stats.all_time_download),
+        all_time_up: crate::format::format_size(stats.all_time_upload),
+        ratio,
+        eta,
+        num_peers,
+        num_seeds,
+        share_fraction,
+        save_path,
+        total_size,
+        piece_count_text,
+        piece_size,
+        added_time,
+        last_seen_complete,
+        active_duration,
+        piece_buckets: buckets,
+        pieces_text,
+        sequential: stats.sequential_download,
+        files,
+    }
+}
+
+fn apply_detail_props(win: &crate::MainWindow, p: DetailProps) {
+    win.set_detail_info_hash(SharedString::from(p.info_hash));
+    win.set_detail_name(SharedString::from(p.name));
+    win.set_detail_error(SharedString::from(p.error));
+    win.set_detail_state_label(SharedString::from(p.state_label));
+    win.set_detail_down_rate(SharedString::from(p.down_rate));
+    win.set_detail_up_rate(SharedString::from(p.up_rate));
+    win.set_detail_all_time_down(SharedString::from(p.all_time_down));
+    win.set_detail_all_time_up(SharedString::from(p.all_time_up));
+    win.set_detail_ratio(SharedString::from(p.ratio));
+    win.set_detail_eta(SharedString::from(p.eta));
+    win.set_detail_num_peers(SharedString::from(p.num_peers));
+    win.set_detail_num_seeds(SharedString::from(p.num_seeds));
+    win.set_detail_share_fraction(SharedString::from(p.share_fraction));
+    win.set_detail_save_path(SharedString::from(p.save_path));
+    win.set_detail_total_size(SharedString::from(p.total_size));
+    win.set_detail_piece_count_text(SharedString::from(p.piece_count_text));
+    win.set_detail_piece_size(SharedString::from(p.piece_size));
+    win.set_detail_added_time(SharedString::from(p.added_time));
+    win.set_detail_last_seen_complete(SharedString::from(p.last_seen_complete));
+    win.set_detail_active_duration(SharedString::from(p.active_duration));
+    win.set_detail_piece_buckets(ModelRc::new(VecModel::from(p.piece_buckets)));
+    win.set_detail_pieces_text(SharedString::from(p.pieces_text));
+    win.set_detail_sequential(p.sequential);
+    win.set_detail_files(ModelRc::new(VecModel::from(p.files)));
+}
+
+fn clear_detail_props(win: &crate::MainWindow) {
+    win.set_detail_info_hash(SharedString::default());
+    win.set_detail_name(SharedString::default());
+    win.set_detail_error(SharedString::default());
+    win.set_detail_state_label(SharedString::default());
+    win.set_detail_down_rate(SharedString::from("\u{2014}"));
+    win.set_detail_up_rate(SharedString::from("\u{2014}"));
+    win.set_detail_all_time_down(SharedString::from("0 B"));
+    win.set_detail_all_time_up(SharedString::from("0 B"));
+    win.set_detail_ratio(SharedString::from("0.00"));
+    win.set_detail_eta(SharedString::from("\u{2014}"));
+    win.set_detail_num_peers(SharedString::from("0 / 0"));
+    win.set_detail_num_seeds(SharedString::from("0"));
+    win.set_detail_share_fraction(SharedString::from("\u{2014}"));
+    win.set_detail_save_path(SharedString::default());
+    win.set_detail_total_size(SharedString::default());
+    win.set_detail_piece_count_text(SharedString::default());
+    win.set_detail_piece_size(SharedString::default());
+    win.set_detail_added_time(SharedString::default());
+    win.set_detail_last_seen_complete(SharedString::default());
+    win.set_detail_active_duration(SharedString::default());
+    win.set_detail_piece_buckets(ModelRc::new(VecModel::from(Vec::<i32>::new())));
+    win.set_detail_pieces_text(SharedString::from("0 / 0 pieces (0%)"));
+    win.set_detail_sequential(false);
+    win.set_detail_files(ModelRc::new(VecModel::from(Vec::<crate::FileTreeRow>::new())));
 }
 
 // ── Filtering (M173 Lane A) ─────────────────────────────────────────────────

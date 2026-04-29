@@ -2,6 +2,7 @@ mod accel;
 mod app;
 mod bridge;
 mod columns;
+mod detail;
 mod error;
 mod format;
 mod panic_hook;
@@ -153,7 +154,7 @@ fn main() -> Result<(), error::GuiError> {
         let cb_state = state.clone();
         main_window.on_row_clicked(move |info_hash, shift, ctrl| {
             let hash = info_hash.as_str();
-            let selected = {
+            let (selected, primary) = {
                 let mut st = cb_state.lock();
                 if ctrl {
                     st.selection_ctrl_click(hash);
@@ -162,9 +163,10 @@ fn main() -> Result<(), error::GuiError> {
                 } else {
                     st.selection_click(hash);
                 }
-                st.selected.clone()
+                (st.selected.clone(), st.primary_selected().map(str::to_owned))
             };
             crate::poll::update_selection(&selected);
+            crate::poll::update_primary_selection(primary.as_deref());
         });
     }
 
@@ -242,15 +244,16 @@ fn main() -> Result<(), error::GuiError> {
         main_window.on_row_right_clicked(move |info_hash, x, y| {
             let hash = info_hash.to_string();
             // If right-clicked row is not selected, select it first.
-            let selected = {
+            let (selected, primary) = {
                 let mut st = cb_state.lock();
                 if !st.selected.contains(&hash) {
                     st.selection_click(&hash);
                 }
-                st.selected.clone()
+                (st.selected.clone(), st.primary_selected().map(str::to_owned))
             };
             // Immediately update selection in model.
             crate::poll::update_selection(&selected);
+            crate::poll::update_primary_selection(primary.as_deref());
 
             // Show context menu at cursor position.
             let _ = weak.upgrade_in_event_loop(move |win| {
@@ -342,11 +345,17 @@ fn main() -> Result<(), error::GuiError> {
         let cb_state = state.clone();
         main_window.on_delete_confirmed(move |delete_files| {
             let (hashes, cmd_tx) = {
-                let st = cb_state.lock();
-                (
-                    st.selected.iter().cloned().collect::<Vec<_>>(),
-                    st.cmd_tx.clone(),
-                )
+                let mut st = cb_state.lock();
+                let hashes: Vec<String> = st.selected.iter().cloned().collect();
+                // ── M177 D-eng-4 (Iron Rule): prune `detail_expanded`
+                // entries for every torrent that's about to be removed.
+                // Each removed hash maps to the prefix `"{info_hash}/"`
+                // in the folder-key namespace; without this pruning the
+                // set grows unboundedly across long-running sessions.
+                for hash in &hashes {
+                    st.prune_detail_expanded_for(hash);
+                }
+                (hashes, st.cmd_tx.clone())
             };
             if let Some(tx) = cmd_tx {
                 let _ = tx.send(app::GuiCommand::RemoveTorrents {
@@ -404,13 +413,14 @@ fn main() -> Result<(), error::GuiError> {
         // Ctrl+A: select all torrents.
         let cb_state = state.clone();
         main_window.on_select_all(move || {
-            let selected = {
+            let (selected, primary) = {
                 let mut st = cb_state.lock();
                 let all_hashes = st.current_order.clone();
                 st.select_all(&all_hashes);
-                st.selected.clone()
+                (st.selected.clone(), st.primary_selected().map(str::to_owned))
             };
             crate::poll::update_selection(&selected);
+            crate::poll::update_primary_selection(primary.as_deref());
         });
     }
     {
@@ -462,6 +472,56 @@ fn main() -> Result<(), error::GuiError> {
         let cb_state = state.clone();
         main_window.on_sidebar_section_toggled(move |_kind, _collapsed| {
             cb_state.lock().sidebar_dirty = true;
+        });
+    }
+
+    // ── M177 detail-pane callbacks ────────────────────────────────────
+    {
+        // Tab switch — propagate to AppState so the next poll tick gates
+        // the per-tick file fetches (D-eng-2). The Slint property is
+        // updated by the binding itself; we don't need to re-set it.
+        let cb_state = state.clone();
+        main_window.on_detail_tab_changed(move |tab| {
+            cb_state.lock().detail_active_tab = tab.to_string();
+        });
+    }
+    {
+        // Folder triangle click — toggle the key in AppState's
+        // `detail_expanded` set. Default semantics: absent = expanded
+        // (D-user-1), so the first toggle adds the key (collapse), the
+        // next removes it (re-expand).
+        let cb_state = state.clone();
+        main_window.on_detail_folder_toggled(move |key| {
+            cb_state.lock().toggle_detail_folder(key.as_str());
+        });
+    }
+    {
+        // Sequential-download toggle — fires a `SetSequentialDownload`
+        // command via the bridge thread (no direct session call from
+        // the main thread; the cmd_tx channel is the established
+        // boundary).
+        let cb_state = state.clone();
+        let weak = main_window.as_weak();
+        main_window.on_detail_sequential_toggled(move |enabled| {
+            let st = cb_state.lock();
+            let Some(hash) = st.primary_selected().map(str::to_owned) else {
+                return;
+            };
+            let Some(tx) = st.cmd_tx.clone() else {
+                return;
+            };
+            drop(st);
+            // Optimistically flip the Slint property so the checkbox
+            // reflects the click immediately; the next poll tick will
+            // overwrite from `TorrentStats.sequential_download` in any
+            // case, but the optimistic update prevents a flicker.
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_detail_sequential(enabled);
+            });
+            let _ = tx.send(app::GuiCommand::SetSequentialDownload {
+                info_hash: hash,
+                enabled,
+            });
         });
     }
 

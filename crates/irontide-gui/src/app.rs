@@ -76,6 +76,13 @@ pub enum GuiCommand {
         /// New download directory path.
         dir: String,
     },
+    /// Toggle sequential-download mode for a torrent (M177 Content tab).
+    SetSequentialDownload {
+        /// Hex-encoded info-hash string.
+        info_hash: String,
+        /// `true` to enable sequential mode, `false` to disable.
+        enabled: bool,
+    },
 }
 
 /// Context-menu actions for selected torrents.
@@ -194,6 +201,21 @@ pub struct AppState {
     pub sidebar_tag_collapsed: bool,
     /// Trackers collapsed flag — see [`Self::sidebar_library_collapsed`].
     pub sidebar_tracker_collapsed: bool,
+    /// Per-folder expansion keys for the M177 detail-pane Content tab
+    /// file tree. Keys are `"{info_hash}/{folder_path}"` strings.
+    /// Semantically the set holds folders the user has *explicitly
+    /// collapsed* — default behaviour with the set empty is
+    /// **expanded** (D-user-1). The field name mirrors the locked plan
+    /// even though the plumbing tracks the inverse state. Pruned on
+    /// torrent removal (D-eng-4 Iron Rule, see `main.rs` `RemoveTorrent`
+    /// / `RemoveAndDelete` dispatch) to avoid a long-running session
+    /// memory leak.
+    pub detail_expanded: HashSet<String>,
+    /// Active detail-pane tab label as set by the Slint pill row.
+    /// `"General"` (default) or `"Content"`. The poll loop gates the
+    /// per-tick `file_priorities` + `file_progress` fetches on
+    /// `"Content"` to avoid wasted work on huge torrents (D-eng-2).
+    pub detail_active_tab: String,
 }
 
 impl AppState {
@@ -221,6 +243,8 @@ impl AppState {
             sidebar_category_collapsed: false,
             sidebar_tag_collapsed: false,
             sidebar_tracker_collapsed: false,
+            detail_expanded: HashSet::new(),
+            detail_active_tab: String::from("General"),
         }
     }
 
@@ -299,6 +323,60 @@ impl AppState {
         for h in all_hashes {
             self.selected.insert(h.clone());
         }
+    }
+
+    /// Toggle a folder key in [`Self::detail_expanded`] (M177 Step 6).
+    ///
+    /// Returns `true` if the key is now in the set (i.e. the folder is
+    /// now collapsed); `false` if the key was just removed (i.e. now
+    /// expanded). The semantic inverse of the field name is documented
+    /// on the field itself.
+    pub fn toggle_detail_folder(&mut self, key: &str) -> bool {
+        if self.detail_expanded.remove(key) {
+            false
+        } else {
+            self.detail_expanded.insert(key.to_owned());
+            true
+        }
+    }
+
+    /// Prune all [`Self::detail_expanded`] entries that belong to a
+    /// removed torrent (D-eng-4 Iron Rule). The folder key namespace
+    /// is `"{info_hash}/{folder_path}"`; we drop every entry whose key
+    /// starts with `"{info_hash}/"`. Called from the
+    /// `on_delete_confirmed` callback after the user confirms removal.
+    pub fn prune_detail_expanded_for(&mut self, info_hash: &str) {
+        let prefix = format!("{info_hash}/");
+        self.detail_expanded.retain(|k| !k.starts_with(&prefix));
+    }
+
+    /// Resolve the info-hash that should drive the detail pane (M177).
+    ///
+    /// Priority:
+    /// 1. `last_clicked` if it is still in the [`Self::selected`] set
+    ///    (handles the common case: user clicks a row, detail pane
+    ///    follows that row).
+    /// 2. Otherwise the first hash in [`Self::current_order`] that is
+    ///    in the selection set (used after a Ctrl+A select-all, where
+    ///    `last_clicked` may not even exist on screen).
+    /// 3. Otherwise `None` (deselected — detail pane shows the
+    ///    "Select a torrent to see details" empty state).
+    ///
+    /// Per D-eng-1: this stays separate from `selected: HashSet<String>`
+    /// so future callers can rebuild the model snapshot without re-pushing
+    /// the primary selection. Returns a `&str` borrow keyed off `self`
+    /// so callers can `.map(str::to_owned)` with the lock still held.
+    #[must_use]
+    pub fn primary_selected(&self) -> Option<&str> {
+        if let Some(h) = self.last_clicked.as_deref()
+            && self.selected.contains(h)
+        {
+            return Some(h);
+        }
+        self.current_order
+            .iter()
+            .find(|h| self.selected.contains(h.as_str()))
+            .map(String::as_str)
     }
 
     /// Single-click: clear all selection, select only this hash.
@@ -862,5 +940,112 @@ mod tests {
         assert!(state.can_seed_only);
         assert!(!state.can_resume_download);
         assert!(state.can_recheck);
+    }
+
+    // ── M177 Step 1: primary_selected (detail-pane selection) ─────────
+
+    fn fresh_state() -> AppState {
+        let (tx, _rx) = tokio::sync::oneshot::channel();
+        AppState::new(
+            tx,
+            crate::columns::ColumnConfig::default(),
+            crate::skin::SkinSettings::default(),
+        )
+    }
+
+    #[test]
+    fn primary_selected_none_on_empty_selection() {
+        let state = fresh_state();
+        assert_eq!(state.primary_selected(), None);
+    }
+
+    #[test]
+    fn primary_selected_uses_last_clicked_when_selected() {
+        let mut state = fresh_state();
+        state.current_order = vec!["aaa".into(), "bbb".into(), "ccc".into()];
+        state.selection_click("bbb");
+        // last_clicked == bbb, selected == {bbb} — primary should be bbb.
+        assert_eq!(state.primary_selected(), Some("bbb"));
+    }
+
+    #[test]
+    fn primary_selected_falls_back_to_first_in_current_order() {
+        // Ctrl+A: last_clicked may not be set, but the order-keyed
+        // fallback should still find the first selected hash.
+        let mut state = fresh_state();
+        state.current_order = vec!["aaa".into(), "bbb".into(), "ccc".into()];
+        state.last_clicked = None;
+        state.select_all(&state.current_order.clone());
+        assert_eq!(state.primary_selected(), Some("aaa"));
+    }
+
+    #[test]
+    fn primary_selected_empty_current_order_returns_none() {
+        // D-eng-5 defensive: selection set non-empty but current_order
+        // empty (race during model rebuild). Must not panic and must
+        // return None — the detail pane simply renders the empty state.
+        let mut state = fresh_state();
+        state.selected.insert("ghost".into());
+        state.last_clicked = None;
+        // current_order intentionally left empty.
+        assert_eq!(state.primary_selected(), None);
+    }
+
+    // ── M177 Step 6: detail_expanded toggle + cleanup ─────────────────
+
+    #[test]
+    fn toggle_detail_folder_round_trip_collapses_then_expands() {
+        let mut state = fresh_state();
+        let key = "abcd/video";
+        // First click: collapse — key now in the set.
+        let collapsed = state.toggle_detail_folder(key);
+        assert!(collapsed);
+        assert!(state.detail_expanded.contains(key));
+        // Second click: re-expand — key removed.
+        let collapsed = state.toggle_detail_folder(key);
+        assert!(!collapsed);
+        assert!(!state.detail_expanded.contains(key));
+    }
+
+    #[test]
+    fn prune_detail_expanded_for_drops_only_target_torrent_keys() {
+        // D-eng-4 Iron Rule regression: removing torrent A must not
+        // touch torrent B's collapsed-folder state.
+        let mut state = fresh_state();
+        state.detail_expanded.insert("aaaa/video".into());
+        state.detail_expanded.insert("aaaa/video/extras".into());
+        state.detail_expanded.insert("bbbb/movies".into());
+        state.prune_detail_expanded_for("aaaa");
+        assert!(!state.detail_expanded.contains("aaaa/video"));
+        assert!(!state.detail_expanded.contains("aaaa/video/extras"));
+        assert!(state.detail_expanded.contains("bbbb/movies"));
+        assert_eq!(state.detail_expanded.len(), 1);
+    }
+
+    #[test]
+    fn prune_detail_expanded_for_unrelated_hash_is_a_noop() {
+        // Removing a torrent that has no folder keys mustn't blow away
+        // the set or panic.
+        let mut state = fresh_state();
+        state.detail_expanded.insert("aaaa/video".into());
+        state.prune_detail_expanded_for("cccc");
+        assert!(state.detail_expanded.contains("aaaa/video"));
+        assert_eq!(state.detail_expanded.len(), 1);
+    }
+
+    #[test]
+    fn detail_active_tab_default_and_persistence() {
+        // The active tab survives across selection changes (the
+        // primary-selection plumbing never touches it). Slint's
+        // `if`-branch re-mount on a layout swap reads from the same
+        // AppState field via the `detail-active-tab` property binding,
+        // so persistence is unit-testable here.
+        let mut state = fresh_state();
+        assert_eq!(state.detail_active_tab, "General");
+        state.detail_active_tab = "Content".to_owned();
+        // Simulate a selection change — primary handlers should not
+        // touch the tab field.
+        state.selection_click("aaa");
+        assert_eq!(state.detail_active_tab, "Content");
     }
 }
