@@ -478,11 +478,20 @@ fn main() -> Result<(), error::GuiError> {
     // ── M177 detail-pane callbacks ────────────────────────────────────
     {
         // Tab switch — propagate to AppState so the next poll tick gates
-        // the per-tick file fetches (D-eng-2). The Slint property is
-        // updated by the binding itself; we don't need to re-set it.
+        // the per-tick file fetches (D-eng-2). M178: also clear any
+        // pending file-priority popup state since switching tabs invalidates
+        // the right-click target (D-eng-7).
         let cb_state = state.clone();
+        let cb_weak = main_window.as_weak();
         main_window.on_detail_tab_changed(move |tab| {
-            cb_state.lock().detail_active_tab = tab.to_string();
+            {
+                let mut st = cb_state.lock();
+                st.detail_active_tab = tab.to_string();
+                st.pending_file_priority_target = None;
+            }
+            let _ = cb_weak.upgrade_in_event_loop(|win| {
+                win.set_show_file_priority_popup(false);
+            });
         });
     }
     {
@@ -521,6 +530,105 @@ fn main() -> Result<(), error::GuiError> {
             let _ = tx.send(app::GuiCommand::SetSequentialDownload {
                 info_hash: hash,
                 enabled,
+            });
+        });
+    }
+
+    // ── M178 detail-pane callbacks (Lane D) ──────────────────────────
+    {
+        // File row left-click with modifiers: drives multi-select.
+        let cb_state = state.clone();
+        main_window.on_detail_file_clicked(move |index, ctrl, shift| {
+            let Ok(idx) = usize::try_from(index) else {
+                return;
+            };
+            let mut st = cb_state.lock();
+            st.apply_file_click(idx, ctrl, shift);
+            // A new selection invalidates any open popup target snapshot.
+            st.pending_file_priority_target = None;
+        });
+    }
+    {
+        // File row right-click: snapshot the selection (or this row if
+        // it isn't selected), set the pending target, and surface the
+        // popup at the cursor position.
+        let cb_state = state.clone();
+        let cb_weak = main_window.as_weak();
+        main_window.on_detail_file_right_clicked(move |index, x, y| {
+            let Ok(idx) = usize::try_from(index) else {
+                return;
+            };
+            let (info_hash, snapshot) = {
+                let mut st = cb_state.lock();
+                let Some(hash) = st.primary_selected().map(str::to_owned) else {
+                    return;
+                };
+                // If the right-clicked row is NOT currently selected,
+                // single-select it first (mirrors qBt + macOS Finder).
+                if !st.detail_files_selected.contains(&idx) {
+                    st.detail_files_selected.clear();
+                    st.detail_files_selected.insert(idx);
+                    st.last_clicked_file_index = Some(idx);
+                }
+                let snap: Vec<usize> = st.detail_files_selected.iter().copied().collect();
+                st.pending_file_priority_target = Some((hash.clone(), snap.clone()));
+                (hash, snap)
+            };
+            let _ = (info_hash, snapshot); // moved into the lock-scoped tuple
+            let _ = cb_weak.upgrade_in_event_loop(move |win| {
+                win.set_file_priority_popup_x(x);
+                win.set_file_priority_popup_y(y);
+                win.set_show_file_priority_popup(true);
+            });
+        });
+    }
+    {
+        // Popup option click → dispatch SetFilePriority on the snapshot.
+        let cb_state = state.clone();
+        main_window.on_file_priority_selected(move |priority_int| {
+            let (hash, indices, tx) = {
+                let mut st = cb_state.lock();
+                let Some((hash, indices)) = st.pending_file_priority_target.take() else {
+                    return;
+                };
+                let Some(tx) = st.cmd_tx.clone() else {
+                    return;
+                };
+                (hash, indices, tx)
+            };
+            let priority =
+                irontide::core::FilePriority::from(u8::try_from(priority_int).unwrap_or(4));
+            let _ = tx.send(app::GuiCommand::SetFilePriority {
+                info_hash: hash,
+                file_indices: indices,
+                priority,
+            });
+        });
+    }
+    {
+        // Popup dismiss (click-outside): clear the pending target.
+        let cb_state = state.clone();
+        main_window.on_file_priority_dismissed(move || {
+            cb_state.lock().pending_file_priority_target = None;
+        });
+    }
+    {
+        // Trackers tab "Reannounce" button click — torrent-wide
+        // reannounce until the engine exposes a per-URL endpoint
+        // (M180 polish).
+        let cb_state = state.clone();
+        main_window.on_detail_reannounce(move |url| {
+            let st = cb_state.lock();
+            let Some(hash) = st.primary_selected().map(str::to_owned) else {
+                return;
+            };
+            let Some(tx) = st.cmd_tx.clone() else {
+                return;
+            };
+            drop(st);
+            let _ = tx.send(app::GuiCommand::ReannounceTracker {
+                info_hash: hash,
+                url: url.to_string(),
             });
         });
     }

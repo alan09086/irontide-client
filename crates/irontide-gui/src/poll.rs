@@ -241,17 +241,20 @@ pub async fn poll_loop(
         // holding the lock briefly, then performs all session fetches
         // outside the lock. The snapshot stays Rust-side for now —
         // Step 4+ adds the Slint property push.
-        let (detail_primary, detail_active_tab, detail_expanded) = {
+        let (detail_primary, detail_active_tab, detail_expanded, detail_files_selected) = {
             let st = state.lock();
             (
                 st.primary_selected().map(str::to_owned),
                 st.detail_active_tab.clone(),
                 st.detail_expanded.clone(),
+                st.detail_files_selected.clone(),
             )
         };
 
         // Selection-change handling: invalidate cached_info on a hash
         // change, log the new selection at debug level for dev tracing.
+        // M178 (D-eng-7 Iron Rule): also clear the file-selection set +
+        // pending popup state so they don't leak across torrents.
         if detail_primary != last_detail_hash {
             cached_info = None;
             tracing::debug!(
@@ -259,6 +262,19 @@ pub async fn poll_loop(
                 ?detail_primary,
                 "detail: primary selection changed"
             );
+            {
+                let mut st = state.lock();
+                st.clear_file_selection_for_torrent_change();
+            }
+            // Also dismiss any open file-priority popup since its target
+            // belongs to the previous torrent.
+            MAIN_WINDOW_WEAK.with(|w| {
+                if let Some(weak) = w.borrow().clone() {
+                    let _ = weak.upgrade_in_event_loop(|win| {
+                        win.set_show_file_priority_popup(false);
+                    });
+                }
+            });
             last_detail_hash = detail_primary.clone();
         }
 
@@ -278,38 +294,112 @@ pub async fn poll_loop(
                     }
                 }
 
-                let detail_stats = match session.torrent_stats(id).await {
-                    Ok(s) => s,
-                    Err(_) => continue,
-                };
+                match session.torrent_stats(id).await {
+                    Ok(detail_stats) => {
+                        // Piece states drive the General-tab heatmap — small,
+                        // fetch every tick.
+                        let piece_states =
+                            session.get_piece_states(id).await.unwrap_or_default();
+                        let buckets = crate::detail::bucket_piece_states(&piece_states, 512);
 
-                // Piece states drive the General-tab heatmap — small,
-                // fetch every tick.
-                let piece_states = session.get_piece_states(id).await.unwrap_or_default();
-                let buckets = crate::detail::bucket_piece_states(&piece_states, 512);
+                        // Content-tab gated fetches (D-eng-2).
+                        let files: Vec<crate::FileTreeRow> = if detail_active_tab == "Content"
+                            && let Some(info) = cached_info.as_ref()
+                        {
+                            let priorities =
+                                session.file_priorities(id).await.unwrap_or_default();
+                            let progress = session.file_progress(id).await.unwrap_or_default();
+                            let flat = irontide_format::build_flat(info, &progress, &priorities);
+                            crate::detail::flatten_files(
+                                &flat,
+                                &detail_expanded,
+                                hash_hex,
+                                &detail_files_selected,
+                            )
+                        } else {
+                            Vec::new()
+                        };
 
-                // Content-tab gated fetches (D-eng-2).
-                let files: Vec<crate::FileTreeRow> = if detail_active_tab == "Content"
-                    && let Some(info) = cached_info.as_ref()
-                {
-                    let priorities = session.file_priorities(id).await.unwrap_or_default();
-                    let progress = session.file_progress(id).await.unwrap_or_default();
-                    let flat = irontide_format::build_flat(info, &progress, &priorities);
-                    crate::detail::flatten_files(&flat, &detail_expanded, hash_hex)
-                } else {
-                    Vec::new()
-                };
+                        // M178 (D-eng-3): Peers / Trackers / HTTP Sources gated
+                        // fetches. Each tab only fires its session call when that
+                        // tab is the active one, keeping the hot path bounded for
+                        // huge torrents.
+                        let peers: Vec<crate::PeerRow> = if detail_active_tab == "Peers" {
+                            let peer_info =
+                                session.get_peer_info(id).await.unwrap_or_default();
+                            crate::detail::flatten_peer_rows(&peer_info)
+                        } else {
+                            Vec::new()
+                        };
 
-                let snapshot = build_detail_props(
-                    &detail_stats,
-                    cached_info.as_ref(),
-                    buckets,
-                    files,
-                );
+                        let trackers: Vec<crate::TrackerRow> = if detail_active_tab
+                            == "Trackers"
+                        {
+                            let real = session.tracker_list(id).await.unwrap_or_default();
+                            let (pex_count, lsd_count) = session
+                                .pex_peer_count(id)
+                                .await
+                                .ok()
+                                .zip(session.lsd_peer_count(id).await.ok())
+                                .unwrap_or((0, 0));
+                            let dht_count = session.dht_node_count().await.unwrap_or(0);
+                            let merged = irontide_format::synthesize_pseudo_trackers(
+                                &real, dht_count, pex_count, lsd_count,
+                            );
+                            crate::detail::flatten_tracker_rows(&merged)
+                        } else {
+                            Vec::new()
+                        };
 
-                let _ = weak.upgrade_in_event_loop(move |win| {
-                    apply_detail_props(&win, snapshot);
-                });
+                        let http_sources: Vec<crate::WebSeedRow> =
+                            if detail_active_tab == "HTTP Sources" {
+                                let stats =
+                                    session.web_seed_stats(id).await.unwrap_or_default();
+                                crate::detail::flatten_web_seed_rows(&stats)
+                            } else {
+                                Vec::new()
+                            };
+
+                        let snapshot = build_detail_props(
+                            &detail_stats,
+                            cached_info.as_ref(),
+                            buckets,
+                            files,
+                            peers,
+                            trackers,
+                            http_sources,
+                        );
+
+                        let _ = weak.upgrade_in_event_loop(move |win| {
+                            apply_detail_props(&win, snapshot);
+                        });
+                    }
+                    Err(_) => {
+                        // Selected torrent vanished (most commonly: user just
+                        // hit Remove). Evict its hash from AppState selection
+                        // so subsequent ticks treat the list as deselected,
+                        // and clear the detail pane immediately. Falling
+                        // through (no `continue`) lets the rest of the poll
+                        // tick reach the model rebuild at the bottom of the
+                        // loop, which prunes the now-deleted row from the
+                        // torrent list.
+                        {
+                            let mut st = state.lock();
+                            st.selected.remove(hash_hex);
+                            if st.last_clicked.as_deref() == Some(hash_hex) {
+                                st.last_clicked = None;
+                            }
+                            st.clear_file_selection_for_torrent_change();
+                            st.pending_file_priority_target = None;
+                        }
+                        let _ = weak.upgrade_in_event_loop(|win| {
+                            clear_detail_props(&win);
+                            win.set_show_file_priority_popup(false);
+                        });
+                        cached_info = None;
+                        last_detail_hash = None;
+                    }
+                }
             }
         } else {
             // Empty selection → clear the detail-* properties so the
@@ -425,13 +515,21 @@ struct DetailProps {
     pieces_text: String,
     sequential: bool,
     files: Vec<crate::FileTreeRow>,
+    // M178: per-tab data populated when the corresponding tab is active.
+    peers: Vec<crate::PeerRow>,
+    trackers: Vec<crate::TrackerRow>,
+    http_sources: Vec<crate::WebSeedRow>,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_detail_props(
     stats: &irontide::session::TorrentStats,
     info: Option<&irontide::session::TorrentInfo>,
     buckets: Vec<i32>,
     files: Vec<crate::FileTreeRow>,
+    peers: Vec<crate::PeerRow>,
+    trackers: Vec<crate::TrackerRow>,
+    http_sources: Vec<crate::WebSeedRow>,
 ) -> DetailProps {
     let info_hash = stats.info_hashes.best_v1().to_hex();
     let down_rate = if stats.download_rate > 0 {
@@ -509,6 +607,9 @@ fn build_detail_props(
         pieces_text,
         sequential: stats.sequential_download,
         files,
+        peers,
+        trackers,
+        http_sources,
     }
 }
 
@@ -537,6 +638,9 @@ fn apply_detail_props(win: &crate::MainWindow, p: DetailProps) {
     win.set_detail_pieces_text(SharedString::from(p.pieces_text));
     win.set_detail_sequential(p.sequential);
     win.set_detail_files(ModelRc::new(VecModel::from(p.files)));
+    win.set_detail_peers(ModelRc::new(VecModel::from(p.peers)));
+    win.set_detail_trackers(ModelRc::new(VecModel::from(p.trackers)));
+    win.set_detail_http_sources(ModelRc::new(VecModel::from(p.http_sources)));
 }
 
 fn clear_detail_props(win: &crate::MainWindow) {
@@ -564,6 +668,9 @@ fn clear_detail_props(win: &crate::MainWindow) {
     win.set_detail_pieces_text(SharedString::from("0 / 0 pieces (0%)"));
     win.set_detail_sequential(false);
     win.set_detail_files(ModelRc::new(VecModel::from(Vec::<crate::FileTreeRow>::new())));
+    win.set_detail_peers(ModelRc::new(VecModel::from(Vec::<crate::PeerRow>::new())));
+    win.set_detail_trackers(ModelRc::new(VecModel::from(Vec::<crate::TrackerRow>::new())));
+    win.set_detail_http_sources(ModelRc::new(VecModel::from(Vec::<crate::WebSeedRow>::new())));
 }
 
 // ── Filtering (M173 Lane A) ─────────────────────────────────────────────────

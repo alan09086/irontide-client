@@ -33,19 +33,27 @@ export component PillRow {
             border-radius: Tokens.r-md;
             border-width: Tokens.border-width-thin;
             border-color: Tokens.border-1;
-
-            Text {
-                x: Tokens.sp-4;
-                y: Tokens.sp-2;
-                text: opt;
-                color: root.selected == opt
-                    ? Tokens.accent-fg
-                    : (root.disabled ? Tokens.fg-3 : Tokens.fg-1);
-                font-size: Tokens.fs-12;
-            }
-
-            width: self.preferred-width + Tokens.sp-8;
+            // M178 fix: previously the Text inside used absolute `x`/`y`
+            // positioning, which left the Rectangle's preferred-width
+            // unable to grow with the text. With a HorizontalLayout +
+            // padding the Rectangle hugs the text, so 5-tab DetailPane
+            // labels and Tweaks pill labels both render in full.
             height: Tokens.row-h;
+
+            HorizontalLayout {
+                padding-left: Tokens.sp-4;
+                padding-right: Tokens.sp-4;
+                alignment: center;
+
+                Text {
+                    text: opt;
+                    color: root.selected == opt
+                        ? Tokens.accent-fg
+                        : (root.disabled ? Tokens.fg-3 : Tokens.fg-1);
+                    font-size: Tokens.fs-12;
+                    vertical-alignment: center;
+                }
+            }
 
             touch := TouchArea {
                 enabled: !root.disabled;

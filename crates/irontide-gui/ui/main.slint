@@ -25,7 +25,8 @@ import { Toolbar } from "organisms/toolbar.slint";
 // M177: DetailPane organism + FileTreeRow data struct. Replaces the
 // M176 placeholder text in all three layouts (L1 inline / L2 drawer /
 // L3 popover). Step 4 lights up the populated tab body.
-import { DetailPane, FileTreeRow } from "organisms/detail_pane.slint";
+import { DetailPane, FileTreeRow, PeerRow, TrackerRow, WebSeedRow } from "organisms/detail_pane.slint";
+import { FilePriorityPopup } from "molecules/file_priority_popup.slint";
 
 export { Tokens, Shadow, SidebarRow, TorrentRow, FileTreeRow }
 
@@ -227,6 +228,16 @@ export component MainWindow inherits Window {
     in-out property <bool> detail-sequential: false;
     in-out property <[FileTreeRow]> detail-files: [];
 
+    // ── M178: Peers / Trackers / HTTP Sources tabs ──
+    in-out property <[PeerRow]> detail-peers: [];
+    in-out property <[TrackerRow]> detail-trackers: [];
+    in-out property <[WebSeedRow]> detail-http-sources: [];
+
+    // ── M178: file-priority popup state (custom-overlay pattern) ──
+    in-out property <bool> show-file-priority-popup: false;
+    in-out property <length> file-priority-popup-x: 0px;
+    in-out property <length> file-priority-popup-y: 0px;
+
     // ── Detail-pane callbacks (Step 6) ──
     callback detail-tab-changed(/* tab label */ string);
     // The folder key is `"{info_hash}/{folder_path}"`. Rust toggles
@@ -234,6 +245,12 @@ export component MainWindow inherits Window {
     // the *collapsed* set per the M177 plan).
     callback detail-folder-toggled(/* folder key */ string);
     callback detail-sequential-toggled(/* enabled */ bool);
+    // M178: per-file selection + priority popup signals.
+    callback detail-file-clicked(/* index */ int, /* ctrl */ bool, /* shift */ bool);
+    callback detail-file-right-clicked(/* index */ int, /* x */ length, /* y */ length);
+    callback detail-reannounce(/* tracker url */ string);
+    callback file-priority-selected(/* priority repr */ int);
+    callback file-priority-dismissed();
 
     // ── Sort state ──
     in-out property <int> sort-column: 0;
@@ -597,9 +614,18 @@ export component MainWindow inherits Window {
                             pieces-text: root.detail-pieces-text;
                             sequential: root.detail-sequential;
                             files: root.detail-files;
-                            tab-changed(t) => { root.detail-tab-changed(t); }
+                            peers: root.detail-peers;
+                            trackers: root.detail-trackers;
+                            http-sources: root.detail-http-sources;
+                            tab-changed(t) => {
+                                root.detail-active-tab = t;
+                                root.detail-tab-changed(t);
+                            }
                             folder-toggled(i) => { root.detail-folder-toggled(i); }
                             sequential-toggled(b) => { root.detail-sequential-toggled(b); }
+                            file-clicked(i, c, s) => { root.detail-file-clicked(i, c, s); }
+                            file-right-clicked(i, x, y) => { root.detail-file-right-clicked(i, x, y); }
+                            reannounce-clicked(u) => { root.detail-reannounce(u); }
                         }
                     }
                 }
@@ -672,9 +698,18 @@ export component MainWindow inherits Window {
                         pieces-text: root.detail-pieces-text;
                         sequential: root.detail-sequential;
                         files: root.detail-files;
-                        tab-changed(t) => { root.detail-tab-changed(t); }
+                        peers: root.detail-peers;
+                        trackers: root.detail-trackers;
+                        http-sources: root.detail-http-sources;
+                        tab-changed(t) => {
+                            root.detail-active-tab = t;
+                            root.detail-tab-changed(t);
+                        }
                         folder-toggled(i) => { root.detail-folder-toggled(i); }
                         sequential-toggled(b) => { root.detail-sequential-toggled(b); }
+                        file-clicked(i, c, s) => { root.detail-file-clicked(i, c, s); }
+                        file-right-clicked(i, x, y) => { root.detail-file-right-clicked(i, x, y); }
+                        reannounce-clicked(u) => { root.detail-reannounce(u); }
                     }
                 }
 
@@ -883,9 +918,39 @@ export component MainWindow inherits Window {
             pieces-text: root.detail-pieces-text;
             sequential: root.detail-sequential;
             files: root.detail-files;
-            tab-changed(t) => { root.detail-tab-changed(t); }
+            peers: root.detail-peers;
+            trackers: root.detail-trackers;
+            http-sources: root.detail-http-sources;
+            compact-tabs: true;
+            tab-changed(t) => {
+                root.detail-active-tab = t;
+                root.detail-tab-changed(t);
+            }
             folder-toggled(i) => { root.detail-folder-toggled(i); }
             sequential-toggled(b) => { root.detail-sequential-toggled(b); }
+            file-clicked(i, c, s) => { root.detail-file-clicked(i, c, s); }
+            file-right-clicked(i, x, y) => { root.detail-file-right-clicked(i, x, y); }
+            reannounce-clicked(u) => { root.detail-reannounce(u); }
+        }
+    }
+
+    // M178: File-priority popup (custom-overlay pattern, M164 precedent).
+    // Lives ABOVE the L3 detail popover so right-clicking a file in the
+    // L3 popover surface still produces an in-bounds priority popup.
+    // Sits BELOW the TweaksOverlay so Ctrl+Shift+T can always interrupt.
+    FilePriorityPopup {
+        show: root.show-file-priority-popup;
+        popup-x: root.file-priority-popup-x;
+        popup-y: root.file-priority-popup-y;
+        width: root.width;
+        height: root.height;
+        priority-selected(p) => {
+            root.show-file-priority-popup = false;
+            root.file-priority-selected(p);
+        }
+        dismiss => {
+            root.show-file-priority-popup = false;
+            root.file-priority-dismissed();
         }
     }
 

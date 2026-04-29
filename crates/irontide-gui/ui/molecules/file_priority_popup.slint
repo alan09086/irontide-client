@@ -1,0 +1,125 @@
+// File-priority popup (M178 D-eng-5).
+//
+// Custom-overlay component mirroring `widgets/context_menu.slint` — does
+// NOT use Slint's native `PopupWindow` because nesting that inside
+// DetailPane causes positioning issues. The popup lives at MainWindow
+// level so it always renders above the detail surface, even in the L3
+// popover.
+//
+// Four options: Skip / Low / Normal / High. The integer passed to
+// `priority-selected` matches `irontide_core::FilePriority` repr (0/1/4/7)
+// so the Rust handler dispatches without an additional decode step.
+//
+// Click-outside (the transparent full-window overlay TouchArea) fires
+// `dismiss()`; the popup itself blocks clicks from passing through with
+// an inner TouchArea, matching the M164 ContextMenu pattern.
+
+import { Tokens } from "../tokens.slint";
+
+export component FilePriorityPopup {
+    in property <bool> show;
+    in property <length> popup-x;
+    in property <length> popup-y;
+    callback priority-selected(int);
+    callback dismiss();
+
+    if root.show: Rectangle {
+        background: transparent;
+
+        // Click-outside dismiss.
+        dismiss-touch := TouchArea {
+            clicked => { root.dismiss(); }
+        }
+
+        Rectangle {
+            x: root.popup-x;
+            y: root.popup-y;
+            width: Tokens.sp-10 * 4;
+            height: priority-layout.preferred-height + Tokens.sp-4;
+            background: Tokens.bg-1;
+            border-color: Tokens.border-1;
+            border-width: Tokens.border-width-thin;
+            border-radius: Tokens.r-md;
+
+            // Block dismiss-click from passing through.
+            TouchArea { }
+
+            priority-layout := VerticalLayout {
+                padding: Tokens.sp-2;
+                spacing: Tokens.sp-1;
+
+                // Skip (0)
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: skip-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+
+                    Text {
+                        text: "Skip";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        x: Tokens.sp-4;
+                    }
+                    skip-touch := TouchArea {
+                        clicked => { root.priority-selected(0); }
+                    }
+                }
+
+                // Low (1)
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: low-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+
+                    Text {
+                        text: "Low";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        x: Tokens.sp-4;
+                    }
+                    low-touch := TouchArea {
+                        clicked => { root.priority-selected(1); }
+                    }
+                }
+
+                // Normal (4)
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: normal-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+
+                    Text {
+                        text: "Normal";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        x: Tokens.sp-4;
+                    }
+                    normal-touch := TouchArea {
+                        clicked => { root.priority-selected(4); }
+                    }
+                }
+
+                // High (7)
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: high-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+
+                    Text {
+                        text: "High";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        x: Tokens.sp-4;
+                    }
+                    high-touch := TouchArea {
+                        clicked => { root.priority-selected(7); }
+                    }
+                }
+            }
+        }
+    }
+}

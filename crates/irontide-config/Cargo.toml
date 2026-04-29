@@ -10,7 +10,7 @@ publish = false
 workspace = true
 
 [dependencies]
-irontide-session = { path = "../irontide-session", version = "0.177.0" }
+irontide-session = { path = "../irontide-session", version = "0.178.0" }
 serde = { workspace = true }
 figment = { version = "0.10", features = ["toml", "env"] }
 directories = "5"

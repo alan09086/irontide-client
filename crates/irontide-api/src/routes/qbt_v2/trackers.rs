@@ -27,7 +27,8 @@
 
 use axum::extract::{Query, State};
 use irontide::core::Id20;
-use irontide::session::TrackerStatus;
+use irontide::session::{TrackerInfo, TrackerStatus};
+use irontide_format::{is_pseudo_tracker, synthesize_pseudo_trackers};
 use serde::Serialize;
 
 use super::response::{QbtError, QbtResponse};
@@ -65,57 +66,49 @@ pub struct QbtTrackerInfo {
 
 /// Builder for the three pseudo-trackers that qBt always emits.
 ///
-/// Kept out of the handler proper so tests can exercise the reflection
-/// logic without spinning up an axum router. `dht_node_count` is the
-/// routing-table size summed across IPv4 and IPv6 DHT instances — wired
-/// in for the DHT pseudo-tracker's `num_peers` column (M171 D4). PeX and
-/// LSD retain `num_peers = 0` because IronTide does not currently surface
-/// per-subsystem peer counts (tracked as M172+ polish).
+/// Wraps `irontide_format::synthesize_pseudo_trackers` and applies the
+/// qBt-wire-only `enabled → status` projection (`enabled` → 2 working,
+/// disabled → 0 disabled). `dht_node_count`, `pex_peer_count`, and
+/// `lsd_peer_count` come from the corresponding subsystem handles; the
+/// format helper stores them in `TrackerInfo::seeders` as a count
+/// surrogate and we map them onto qBt's `num_peers` column.
 fn make_pseudo_trackers(
     dht_enabled: bool,
     pex_enabled: bool,
     lsd_enabled: bool,
     dht_node_count: i32,
+    pex_peer_count: i32,
+    lsd_peer_count: i32,
 ) -> [QbtTrackerInfo; 3] {
-    fn status(enabled: bool) -> i32 {
-        if enabled {
-            2 // working
-        } else {
-            0 // disabled
-        }
+    let pseudo = synthesize_pseudo_trackers(
+        &[],
+        dht_node_count.max(0) as usize,
+        pex_peer_count.max(0) as usize,
+        lsd_peer_count.max(0) as usize,
+    );
+    debug_assert_eq!(pseudo.len(), 3);
+    let mut iter = pseudo.into_iter();
+    let dht = pseudo_to_qbt(iter.next().expect("DHT pseudo"), dht_enabled);
+    let pex = pseudo_to_qbt(iter.next().expect("PeX pseudo"), pex_enabled);
+    let lsd = pseudo_to_qbt(iter.next().expect("LSD pseudo"), lsd_enabled);
+    [dht, pex, lsd]
+}
+
+/// Map a pseudo-tracker `TrackerInfo` to its qBt wire form, applying the
+/// qBt enabled→status projection (working=2, disabled=0) and translating
+/// the `usize::MAX` sentinel tier back to qBt's `-1`.
+fn pseudo_to_qbt(t: TrackerInfo, enabled: bool) -> QbtTrackerInfo {
+    debug_assert!(is_pseudo_tracker(&t), "pseudo_to_qbt called on real tracker");
+    QbtTrackerInfo {
+        url: t.url,
+        status: if enabled { 2 } else { 0 },
+        tier: -1,
+        num_peers: widen_u32(t.seeders.unwrap_or(0)),
+        num_seeds: 0,
+        num_leeches: 0,
+        num_downloaded: 0,
+        msg: String::new(),
     }
-    [
-        QbtTrackerInfo {
-            url: "** [DHT] **".to_string(),
-            status: status(dht_enabled),
-            tier: -1,
-            num_peers: dht_node_count,
-            num_seeds: 0,
-            num_leeches: 0,
-            num_downloaded: 0,
-            msg: String::new(),
-        },
-        QbtTrackerInfo {
-            url: "** [PeX] **".to_string(),
-            status: status(pex_enabled),
-            tier: -1,
-            num_peers: 0,
-            num_seeds: 0,
-            num_leeches: 0,
-            num_downloaded: 0,
-            msg: String::new(),
-        },
-        QbtTrackerInfo {
-            url: "** [LSD] **".to_string(),
-            status: status(lsd_enabled),
-            tier: -1,
-            num_peers: 0,
-            num_seeds: 0,
-            num_leeches: 0,
-            num_downloaded: 0,
-            msg: String::new(),
-        },
-    ]
 }
 
 /// Project an IronTide `TrackerStatus` onto qBt's numeric status code.
@@ -169,11 +162,29 @@ pub async fn list(
 
     let dht_node_count = state.session.dht_node_count().await.unwrap_or(0) as i32;
 
+    // M178 (Lane C / TODO-2): real PeX/LSD counts now wired through the
+    // session handle. Best-effort: any error keeps the count at zero (the
+    // pseudo row still renders, just with `num_peers = 0`).
+    let pex_peer_count = state
+        .session
+        .pex_peer_count(id)
+        .await
+        .map(|c| widen_u32(u32::try_from(c).unwrap_or(u32::MAX)))
+        .unwrap_or(0);
+    let lsd_peer_count = state
+        .session
+        .lsd_peer_count(id)
+        .await
+        .map(|c| widen_u32(u32::try_from(c).unwrap_or(u32::MAX)))
+        .unwrap_or(0);
+
     let pseudo = make_pseudo_trackers(
         settings.enable_dht,
         settings.enable_pex,
         settings.enable_lsd,
         dht_node_count,
+        pex_peer_count,
+        lsd_peer_count,
     );
 
     // Real trackers — silently dropped if the tracker_list call fails
@@ -215,7 +226,7 @@ mod tests {
 
     #[test]
     fn pseudo_trackers_enabled_state() {
-        let rows = make_pseudo_trackers(true, true, true, 42);
+        let rows = make_pseudo_trackers(true, true, true, 42, 0, 0);
         assert_eq!(rows[0].url, "** [DHT] **");
         assert_eq!(rows[1].url, "** [PeX] **");
         assert_eq!(rows[2].url, "** [LSD] **");
@@ -231,7 +242,7 @@ mod tests {
 
     #[test]
     fn pseudo_trackers_disabled_state() {
-        let rows = make_pseudo_trackers(false, false, false, 0);
+        let rows = make_pseudo_trackers(false, false, false, 0, 0, 0);
         for row in &rows {
             assert_eq!(row.status, 0, "{} should be disabled", row.url);
             assert_eq!(row.tier, -1);
@@ -241,7 +252,7 @@ mod tests {
 
     #[test]
     fn pseudo_trackers_mixed_state() {
-        let rows = make_pseudo_trackers(true, false, true, 7);
+        let rows = make_pseudo_trackers(true, false, true, 7, 0, 0);
         assert_eq!(rows[0].status, 2); // DHT enabled
         assert_eq!(
             rows[0].num_peers, 7,
@@ -252,17 +263,29 @@ mod tests {
     }
 
     /// M171 D4 / E0.4: DHT pseudo-tracker `num_peers` routes the session's
-    /// `dht_node_count()` through the builder. PeX and LSD are intentionally
-    /// NOT wired yet — keeping them at 0 mirrors M168-M170 behaviour.
+    /// `dht_node_count()` through the builder. M178 (Lane A): PeX and LSD
+    /// args added to the signature with zero placeholders here; Lane C
+    /// will wire real counts.
     #[test]
     fn pseudo_trackers_dht_num_peers_matches_count() {
-        let rows = make_pseudo_trackers(true, false, false, 123);
+        let rows = make_pseudo_trackers(true, false, false, 123, 0, 0);
         assert_eq!(
             rows[0].num_peers, 123,
             "DHT pseudo-tracker wires dht_node_count"
         );
-        assert_eq!(rows[1].num_peers, 0, "PeX not wired to any count yet");
-        assert_eq!(rows[2].num_peers, 0, "LSD not wired to any count yet");
+        assert_eq!(rows[1].num_peers, 0, "PeX placeholder zero in Lane A");
+        assert_eq!(rows[2].num_peers, 0, "LSD placeholder zero in Lane A");
+    }
+
+    /// M178 D-user-2 / TODO-2: PeX and LSD counts now flow through the
+    /// signature. Lane C wires the real session-side counters; this test
+    /// asserts the wire mapping ahead of that.
+    #[test]
+    fn pseudo_trackers_pex_lsd_counts_propagate() {
+        let rows = make_pseudo_trackers(true, true, true, 5, 11, 23);
+        assert_eq!(rows[0].num_peers, 5);
+        assert_eq!(rows[1].num_peers, 11);
+        assert_eq!(rows[2].num_peers, 23);
     }
 
     #[test]

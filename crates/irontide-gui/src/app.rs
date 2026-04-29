@@ -83,6 +83,27 @@ pub enum GuiCommand {
         /// `true` to enable sequential mode, `false` to disable.
         enabled: bool,
     },
+    /// M178 (TODO-1 / D-user-3): set the download priority on one or more
+    /// files of a torrent. Batch form so right-clicking with several files
+    /// selected applies in one dispatch.
+    SetFilePriority {
+        /// Hex-encoded info-hash string.
+        info_hash: String,
+        /// File indices to update.
+        file_indices: Vec<usize>,
+        /// New priority for all listed files.
+        priority: irontide::core::FilePriority,
+    },
+    /// M178: force-reannounce a single tracker URL (Trackers tab action).
+    ReannounceTracker {
+        /// Hex-encoded info-hash string.
+        info_hash: String,
+        /// Tracker URL to reannounce. M178 ships torrent-wide reannounce
+        /// only; the URL is recorded here for M180 polish (per-tracker
+        /// reannounce when the engine API lands).
+        #[allow(dead_code, reason = "M178: per-URL dispatch deferred to M180 polish")]
+        url: String,
+    },
 }
 
 /// Context-menu actions for selected torrents.
@@ -212,10 +233,26 @@ pub struct AppState {
     /// memory leak.
     pub detail_expanded: HashSet<String>,
     /// Active detail-pane tab label as set by the Slint pill row.
-    /// `"General"` (default) or `"Content"`. The poll loop gates the
-    /// per-tick `file_priorities` + `file_progress` fetches on
-    /// `"Content"` to avoid wasted work on huge torrents (D-eng-2).
+    /// `"General"`, `"Content"`, `"Peers"`, `"Trackers"`, or `"HTTP Sources"`.
+    /// The poll loop gates the per-tick fetches on the active tab to
+    /// avoid wasted work on huge torrents (D-eng-2 / D-eng-3).
     pub detail_active_tab: String,
+    /// M178 (TODO-1): Selected file indices for the Content-tab multi-select
+    /// + per-file priority popup.
+    ///
+    /// Cleared on torrent change because indices are only meaningful for
+    /// the current torrent (D-eng-7).
+    pub detail_files_selected: HashSet<usize>,
+    /// M178 (TODO-1): Anchor index for Shift+Click range selection. Set
+    /// to the most recently single-clicked file index. Cleared alongside
+    /// `detail_files_selected` on torrent change.
+    pub last_clicked_file_index: Option<usize>,
+    /// M178 (D-eng-5 / D-eng-7): Pending per-file priority popup target —
+    /// `(info_hash, file_indices_snapshot)` captured at right-click time.
+    /// Cleared on popup-option-click, popup-dismiss, tab-change, and
+    /// torrent-change. Last-write-wins (Issue 2.1) — a second right-click
+    /// overwrites the previous pending target.
+    pub pending_file_priority_target: Option<(String, Vec<usize>)>,
 }
 
 impl AppState {
@@ -245,6 +282,9 @@ impl AppState {
             sidebar_tracker_collapsed: false,
             detail_expanded: HashSet::new(),
             detail_active_tab: String::from("General"),
+            detail_files_selected: HashSet::new(),
+            last_clicked_file_index: None,
+            pending_file_priority_target: None,
         }
     }
 
@@ -348,6 +388,50 @@ impl AppState {
     pub fn prune_detail_expanded_for(&mut self, info_hash: &str) {
         let prefix = format!("{info_hash}/");
         self.detail_expanded.retain(|k| !k.starts_with(&prefix));
+    }
+
+    /// M178 (D-eng-7 Iron Rule): clear file selection + popup state
+    /// when the detail pane's torrent changes. File indices are only
+    /// meaningful for the current torrent — leaving them populated would
+    /// either select wrong rows or leak across torrent boundaries.
+    pub fn clear_file_selection_for_torrent_change(&mut self) {
+        self.detail_files_selected.clear();
+        self.last_clicked_file_index = None;
+        self.pending_file_priority_target = None;
+    }
+
+    /// M178 (TODO-1): apply a multi-select click to the file selection.
+    ///
+    ///   * `ctrl=false, shift=false` → single-select (replaces the set).
+    ///   * `ctrl=true` → toggle that index in/out of the set.
+    ///   * `shift=true` → range-select from `last_clicked_file_index` to
+    ///     the new index (inclusive). Falls back to single-select if the
+    ///     anchor is `None`.
+    pub fn apply_file_click(&mut self, index: usize, ctrl: bool, shift: bool) {
+        if shift && let Some(anchor) = self.last_clicked_file_index {
+            let (lo, hi) = if anchor <= index {
+                (anchor, index)
+            } else {
+                (index, anchor)
+            };
+            self.detail_files_selected.clear();
+            for i in lo..=hi {
+                self.detail_files_selected.insert(i);
+            }
+            return;
+        }
+        // shift=true with no anchor falls through to single-select.
+        if ctrl {
+            if !self.detail_files_selected.remove(&index) {
+                self.detail_files_selected.insert(index);
+            }
+            self.last_clicked_file_index = Some(index);
+            return;
+        }
+        // Plain click: replace selection.
+        self.detail_files_selected.clear();
+        self.detail_files_selected.insert(index);
+        self.last_clicked_file_index = Some(index);
     }
 
     /// Resolve the info-hash that should drive the detail pane (M177).
@@ -1031,6 +1115,74 @@ mod tests {
         state.prune_detail_expanded_for("cccc");
         assert!(state.detail_expanded.contains("aaaa/video"));
         assert_eq!(state.detail_expanded.len(), 1);
+    }
+
+    // ── M178 Lane D: multi-select + popup state ──────────────────────
+
+    #[test]
+    fn apply_file_click_single_select_replaces_set() {
+        let mut state = fresh_state();
+        state.detail_files_selected.insert(0);
+        state.detail_files_selected.insert(1);
+        state.apply_file_click(5, false, false);
+        assert_eq!(state.detail_files_selected.len(), 1);
+        assert!(state.detail_files_selected.contains(&5));
+        assert_eq!(state.last_clicked_file_index, Some(5));
+    }
+
+    #[test]
+    fn apply_file_click_ctrl_toggles() {
+        let mut state = fresh_state();
+        state.apply_file_click(2, false, false);
+        state.apply_file_click(4, true, false);
+        assert!(state.detail_files_selected.contains(&2));
+        assert!(state.detail_files_selected.contains(&4));
+        // Ctrl+Click 2 again removes it
+        state.apply_file_click(2, true, false);
+        assert!(!state.detail_files_selected.contains(&2));
+        assert!(state.detail_files_selected.contains(&4));
+    }
+
+    #[test]
+    fn apply_file_click_shift_range_selects() {
+        let mut state = fresh_state();
+        state.apply_file_click(2, false, false); // anchor at 2
+        state.apply_file_click(5, false, true); // shift to 5
+        assert!(state.detail_files_selected.contains(&2));
+        assert!(state.detail_files_selected.contains(&3));
+        assert!(state.detail_files_selected.contains(&4));
+        assert!(state.detail_files_selected.contains(&5));
+    }
+
+    #[test]
+    fn apply_file_click_shift_range_works_in_reverse() {
+        let mut state = fresh_state();
+        state.apply_file_click(8, false, false); // anchor at 8
+        state.apply_file_click(3, false, true); // shift to 3 (reverse)
+        for i in 3..=8 {
+            assert!(state.detail_files_selected.contains(&i), "missing {i}");
+        }
+    }
+
+    #[test]
+    fn apply_file_click_shift_without_anchor_falls_through_to_single() {
+        let mut state = fresh_state();
+        state.apply_file_click(5, false, true);
+        assert_eq!(state.detail_files_selected.len(), 1);
+        assert!(state.detail_files_selected.contains(&5));
+    }
+
+    #[test]
+    fn clear_file_selection_for_torrent_change_resets_all() {
+        let mut state = fresh_state();
+        state.detail_files_selected.insert(1);
+        state.detail_files_selected.insert(2);
+        state.last_clicked_file_index = Some(2);
+        state.pending_file_priority_target = Some(("hash".to_owned(), vec![1, 2]));
+        state.clear_file_selection_for_torrent_change();
+        assert!(state.detail_files_selected.is_empty());
+        assert!(state.last_clicked_file_index.is_none());
+        assert!(state.pending_file_priority_target.is_none());
     }
 
     #[test]

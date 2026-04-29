@@ -352,6 +352,21 @@ async fn handle_gui_command(
         GuiCommand::SetSequentialDownload { info_hash, enabled } => {
             handle_set_sequential_download(&info_hash, enabled, session, weak).await;
         }
+        GuiCommand::SetFilePriority {
+            info_hash,
+            file_indices,
+            priority,
+        } => {
+            handle_set_file_priority(&info_hash, &file_indices, priority, session, weak).await;
+        }
+        GuiCommand::ReannounceTracker { info_hash, url: _ } => {
+            // M178: Per-tracker reannounce is not yet exposed via SessionHandle;
+            // fall back to a torrent-wide reannounce (M178 ships the action,
+            // M180 polish refines to per-URL when the engine API lands).
+            if let Ok(id) = irontide::core::Id20::from_hex(&info_hash) {
+                let _ = session.force_reannounce(id).await;
+            }
+        }
     }
 
     let elapsed = start.elapsed();
@@ -729,6 +744,55 @@ async fn handle_set_sequential_download(
             show_toast(weak, &format!("Sequential toggle failed: {e}"), true);
         }
     }
+}
+
+/// M178: Apply a priority change to one or more files of a torrent.
+///
+/// Iterates the index list, calling `session.set_file_priority` per
+/// index. Per-file errors (mid-flight torrent removal, invalid index)
+/// are debug-logged and absorbed — selection state is independent of
+/// dispatch outcome. A single toast summarises the operation.
+async fn handle_set_file_priority(
+    info_hash: &str,
+    file_indices: &[usize],
+    priority: irontide::core::FilePriority,
+    session: &irontide::session::SessionHandle,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    let Ok(id) = irontide::core::Id20::from_hex(info_hash) else {
+        show_toast(weak, &format!("Bad info-hash: {info_hash}"), true);
+        return;
+    };
+    let mut applied = 0usize;
+    let mut failed = 0usize;
+    for &idx in file_indices {
+        match session.set_file_priority(id, idx, priority).await {
+            Ok(()) => applied = applied.saturating_add(1),
+            Err(e) => {
+                failed = failed.saturating_add(1);
+                tracing::debug!(
+                    info_hash,
+                    idx,
+                    ?priority,
+                    error = %e,
+                    "set_file_priority failed",
+                );
+            }
+        }
+    }
+    let total = file_indices.len();
+    let label = match priority {
+        irontide::core::FilePriority::Skip => "Skip",
+        irontide::core::FilePriority::Low => "Low",
+        irontide::core::FilePriority::Normal => "Normal",
+        irontide::core::FilePriority::High => "High",
+    };
+    let msg = if failed == 0 {
+        format!("{label} priority applied to {applied}/{total} files")
+    } else {
+        format!("{label} priority applied to {applied}/{total} files ({failed} failed)")
+    };
+    show_toast(weak, &msg, failed > 0);
 }
 
 #[cfg(test)]

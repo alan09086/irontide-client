@@ -689,13 +689,7 @@ fn format_relative_secs(s: u64) -> String {
 /// value other than the four known slugs returns `None` so the caller can
 /// produce a 422 without touching the engine.
 fn parse_priority_form_value(value: &str) -> Option<irontide::core::FilePriority> {
-    match value {
-        "skip" => Some(irontide::core::FilePriority::Skip),
-        "low" => Some(irontide::core::FilePriority::Low),
-        "normal" => Some(irontide::core::FilePriority::Normal),
-        "high" => Some(irontide::core::FilePriority::High),
-        _ => None,
-    }
+    irontide_format::parse_priority_label(value)
 }
 
 /// Form body for [`patch_file_priority`].
@@ -876,54 +870,7 @@ fn tracker_status_bits(
 /// qBt's "incoming connection" semantic. Peer-interested state is still
 /// implicit via the `U`/`u` glyphs.
 fn peer_flags(p: &irontide::session::PeerInfo) -> Vec<(char, &'static str)> {
-    use irontide::session::PeerSource;
-    let mut flags = Vec::with_capacity(8);
-    if !p.peer_choking && p.num_pieces > 0 && p.am_interested {
-        flags.push(('D', "Downloading from peer"));
-    }
-    if p.am_interested && p.peer_choking {
-        flags.push(('d', "We want data but peer is choking us"));
-    }
-    if !p.am_choking && p.peer_interested {
-        flags.push(('U', "Uploading to peer"));
-    }
-    if p.peer_interested && p.am_choking {
-        flags.push(('u', "Peer wants data, we are choking them"));
-    }
-    if p.am_choking {
-        flags.push(('K', "We are choking the peer"));
-    }
-    if p.am_interested {
-        flags.push(('?', "We are interested in the peer"));
-    }
-    if p.snubbed {
-        flags.push(('S', "Peer is snubbed"));
-    }
-    if p.is_optimistic {
-        flags.push(('O', "Optimistic unchoke slot"));
-    }
-    if p.source == PeerSource::Incoming {
-        flags.push(('I', "Incoming connection"));
-    }
-    if p.source == PeerSource::Dht {
-        flags.push(('H', "Discovered via DHT"));
-    }
-    if p.source == PeerSource::Pex {
-        flags.push(('X', "Discovered via PeX (BEP 11)"));
-    }
-    if p.source == PeerSource::Lsd {
-        flags.push(('L', "Discovered via LSD (BEP 14)"));
-    }
-    if p.is_encrypted {
-        flags.push(('E', "Encrypted connection (MSE/PE)"));
-    }
-    if p.uses_utp {
-        flags.push(('P', "Using uTP (BEP 29)"));
-    }
-    if p.supports_fast {
-        flags.push(('F', "Supports fast extension (BEP 6)"));
-    }
-    flags
+    irontide_format::peer_flags(p)
 }
 
 /// `GET /webui/fragments/torrent/{hash}/peers`

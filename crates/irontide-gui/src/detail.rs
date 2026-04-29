@@ -32,10 +32,10 @@ use std::path::{Component, Path, PathBuf};
 use slint::SharedString;
 
 use irontide::core::FilePriority;
-use irontide::session::{TorrentInfo, TorrentStats};
-use irontide_format::FlatFileEntry;
+use irontide::session::{PeerInfo, TorrentInfo, TorrentStats, TrackerInfo, TrackerStatus, WebSeedStats};
+use irontide_format::{FlatFileEntry, is_pseudo_tracker};
 
-use crate::FileTreeRow;
+use crate::{FileTreeRow, PeerRow, TrackerRow, WebSeedRow};
 
 /// One poll-tick worth of detail-pane data, ready to be projected onto
 /// the Slint window properties.
@@ -127,6 +127,11 @@ struct FolderAgg {
 /// every folder and file unfolded; a user click toggles the key into
 /// the set to hide that folder's children.
 ///
+/// `selected` (M178 / TODO-1) lists file indices the user has highlighted
+/// for the per-file priority popup. Each emitted file row carries its
+/// index back to the caller via [`FileTreeRow::index`] and a precomputed
+/// `selected` flag drives the row highlight.
+///
 /// Length-mismatch saturation lives in
 /// [`irontide_format::build_flat`]; this helper trusts the input.
 #[must_use]
@@ -134,6 +139,7 @@ pub fn flatten_files(
     flat: &[FlatFileEntry],
     expanded: &HashSet<String>,
     info_hash: &str,
+    selected: &HashSet<usize>,
 ) -> Vec<FileTreeRow> {
     if flat.is_empty() {
         return Vec::new();
@@ -166,7 +172,7 @@ pub fn flatten_files(
     // stack pops back above that depth.
     let mut hidden_from_depth: Option<usize> = None;
 
-    for entry in flat {
+    for (file_idx, entry) in flat.iter().enumerate() {
         let folder_components: Vec<&std::ffi::OsStr> = entry
             .path
             .parent()
@@ -230,6 +236,9 @@ pub fn flatten_files(
                     )),
                     size: SharedString::from(crate::format::format_size(agg.size)),
                     priority: SharedString::default(),
+                    // Folder rows aren't selectable for priority editing.
+                    index: -1,
+                    selected: false,
                 });
             }
 
@@ -263,11 +272,137 @@ pub fn flatten_files(
                 progress_text: SharedString::from(format!("{:.1}%", f64::from(progress) * 100.0)),
                 size: SharedString::from(crate::format::format_size(entry.size)),
                 priority: SharedString::from(priority_label(entry.priority)),
+                index: file_idx as i32,
+                selected: selected.contains(&file_idx),
             });
         }
     }
 
     out
+}
+
+/// M178: project the live `PeerInfo` list into Slint-renderable rows
+/// for the Peers tab. Rates and durations format here; the flag string
+/// is composed from the shared `irontide_format::peer_flags` helper so
+/// the GUI and Web UI render the same glyph set.
+#[must_use]
+pub fn flatten_peer_rows(peers: &[PeerInfo]) -> Vec<PeerRow> {
+    peers
+        .iter()
+        .map(|p| {
+            let flags = irontide_format::peer_flags(p);
+            let flag_str: String = flags.iter().map(|(c, _)| *c).collect();
+            let tooltip: String = flags
+                .iter()
+                .map(|(c, t)| format!("{c}: {t}"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let source_label = format!("{:?}", p.source);
+            PeerRow {
+                addr: SharedString::from(p.addr.to_string()),
+                client: SharedString::from(p.client.clone()),
+                flags: SharedString::from(flag_str),
+                flags_tooltip: SharedString::from(tooltip),
+                down_rate: SharedString::from(crate::format::format_rate(p.download_rate)),
+                up_rate: SharedString::from(crate::format::format_rate(p.upload_rate)),
+                source: SharedString::from(source_label),
+                snubbed: p.snubbed,
+                connected: SharedString::from(crate::format::format_duration_secs(
+                    p.connected_duration_secs as i64,
+                )),
+            }
+        })
+        .collect()
+}
+
+/// M178: project the merged tracker list (synthesized pseudo-trackers
+/// + real trackers) into Slint-renderable rows.
+///
+/// Pseudo-trackers (DHT / PeX / LSD — detected via [`is_pseudo_tracker`])
+/// get a friendly `tier_label` derived from the URL; real trackers show
+/// their tier integer.
+#[must_use]
+pub fn flatten_tracker_rows(trackers: &[TrackerInfo]) -> Vec<TrackerRow> {
+    trackers
+        .iter()
+        .map(|t| {
+            let is_pseudo = is_pseudo_tracker(t);
+            let tier_label = if is_pseudo {
+                pseudo_label_from_url(&t.url).to_string()
+            } else {
+                t.tier.to_string()
+            };
+            let status = match t.status {
+                TrackerStatus::NotContacted => "updating",
+                TrackerStatus::Working => "working",
+                TrackerStatus::Error => "error",
+            };
+            let peers = t
+                .seeders
+                .map(|s| s.saturating_add(t.leechers.unwrap_or(0)).to_string())
+                .unwrap_or_else(|| "—".to_owned());
+            let seeds = t
+                .seeders
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "—".to_owned());
+            let leeches = t
+                .leechers
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "—".to_owned());
+            let next_announce = if is_pseudo {
+                "—".to_owned()
+            } else {
+                crate::format::format_duration_secs(t.next_announce_secs as i64)
+            };
+            TrackerRow {
+                url: SharedString::from(t.url.clone()),
+                tier_label: SharedString::from(tier_label),
+                status: SharedString::from(status),
+                peers: SharedString::from(peers),
+                seeds: SharedString::from(seeds),
+                leeches: SharedString::from(leeches),
+                next_announce: SharedString::from(next_announce),
+                is_pseudo,
+            }
+        })
+        .collect()
+}
+
+fn pseudo_label_from_url(url: &str) -> &'static str {
+    if url.contains("[DHT]") {
+        "DHT"
+    } else if url.contains("[PeX]") {
+        "PeX"
+    } else if url.contains("[LSD]") {
+        "LSD"
+    } else {
+        "—"
+    }
+}
+
+/// M178: project the per-URL [`WebSeedStats`] list into Slint-renderable
+/// HTTP Sources rows. The Slint side renders a two-line layout per
+/// D-eng-8 — `last_error` displays as a subtitle when non-empty.
+#[must_use]
+pub fn flatten_web_seed_rows(stats: &[WebSeedStats]) -> Vec<WebSeedRow> {
+    stats
+        .iter()
+        .map(|s| {
+            let state = match s.state {
+                irontide::session::WebSeedState::Idle => "idle",
+                irontide::session::WebSeedState::Active => "active",
+                irontide::session::WebSeedState::Errored => "errored",
+            };
+            WebSeedRow {
+                url: SharedString::from(s.url.clone()),
+                state: SharedString::from(state),
+                downloaded: SharedString::from(crate::format::format_size(s.downloaded_bytes)),
+                last_rate: SharedString::from(crate::format::format_rate(s.last_rate_bps)),
+                last_error: SharedString::from(s.last_error.clone().unwrap_or_default()),
+                consecutive_failures: i32::try_from(s.consecutive_failures).unwrap_or(i32::MAX),
+            }
+        })
+        .collect()
 }
 
 /// Map a [`FilePriority`] to its display label for the Content tab.
@@ -356,14 +491,14 @@ mod tests {
 
     #[test]
     fn flatten_empty_returns_empty() {
-        let out = flatten_files(&[], &HashSet::new(), "abcd");
+        let out = flatten_files(&[], &HashSet::new(), "abcd", &HashSet::new());
         assert!(out.is_empty());
     }
 
     #[test]
     fn flatten_single_file_no_folder_emits_one_row() {
         let flat = vec![flat_entry("a.bin", 1000, 500, FilePriority::Normal)];
-        let out = flatten_files(&flat, &HashSet::new(), "abcd");
+        let out = flatten_files(&flat, &HashSet::new(), "abcd", &HashSet::new());
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].depth, 0);
         assert!(!out[0].is_folder);
@@ -382,7 +517,7 @@ mod tests {
             flat_entry("video/intro.mp4", 50_000, 25_000, FilePriority::High),
             flat_entry("video/extras/bts.mkv", 80_000, 0, FilePriority::Skip),
         ];
-        let out = flatten_files(&flat, &HashSet::new(), "abcd");
+        let out = flatten_files(&flat, &HashSet::new(), "abcd", &HashSet::new());
         // Expected emission order:
         //   [0] file readme.txt        depth=0
         //   [1] folder video           depth=0  expanded
@@ -426,7 +561,7 @@ mod tests {
         // User collapsed the "video" folder.
         let mut expanded = HashSet::new();
         expanded.insert("abcd/video".to_string());
-        let out = flatten_files(&flat, &expanded, "abcd");
+        let out = flatten_files(&flat, &expanded, "abcd", &HashSet::new());
         // Expected: readme.txt + folder video (collapsed marker), no
         // intro.mp4 / extras / bts.mkv.
         assert_eq!(out.len(), 2);
@@ -444,7 +579,7 @@ mod tests {
             flat_entry("video/a.mp4", 100_000, 50_000, FilePriority::Normal),
             flat_entry("video/b.mp4", 100_000, 0, FilePriority::Normal),
         ];
-        let out = flatten_files(&flat, &HashSet::new(), "h");
+        let out = flatten_files(&flat, &HashSet::new(), "h", &HashSet::new());
         assert_eq!(out[0].name.as_str(), "video");
         assert!(out[0].is_folder);
         assert!(
