@@ -94,7 +94,7 @@ type EventStreamBox<'a> = Pin<Box<dyn futures::Stream<Item = Result<String, CliE
 /// setup, or the initial `ApiClient` handshake fails. Transient
 /// daemon errors during the loop are rendered in the status bar
 /// but do not terminate the session.
-pub(crate) fn run(opts: TuiOpts) -> anyhow::Result<()> {
+pub(crate) fn run(opts: &TuiOpts) -> anyhow::Result<()> {
     install_panic_hook();
 
     // Raw mode + alt screen. The guard restores them on every exit
@@ -189,10 +189,10 @@ async fn event_loop(
                         let action = events::handle_key(key, &mut state);
                         dispatch_action(client, &mut state, action).await;
                     }
-                    Some(Ok(Event::Resize(_, _))) => {
-                        // Ratatui handles resize on the next draw.
+                    Some(Ok(Event::Resize(_, _) | _)) => {
+                        // Ratatui handles resize on the next draw; other
+                        // events (mouse, focus, paste) ignored.
                     }
-                    Some(Ok(_)) => {}
                     Some(Err(e)) => {
                         state.set_error(format!("input error: {e}"));
                     }
@@ -259,13 +259,11 @@ async fn tick_refresh(client: &ApiClient, state: &mut AppState) {
         return;
     }
 
-    let stats = match client.get_torrent(&hash).await {
-        Ok(s) => s,
-        Err(_) => return,
+    let Ok(stats) = client.get_torrent(&hash).await else {
+        return;
     };
-    let info = match client.torrent_info(&hash).await {
-        Ok(i) => i,
-        Err(_) => return,
+    let Ok(info) = client.torrent_info(&hash).await else {
+        return;
     };
     let peers = client.torrent_peers(&hash).await.unwrap_or_default();
     state.detail_cache.insert(
@@ -287,7 +285,9 @@ async fn tick_refresh(client: &ApiClient, state: &mut AppState) {
 /// returns from the loop.
 async fn dispatch_action(client: &ApiClient, state: &mut AppState, action: Action) {
     match action {
-        Action::None => {}
+        Action::None | Action::RefreshNow => {
+            // None = no-op; RefreshNow = next tick handles it.
+        }
         Action::Quit => state.should_quit = true,
         Action::Pause(hash) => {
             if let Err(e) = client.pause(&hash).await {
@@ -318,11 +318,6 @@ async fn dispatch_action(client: &ApiClient, state: &mut AppState, action: Actio
                 state.set_error(format!("add magnet failed: {e}"));
             }
         }
-        Action::RefreshNow => {
-            // The next tick will pick this up on its own. We could
-            // kick a manual refresh here, but racing with the
-            // timer-driven branch just churns the selection cursor.
-        }
     }
 }
 
@@ -332,7 +327,7 @@ async fn dispatch_action(client: &ApiClient, state: &mut AppState, action: Actio
 /// absent lets the `select!` macro stay shape-stable. We use a
 /// long sleep (rather than `futures::future::pending`) so the
 /// compiler has a concrete future type to work with.
-async fn next_ws<'a>(stream: &mut Option<EventStreamBox<'a>>) -> Option<Result<String, CliError>> {
+async fn next_ws(stream: &mut Option<EventStreamBox<'_>>) -> Option<Result<String, CliError>> {
     if let Some(s) = stream { s.next().await } else {
         tokio::time::sleep(Duration::from_hours(1)).await;
         None

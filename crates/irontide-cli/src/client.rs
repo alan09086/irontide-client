@@ -161,7 +161,7 @@ impl TorrentStatsDto {
     /// `TorrentState` is rendered via a match expression so the
     /// human-readable label stays stable across `Debug` format changes.
     pub(crate) fn from_live(stats: &irontide::session::TorrentStats) -> Self {
-        let state = render_torrent_state(&stats.state);
+        let state = render_torrent_state(stats.state);
         let info_hashes = InfoHashesDto {
             v1: stats.info_hashes.v1.map(|id| id.0.to_vec()),
             v2: stats.info_hashes.v2.map(|id| id.0.to_vec()),
@@ -193,7 +193,7 @@ impl TorrentStatsDto {
 /// both the JSON DTO and the human renderer. Kept separate from
 /// `format!("{:?}", ...)` so the on-the-wire string stays stable if the
 /// enum's `Debug` implementation changes upstream.
-fn render_torrent_state(state: &irontide::session::TorrentState) -> String {
+fn render_torrent_state(state: irontide::session::TorrentState) -> String {
     use irontide::session::TorrentState as S;
     match state {
         S::FetchingMetadata => "FetchingMetadata",
@@ -691,8 +691,7 @@ impl ApiClient {
                         Err(e) => Some(Err(CliError::WebSocket(format!("non-UTF-8 frame: {e}")))),
                     }
                 }
-                Ok(tokio_tungstenite::tungstenite::Message::Close(_)) => None,
-                Ok(_) => None, // Ping/Pong/Frame — ignore.
+                Ok(tokio_tungstenite::tungstenite::Message::Close(_) | _) => None, // Ping/Pong/Frame/Close — ignore.
                 Err(e) => Some(Err(CliError::WebSocket(e.to_string()))),
             }
         });

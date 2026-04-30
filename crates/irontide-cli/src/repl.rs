@@ -189,7 +189,7 @@ pub(crate) fn parse_shell_line(line: &str) -> Result<ReplLine, ShellParseError> 
 /// `exit`). Errors from individual command dispatches are printed and
 /// the loop continues — the REPL only exits on fatal failures
 /// (runtime build, editor create).
-pub(crate) fn run(opts: ShellOpts) -> anyhow::Result<()> {
+pub(crate) fn run(opts: &ShellOpts) -> anyhow::Result<()> {
     // ── runtime + client ──────────────────────────────────────────────
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -268,7 +268,7 @@ pub(crate) fn run(opts: ShellOpts) -> anyhow::Result<()> {
     if let Err(e) = editor.load_history(&history_path)
         && !matches!(e, ReadlineError::Io(ref io) if io.kind() == std::io::ErrorKind::NotFound)
     {
-        eprintln!("warning: failed to load history from {history_path:?}: {e}");
+        eprintln!("warning: failed to load history from {}: {e}", history_path.display());
     }
 
     let tty = std::io::stdout().is_terminal();
@@ -310,7 +310,7 @@ pub(crate) fn run(opts: ShellOpts) -> anyhow::Result<()> {
         }
 
         match parse_shell_line(&line) {
-            Ok(ReplLine::Empty) => continue,
+            Ok(ReplLine::Empty) => {},
             Ok(ReplLine::Help) => print_help(),
             Ok(ReplLine::Clear) => {
                 if tty {
@@ -336,7 +336,7 @@ pub(crate) fn run(opts: ShellOpts) -> anyhow::Result<()> {
 
     // ── shutdown: save history, kill refresh task, drop runtime ───────
     if let Err(e) = editor.save_history(&history_path) {
-        eprintln!("warning: failed to save history to {history_path:?}: {e}");
+        eprintln!("warning: failed to save history to {}: {e}", history_path.display());
     }
     refresh_task.abort();
     // Allow the aborted task to unwind before dropping the runtime so

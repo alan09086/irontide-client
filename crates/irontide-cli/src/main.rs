@@ -278,7 +278,7 @@ fn main() {
                 commands::cmd_seed(client, &hash, false, out).await
             })
         }
-        Command::Shell => match repl::run(repl::ShellOpts {
+        Command::Shell => match repl::run(&repl::ShellOpts {
             api_url: api_url_flag,
         }) {
             Ok(()) => 0,
@@ -287,7 +287,7 @@ fn main() {
                 1
             }
         },
-        Command::Tui => match tui::run(tui::TuiOpts {
+        Command::Tui => match tui::run(&tui::TuiOpts {
             api_url: api_url_flag,
         }) {
             Ok(()) => 0,

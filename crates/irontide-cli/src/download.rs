@@ -175,6 +175,11 @@ fn emit_plain_block(stats: &TorrentStatsDto, info: Option<&TorrentInfoDto>) -> a
 }
 
 pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
+    const SAVE_INTERVAL: Duration = Duration::from_mins(1);
+    const POLL_INTERVAL: Duration = Duration::from_secs(1);
+    const DIAGNOSE_INTERVAL: Duration = Duration::from_secs(5);
+    const NON_TTY_INTERVAL: Duration = Duration::from_secs(10);
+
     let DownloadOpts {
         source,
         output,
@@ -306,10 +311,6 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
     let mut total_wanted: u64 = 0;
     let mut last_save = Instant::now();
     let mut last_diagnose = Instant::now();
-    const SAVE_INTERVAL: Duration = Duration::from_mins(1);
-    const POLL_INTERVAL: Duration = Duration::from_secs(1);
-    const DIAGNOSE_INTERVAL: Duration = Duration::from_secs(5);
-    const NON_TTY_INTERVAL: Duration = Duration::from_secs(10);
 
     // Presentation mode selection. The four modes from the M159 spec are:
     //   Quiet    — `--quiet`: no stdout/stderr progress chatter.
