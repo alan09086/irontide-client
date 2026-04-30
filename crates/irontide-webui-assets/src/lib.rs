@@ -1,4 +1,4 @@
-//! Vendored static assets for the IronTide Web UI.
+//! Vendored static assets for the `IronTide` Web UI.
 //!
 //! Assets are compiled into the binary via `rust-embed` for zero-config
 //! deployment. Call [`get`] to retrieve any asset by its relative path.
