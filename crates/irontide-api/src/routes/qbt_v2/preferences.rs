@@ -8,7 +8,7 @@
 
 //! qBt v2 preferences DTO (M168, full impl in Task 7).
 //!
-//! Projects IronTide `Settings` onto the qBt WebUI v2 preferences JSON shape
+//! Projects `IronTide` `Settings` onto the qBt `WebUI` v2 preferences JSON shape
 //! that `*arr` clients expect. See M170 for the reverse direction
 //! (`setPreferences`).
 
@@ -17,12 +17,12 @@ use serde::{Deserialize, Serialize};
 
 /// qBt encryption mode enum — canonical mapping.
 ///
-/// qBt WebUI v2 (since 4.x) uses:
+/// qBt `WebUI` v2 (since 4.x) uses:
 /// - `0` = Prefer encryption
 /// - `1` = Force encryption (require)
 /// - `2` = Disable encryption
 ///
-/// Mapped from IronTide's `irontide_wire::mse::EncryptionMode`.
+/// Mapped from `IronTide`'s `irontide_wire::mse::EncryptionMode`.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(into = "u8", try_from = "u8")]
 pub enum QbtEncryption {
@@ -82,7 +82,7 @@ pub struct QbtPreferences {
     pub queueing_enabled: bool,
     /// M171: Wired to `create_subfolder` (D1+D2).
     pub create_subfolder_enabled: bool,
-    /// Hardcoded safe default — IronTide adds torrents running by default.
+    /// Hardcoded safe default — `IronTide` adds torrents running by default.
     /// TODO(M174): wire once we have an "add paused" toggle in Settings.
     pub start_paused_enabled: bool,
     /// M171: Wired to `auto_manage_torrents` (D1+D2).

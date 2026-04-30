@@ -1,8 +1,8 @@
-//! qBittorrent WebUI v2 compatibility layer (M168).
+//! qBittorrent `WebUI` v2 compatibility layer (M168).
 //!
-//! Implements a subset of the qBt WebUI v2 HTTP API so that `*arr` clients
-//! (Radarr, Sonarr, Prowlarr, Lidarr) can talk to IronTide as if it were
-//! qBittorrent. Same pattern as CockroachDB speaking PostgreSQL wire protocol.
+//! Implements a subset of the qBt `WebUI` v2 HTTP API so that `*arr` clients
+//! (Radarr, Sonarr, Prowlarr, Lidarr) can talk to `IronTide` as if it were
+//! qBittorrent. Same pattern as `CockroachDB` speaking `PostgreSQL` wire protocol.
 //!
 //! # Middleware chain
 //! ```text
@@ -54,7 +54,7 @@ pub use state::{QbtState, default_argon2_permits, resolve_client_ip};
 /// Build the qBt v2 sub-router along with the [`QbtState`] that backs it.
 ///
 /// The state is returned so callers (e.g. the top-level `routes::build_router`)
-/// can share its reverse-proxies RwLock with adjacent surfaces that also need
+/// can share its reverse-proxies `RwLock` with adjacent surfaces that also need
 /// CSRF protection — most notably the `/webui/*` block (M172a Lane B).
 pub fn build_router_with_state(session: Arc<SessionHandle>) -> (Router, QbtState) {
     let router_state = build_router_inner(session);
@@ -70,7 +70,7 @@ pub fn build_router_with_state(session: Arc<SessionHandle>) -> (Router, QbtState
 ///   (`pause`, `resume`, `delete`, `recheck`, `reannounce`) accept
 ///   `hashes=` and `deleteFiles=` from **either** the URL query string
 ///   **or** an `application/x-www-form-urlencoded` body — matching qBt
-///   WebUI v2 parity and unblocking real `*arr` clients (Radarr /
+///   `WebUI` v2 parity and unblocking real `*arr` clients (Radarr /
 ///   Sonarr / Prowlarr / Lidarr) that POST these params in the body.
 /// * `category_routes` — M170 category CRUD
 /// * (M171 adds `torrent_details`, `torrent_tags`, `app_write` as they land)
@@ -94,7 +94,7 @@ fn build_router_inner(session: Arc<SessionHandle>) -> (Router, QbtState) {
     // qbt_compat.enabled take effect immediately because qbt_gate re-reads
     // settings per request.
     let store = Arc::new(SessionStore::new(
-        std::time::Duration::from_secs(86_400),
+        std::time::Duration::from_hours(24),
         1024,
     ));
     // M172a G2: default argon2 semaphore size — num_cpus*2 clamped [2,16].

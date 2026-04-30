@@ -1,7 +1,7 @@
 //! HTTP REST API server for the torrent engine.
 //!
 //! Provides a JSON API for managing torrents, querying session state,
-//! and controlling the BitTorrent client over HTTP.
+//! and controlling the `BitTorrent` client over HTTP.
 //!
 //! # Usage
 //!

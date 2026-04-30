@@ -98,10 +98,10 @@ async fn preferences_max_seeding_time_disabled_when_none() {
     .await;
     let v = get_prefs(&router, &sid).await;
     assert_eq!(
-        v.get("max_seeding_time_enabled").and_then(|b| b.as_bool()),
+        v.get("max_seeding_time_enabled").and_then(serde_json::Value::as_bool),
         Some(false)
     );
-    assert_eq!(v.get("max_seeding_time").and_then(|i| i.as_i64()), Some(-1));
+    assert_eq!(v.get("max_seeding_time").and_then(serde_json::Value::as_i64), Some(-1));
 }
 
 #[tokio::test]
@@ -113,11 +113,11 @@ async fn preferences_max_seeding_time_seconds_to_minutes() {
     .await;
     let v = get_prefs(&router, &sid).await;
     assert_eq!(
-        v.get("max_seeding_time_enabled").and_then(|b| b.as_bool()),
+        v.get("max_seeding_time_enabled").and_then(serde_json::Value::as_bool),
         Some(true)
     );
     assert_eq!(
-        v.get("max_seeding_time").and_then(|i| i.as_i64()),
+        v.get("max_seeding_time").and_then(serde_json::Value::as_i64),
         Some(60),
         "qBt wire format is MINUTES, not seconds"
     );
@@ -132,11 +132,11 @@ async fn preferences_max_inactive_seeding_time_disabled_when_none() {
     let v = get_prefs(&router, &sid).await;
     assert_eq!(
         v.get("max_inactive_seeding_time_enabled")
-            .and_then(|b| b.as_bool()),
+            .and_then(serde_json::Value::as_bool),
         Some(false)
     );
     assert_eq!(
-        v.get("max_inactive_seeding_time").and_then(|i| i.as_i64()),
+        v.get("max_inactive_seeding_time").and_then(serde_json::Value::as_i64),
         Some(-1)
     );
 }
@@ -151,11 +151,11 @@ async fn preferences_max_inactive_seeding_time_seconds_to_minutes() {
     let v = get_prefs(&router, &sid).await;
     assert_eq!(
         v.get("max_inactive_seeding_time_enabled")
-            .and_then(|b| b.as_bool()),
+            .and_then(serde_json::Value::as_bool),
         Some(true)
     );
     assert_eq!(
-        v.get("max_inactive_seeding_time").and_then(|i| i.as_i64()),
+        v.get("max_inactive_seeding_time").and_then(serde_json::Value::as_i64),
         Some(30)
     );
 }
@@ -218,15 +218,15 @@ async fn preferences_reflects_real_settings_d2() {
         Some("remove")
     );
     assert_eq!(
-        v.get("queueing_enabled").and_then(|b| b.as_bool()),
+        v.get("queueing_enabled").and_then(serde_json::Value::as_bool),
         Some(true)
     );
     assert_eq!(
-        v.get("create_subfolder_enabled").and_then(|b| b.as_bool()),
+        v.get("create_subfolder_enabled").and_then(serde_json::Value::as_bool),
         Some(false)
     );
     assert_eq!(
-        v.get("auto_tmm_enabled").and_then(|b| b.as_bool()),
+        v.get("auto_tmm_enabled").and_then(serde_json::Value::as_bool),
         Some(true)
     );
 }

@@ -11,7 +11,7 @@
 //! [`remove_torrent_with_files`](irontide::session::SessionHandle::remove_torrent_with_files)
 //! through the HTTP surface — covers both flag states, the delete-race
 //! re-add guard, and qBt-parity corner cases (missing files tolerated,
-//! empty parents pruned, download_dir root never removed).
+//! empty parents pruned, `download_dir` root never removed).
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};

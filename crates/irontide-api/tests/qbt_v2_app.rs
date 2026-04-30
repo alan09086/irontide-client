@@ -130,7 +130,7 @@ async fn app_build_info_bitness_matches_usize_bits() {
     let (router, sid) = enabled_router_with(|_| {}).await;
     let (_, body, _) = get(&router, "/api/v2/app/buildInfo", Some(&sid)).await;
     let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    let bitness = v.get("bitness").and_then(|b| b.as_u64()).unwrap();
+    let bitness = v.get("bitness").and_then(serde_json::Value::as_u64).unwrap();
     let expected = (std::mem::size_of::<usize>() as u64) * 8;
     assert_eq!(bitness, expected);
 }
@@ -201,20 +201,20 @@ async fn preferences_max_ratio_enabled_follows_seed_ratio_limit_presence() {
     let (_, body, _) = get(&router, "/api/v2/app/preferences", Some(&sid)).await;
     let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(
-        v.get("max_ratio_enabled").and_then(|b| b.as_bool()),
+        v.get("max_ratio_enabled").and_then(serde_json::Value::as_bool),
         Some(false)
     );
-    assert_eq!(v.get("max_ratio").and_then(|r| r.as_f64()), Some(-1.0));
+    assert_eq!(v.get("max_ratio").and_then(serde_json::Value::as_f64), Some(-1.0));
 
     // Case 2: ratio limit set — flag is true, value matches.
     let (router, sid) = enabled_router_with(|s| s.seed_ratio_limit = Some(2.5)).await;
     let (_, body, _) = get(&router, "/api/v2/app/preferences", Some(&sid)).await;
     let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(
-        v.get("max_ratio_enabled").and_then(|b| b.as_bool()),
+        v.get("max_ratio_enabled").and_then(serde_json::Value::as_bool),
         Some(true)
     );
-    assert!((v.get("max_ratio").and_then(|r| r.as_f64()).unwrap() - 2.5_f64).abs() < 1e-9);
+    assert!((v.get("max_ratio").and_then(serde_json::Value::as_f64).unwrap() - 2.5_f64).abs() < 1e-9);
 }
 
 #[tokio::test]
@@ -223,7 +223,7 @@ async fn preferences_encryption_maps_prefer_to_0() {
     let (router, sid) = enabled_router_with(|s| s.encryption_mode = EncryptionMode::Enabled).await;
     let (_, body, _) = get(&router, "/api/v2/app/preferences", Some(&sid)).await;
     let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(v.get("encryption").and_then(|n| n.as_u64()), Some(0));
+    assert_eq!(v.get("encryption").and_then(serde_json::Value::as_u64), Some(0));
 }
 
 #[tokio::test]
@@ -232,7 +232,7 @@ async fn preferences_encryption_maps_force_to_1() {
     let (router, sid) = enabled_router_with(|s| s.encryption_mode = EncryptionMode::Forced).await;
     let (_, body, _) = get(&router, "/api/v2/app/preferences", Some(&sid)).await;
     let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(v.get("encryption").and_then(|n| n.as_u64()), Some(1));
+    assert_eq!(v.get("encryption").and_then(serde_json::Value::as_u64), Some(1));
 }
 
 #[tokio::test]
@@ -241,7 +241,7 @@ async fn preferences_encryption_maps_disable_to_2() {
     let (router, sid) = enabled_router_with(|s| s.encryption_mode = EncryptionMode::Disabled).await;
     let (_, body, _) = get(&router, "/api/v2/app/preferences", Some(&sid)).await;
     let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(v.get("encryption").and_then(|n| n.as_u64()), Some(2));
+    assert_eq!(v.get("encryption").and_then(serde_json::Value::as_u64), Some(2));
 }
 
 #[tokio::test]

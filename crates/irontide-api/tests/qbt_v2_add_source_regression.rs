@@ -190,7 +190,7 @@ async fn qbt_v2_add_magnet_form_without_optional_fields_still_works() {
     for b in magnet.bytes() {
         match b {
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                body.push(b as char)
+                body.push(b as char);
             }
             _ => body.push_str(&format!("%{b:02X}")),
         }

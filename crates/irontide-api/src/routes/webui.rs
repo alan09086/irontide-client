@@ -379,7 +379,7 @@ pub async fn pause_action(State(session): State<AppState>, Path(hash): Path<Stri
         Err(e) => return api_error_fragment(e),
     };
     match session.pause_torrent(id).await {
-        Ok(_) => refresh_response(),
+        Ok(()) => refresh_response(),
         Err(e) => api_error_fragment(e.into()),
     }
 }
@@ -393,7 +393,7 @@ pub async fn resume_action(State(session): State<AppState>, Path(hash): Path<Str
         Err(e) => return api_error_fragment(e),
     };
     match session.resume_torrent(id).await {
-        Ok(_) => refresh_response(),
+        Ok(()) => refresh_response(),
         Err(e) => api_error_fragment(e.into()),
     }
 }
@@ -409,7 +409,7 @@ pub async fn delete_action(State(session): State<AppState>, Path(hash): Path<Str
         Err(e) => return api_error_fragment(e),
     };
     match session.remove_torrent(id).await {
-        Ok(_) => refresh_response(),
+        Ok(()) => refresh_response(),
         Err(e) => api_error_fragment(e.into()),
     }
 }
@@ -417,7 +417,7 @@ pub async fn delete_action(State(session): State<AppState>, Path(hash): Path<Str
 /// `GET /webui/fragments/settings`
 ///
 /// Render the settings form fragment pre-populated with the current
-/// session's values. The form PATCHes `/webui/settings` on submit
+/// session's values. The form `PATCHes` `/webui/settings` on submit
 /// (handler in Task 7).
 pub async fn settings_fragment(State(session): State<AppState>) -> Response {
     let s = match session.settings().await {
@@ -556,7 +556,7 @@ pub async fn seed_mode_action(
         Err(e) => return api_error_fragment(e),
     };
     match session.set_seed_mode(id, q.enabled).await {
-        Ok(_) => refresh_response(),
+        Ok(()) => refresh_response(),
         Err(e) => api_error_fragment(e.into()),
     }
 }
@@ -591,12 +591,12 @@ pub async fn torrent_detail(State(session): State<AppState>, Path(hash): Path<St
 
     let state_label = irontide_format::format_state(&stats.state, stats.user_seed_mode).to_owned();
     let state_class = state_css_class(&state_label).to_owned();
-    let progress = stats.progress as f64;
+    let progress = f64::from(stats.progress);
     let progress_pct = format!("{:.1}%", progress * 100.0);
 
     let remaining = stats.total.saturating_sub(stats.total_done);
-    let eta = irontide_format::format_eta(remaining, stats.download_rate).to_string();
-    let ratio = irontide_format::format_ratio(stats.uploaded, stats.downloaded).to_string();
+    let eta = irontide_format::format_eta(remaining, stats.download_rate).clone();
+    let ratio = irontide_format::format_ratio(stats.uploaded, stats.downloaded).clone();
 
     let info_hash = id.to_hex();
     let info_hash_v2 = stats.info_hashes.v2.map(|v| v.to_hex());
@@ -850,21 +850,21 @@ fn tracker_status_bits(
 /// Precise conditions (matches the M167 plan):
 /// M171 D5: qBt-parity peer-flag glyph superset (15 glyphs).
 ///
-/// - `D` downloading from peer          — !peer_choking && num_pieces > 0 && am_interested
-/// - `d` we want data, peer chokes us   — am_interested && peer_choking
-/// - `U` uploading to peer              — !am_choking && peer_interested
-/// - `u` peer wants data, we choke them — peer_interested && am_choking
-/// - `K` we are choking the peer        — am_choking
-/// - `?` we are interested              — am_interested
+/// - `D` downloading from peer          — !`peer_choking` && `num_pieces` > 0 && `am_interested`
+/// - `d` we want data, peer chokes us   — `am_interested` && `peer_choking`
+/// - `U` uploading to peer              — !`am_choking` && `peer_interested`
+/// - `u` peer wants data, we choke them — `peer_interested` && `am_choking`
+/// - `K` we are choking the peer        — `am_choking`
+/// - `?` we are interested              — `am_interested`
 /// - `S` peer is snubbed                — snubbed
-/// - `O` optimistic unchoke slot        — is_optimistic
+/// - `O` optimistic unchoke slot        — `is_optimistic`
 /// - `I` incoming connection            — source == Incoming (REDEFINED in M171)
 /// - `H` discovered via DHT             — source == Dht
-/// - `X` discovered via PeX             — source == Pex
+/// - `X` discovered via `PeX`             — source == Pex
 /// - `L` discovered via LSD             — source == Lsd
-/// - `E` encrypted connection (MSE/PE)  — is_encrypted
-/// - `P` using uTP (BEP 29)             — uses_utp
-/// - `F` supports fast extension (BEP 6)— supports_fast
+/// - `E` encrypted connection (MSE/PE)  — `is_encrypted`
+/// - `P` using uTP (BEP 29)             — `uses_utp`
+/// - `F` supports fast extension (BEP 6)— `supports_fast`
 ///
 /// `I` was "peer is interested in us" in M167-M170; M171 remaps it to
 /// qBt's "incoming connection" semantic. Peer-interested state is still
@@ -935,13 +935,9 @@ pub async fn trackers_fragment(
                 status_label,
                 status_title,
                 seeders: t
-                    .seeders
-                    .map(|n| n.to_string())
-                    .unwrap_or_else(|| "—".into()),
+                    .seeders.map_or_else(|| "—".into(), |n| n.to_string()),
                 leechers: t
-                    .leechers
-                    .map(|n| n.to_string())
-                    .unwrap_or_else(|| "—".into()),
+                    .leechers.map_or_else(|| "—".into(), |n| n.to_string()),
                 next_announce_text: format_relative_secs(t.next_announce_secs),
             }
         })
@@ -1063,7 +1059,7 @@ mod tests {
     ) -> irontide::session::PeerInfo {
         use std::net::{IpAddr, Ipv4Addr, SocketAddr};
         irontide::session::PeerInfo {
-            addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 6881),
+            addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 6881),
             client: "test".to_string(),
             peer_choking,
             peer_interested,
@@ -1216,7 +1212,7 @@ mod tests {
         );
     }
 
-    /// M171 D5: PeerInfo's new fields must round-trip through serde so old
+    /// M171 D5: `PeerInfo`'s new fields must round-trip through serde so old
     /// resume/snapshot payloads that predate the superset still
     /// deserialize (fields default to `false` via `#[serde(default)]`).
     #[test]

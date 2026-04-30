@@ -451,7 +451,7 @@ fn build_request_with_xff(xff: Option<&str>, peer_ip: [u8; 4]) -> Request<Body> 
 
 async fn state_with_trusted_cidrs(cidrs: &[&str]) -> QbtState {
     let session = test_session(|_| {}).await;
-    let store = Arc::new(SessionStore::new(Duration::from_secs(3600), 16));
+    let store = Arc::new(SessionStore::new(Duration::from_hours(1), 16));
     let state = QbtState::new(
         Arc::new(session),
         store,

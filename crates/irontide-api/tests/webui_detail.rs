@@ -424,7 +424,7 @@ async fn detail_page_wires_removed_banner_on_404() {
         "detail page must listen for htmx:responseError: {text}"
     );
     assert!(
-        text.contains(r#"data-detail-hash="#),
+        text.contains(r"data-detail-hash="),
         "body must carry data-detail-hash for ws-live suppression: {text}"
     );
     // The banner strips data-detail-hash so ws-live.js stops dispatching.

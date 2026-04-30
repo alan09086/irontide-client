@@ -1,4 +1,4 @@
-//! HTTP response helpers for the qBittorrent WebUI v2 compatibility surface.
+//! HTTP response helpers for the qBittorrent `WebUI` v2 compatibility surface.
 //!
 //! The qBt v2 API is quirky:
 //! - `auth/login` / `auth/logout` return **plain text** (`Ok.` / `Fails.`).

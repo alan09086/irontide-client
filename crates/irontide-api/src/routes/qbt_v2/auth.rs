@@ -354,7 +354,7 @@ fn finalise_login_with_tracking(
 /// total wall-clock cost of "malformed hash + any password" is noticeably
 /// shorter than a correct verify — a timing leak to the remote attacker
 /// *if and only if* the operator managed to install an unparseable hash
-/// (Settings::validate() should catch this at startup, so the probability
+/// (`Settings::validate()` should catch this at startup, so the probability
 /// is near-zero in production). The alternative (always calling
 /// `verify_password` even when we know the parse failed) would need a dummy
 /// `PasswordHash` we could reliably construct; argon2 does not expose such a
@@ -409,7 +409,7 @@ pub async fn logout(State(state): State<QbtState>, jar: CookieJar) -> QbtRespons
 /// Runs before `require_sid` so that an operator-disabled daemon never
 /// leaks the presence of the `/api/v2/*` routes. Returning 403 (auth
 /// failure) or 501 (not implemented) would both be worse: 404 says "there
-/// is no such URL", which matches how a vanilla IronTide with the compat
+/// is no such URL", which matches how a vanilla `IronTide` with the compat
 /// surface opted-out would respond. Enabled-by-default as of v0.172.1.
 pub async fn qbt_gate(State(state): State<QbtState>, req: Request, next: Next) -> Response {
     // settings() is a channel round-trip — cheap, and allows runtime toggle.
@@ -417,8 +417,7 @@ pub async fn qbt_gate(State(state): State<QbtState>, req: Request, next: Next) -
         .session
         .settings()
         .await
-        .map(|s| s.qbt_compat.enabled)
-        .unwrap_or(false);
+        .is_ok_and(|s| s.qbt_compat.enabled);
 
     if !enabled {
         return (StatusCode::NOT_FOUND, Body::empty()).into_response();
@@ -449,7 +448,7 @@ pub async fn require_sid(
     next.run(req).await
 }
 
-/// Build the auth store handle that the rest of the qbt_v2 module shares.
+/// Build the auth store handle that the rest of the `qbt_v2` module shares.
 #[must_use] 
 pub fn build_session_store(ttl_secs: u64, max_sessions: usize) -> Arc<SessionStore> {
     Arc::new(SessionStore::new(

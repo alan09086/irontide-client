@@ -74,7 +74,7 @@ pub struct HashesQuery {
 
 /// v0.173.1 Class B fix: accept `hashes=` / `deleteFiles=` from EITHER the
 /// URL query string OR an `application/x-www-form-urlencoded` request body,
-/// matching qBt WebUI v2 parity. Real `*arr` clients (Radarr / Sonarr /
+/// matching qBt `WebUI` v2 parity. Real `*arr` clients (Radarr / Sonarr /
 /// Prowlarr / Lidarr) POST these params in the body; `axum::extract::Query`
 /// only reads the URL, so a strict `Query<HashesQuery>` handler rejects the
 /// `*arr` flow with 400.
@@ -158,7 +158,7 @@ fn parse_bool_flag(raw: &str) -> bool {
     v == "true" || v == "1"
 }
 
-/// Apply a qBt-style `filter=` term to a TorrentStats.
+/// Apply a qBt-style `filter=` term to a `TorrentStats`.
 fn matches_filter(s: &TorrentStats, filter: &str) -> bool {
     match filter {
         "" | "all" => true,
@@ -215,8 +215,7 @@ pub async fn info(
         stats.retain(|s| {
             s.info_hashes
                 .v1
-                .map(|h| allow.iter().any(|id| id == &h))
-                .unwrap_or(false)
+                .is_some_and(|h| allow.iter().any(|id| id == &h))
         });
     }
 
@@ -317,7 +316,7 @@ struct AddFormState {
     torrent_files: Vec<Vec<u8>>,
     /// Optional category label (resolved against the session registry).
     category: Option<String>,
-    /// Optional explicit save path — wins over a category's save_path.
+    /// Optional explicit save path — wins over a category's `save_path`.
     savepath: Option<String>,
     /// Whether the torrent should start paused.
     paused: bool,
@@ -529,7 +528,7 @@ async fn resolve_hashes(state: &QbtState, hashes: Option<&str>) -> Result<Vec<Id
 /// v0.173.1 Class B + C fix: `pause` now accepts `hashes=` from either
 /// URL query or form body (Class B), and logs session errors at warn
 /// level instead of swallowing them with `let _ = ...` (Class C). Per qBt
-/// WebUI v2 bulk-idempotency semantics we still return 200 OK — individual
+/// `WebUI` v2 bulk-idempotency semantics we still return 200 OK — individual
 /// torrent errors must not take down a whole bulk action — but the caller
 /// and operator now have a visible failure signal.
 pub async fn pause(
@@ -581,8 +580,7 @@ pub async fn delete(
     let delete_files = q
         .delete_files
         .as_deref()
-        .map(parse_bool_flag)
-        .unwrap_or(false);
+        .is_some_and(parse_bool_flag);
     let targets = resolve_hashes(&state, q.hashes.as_deref()).await?;
     for id in targets {
         let result = if delete_files {
@@ -676,7 +674,7 @@ mod tests {
     use super::*;
 
     /// v0.173.1 Class B: when the URL query carries non-empty `hashes=`,
-    /// it wins over the body (qBt WebUI v2 convention: query is more
+    /// it wins over the body (qBt `WebUI` v2 convention: query is more
     /// "explicit" than a form-urlencoded body).
     #[tokio::test]
     async fn extract_hashes_params_prefers_query_when_present() {

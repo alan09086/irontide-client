@@ -4,7 +4,7 @@
 //! Most tests drive a `tower::ServiceExt::oneshot` stack with a
 //! `MockConnectInfo(127.0.0.1)` and use `X-Forwarded-For` + an operator
 //! `reverse_proxies_list = ["127.0.0.0/8"]` to simulate distinct source
-//! IPs without spinning up multiple TcpListeners. The concurrent-flood
+//! IPs without spinning up multiple `TcpListeners`. The concurrent-flood
 //! tests use real TCP via `test_session_with_qbt_tcp` + `reqwest` so
 //! tokio's task scheduler can really race 100 parallel requests.
 //!
@@ -34,7 +34,7 @@ use irontide_api::routes::qbt_v2::BruteForceRegistry;
 static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 const PROXY_PEER: SocketAddr = SocketAddr::new(
-    std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)),
+    std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
     54321,
 );
 
@@ -621,7 +621,7 @@ async fn banned_403_body_is_fails_qbt_parity() {
 
 // ── Sanity check for the helper signatures we expose ─────────────────
 
-/// IpNet type-check: ensure the bypass-whitelist CIDR parser covers both
+/// `IpNet` type-check: ensure the bypass-whitelist CIDR parser covers both
 /// IPv4 and IPv6 so the validation test maps to the runtime parser.
 #[test]
 fn ipnet_parses_both_families() {

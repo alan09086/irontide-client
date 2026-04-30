@@ -93,7 +93,7 @@ async fn login(router: &axum::Router) -> String {
 /// `httpseeds` and BEP 19 `url-list` alongside the base metadata.
 ///
 /// `url-list` can be a single string or a list; both serialisations
-/// round-trip through IronTide's tolerant parser, but the "list" form
+/// round-trip through `IronTide`'s tolerant parser, but the "list" form
 /// is what qBt itself emits, so we use that here.
 #[derive(Serialize)]
 struct TestTorrent {

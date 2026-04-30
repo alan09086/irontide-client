@@ -66,7 +66,7 @@ struct FailedAuthState {
     first_failure_at: Instant,
     /// Last time this entry was written or admitted. Used as the LRU
     /// ordering key — entries with a recent `last_touch` move to the
-    /// VecDeque front.
+    /// `VecDeque` front.
     last_touch: Instant,
     /// When set, the IP is banned until this instant. `None` = not banned.
     banned_until: Option<Instant>,

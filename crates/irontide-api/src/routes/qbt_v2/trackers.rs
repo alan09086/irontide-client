@@ -10,7 +10,7 @@
 //!
 //! Returns an array of `QbtTrackerInfo` rows. qBt-compat quirk: the first
 //! three entries are **pseudo-trackers** representing the engine's built-in
-//! discovery subsystems (DHT, PeX, LSD) — a convention that the `*arr`
+//! discovery subsystems (DHT, `PeX`, LSD) — a convention that the `*arr`
 //! family relies on to display connectivity breadcrumbs in their UIs.
 //!
 //! The real trackers (from the torrent's announce list) follow the three
@@ -37,7 +37,7 @@ use super::torrents::HashQuery;
 
 /// A single row in the `/api/v2/torrents/trackers` response.
 ///
-/// Field names and serialisation order match qBt WebUI v2 verbatim so
+/// Field names and serialisation order match qBt `WebUI` v2 verbatim so
 /// clients that treat the response as a schema (not just JSON) are happy.
 #[derive(Debug, Clone, Serialize)]
 pub struct QbtTrackerInfo {
@@ -50,7 +50,7 @@ pub struct QbtTrackerInfo {
     pub tier: i64,
     /// Number of peers known via this tracker. For pseudo-trackers this
     /// is the count produced by the corresponding subsystem (DHT node
-    /// count, PeX peer count, LSD peer count). For real trackers it is
+    /// count, `PeX` peer count, LSD peer count). For real trackers it is
     /// `seeders + leechers` from the last scrape.
     pub num_peers: i32,
     /// Number of seeders reported by the last scrape.
@@ -111,7 +111,7 @@ fn pseudo_to_qbt(t: TrackerInfo, enabled: bool) -> QbtTrackerInfo {
     }
 }
 
-/// Project an IronTide `TrackerStatus` onto qBt's numeric status code.
+/// Project an `IronTide` `TrackerStatus` onto qBt's numeric status code.
 const fn tracker_status_code(s: TrackerStatus) -> i32 {
     match s {
         TrackerStatus::NotContacted => 1,
@@ -169,14 +169,12 @@ pub async fn list(
         .session
         .pex_peer_count(id)
         .await
-        .map(|c| widen_u32(u32::try_from(c).unwrap_or(u32::MAX)))
-        .unwrap_or(0);
+        .map_or(0, |c| widen_u32(u32::try_from(c).unwrap_or(u32::MAX)));
     let lsd_peer_count = state
         .session
         .lsd_peer_count(id)
         .await
-        .map(|c| widen_u32(u32::try_from(c).unwrap_or(u32::MAX)))
-        .unwrap_or(0);
+        .map_or(0, |c| widen_u32(u32::try_from(c).unwrap_or(u32::MAX)));
 
     let pseudo = make_pseudo_trackers(
         settings.enable_dht,
@@ -263,7 +261,7 @@ mod tests {
     }
 
     /// M171 D4 / E0.4: DHT pseudo-tracker `num_peers` routes the session's
-    /// `dht_node_count()` through the builder. M178 (Lane A): PeX and LSD
+    /// `dht_node_count()` through the builder. M178 (Lane A): `PeX` and LSD
     /// args added to the signature with zero placeholders here; Lane C
     /// will wire real counts.
     #[test]
@@ -277,7 +275,7 @@ mod tests {
         assert_eq!(rows[2].num_peers, 0, "LSD placeholder zero in Lane A");
     }
 
-    /// M178 D-user-2 / TODO-2: PeX and LSD counts now flow through the
+    /// M178 D-user-2 / TODO-2: `PeX` and LSD counts now flow through the
     /// signature. Lane C wires the real session-side counters; this test
     /// asserts the wire mapping ahead of that.
     #[test]

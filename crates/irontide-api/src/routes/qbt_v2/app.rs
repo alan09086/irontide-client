@@ -203,16 +203,16 @@ struct QbtPreferencesPatch {
 
 /// `POST /api/v2/app/setPreferences` (M171 D3 + D3.5).
 ///
-/// qBt's WebUI v2 historically POSTs this as
+/// qBt's `WebUI` v2 historically POSTs this as
 /// `application/x-www-form-urlencoded` with a single `json=<stringified
 /// JSON>` field, but recent `*arr` versions just POST an
 /// `application/json` body. The handler accepts either.
 ///
 /// When any field in the patch requires a session restart to take effect
-/// (listen_port, dht, lsd, pex, encryption, anonymous_mode, save_path) the
+/// (`listen_port`, dht, lsd, pex, encryption, `anonymous_mode`, `save_path`) the
 /// response carries an `X-IronTide-Restart-Pending: <comma-joined-fields>`
 /// header. Immediate fields (rate limiters, peer cap, queueing, ratio
-/// action, create_subfolder, auto_tmm, max_ratio) produce no header.
+/// action, `create_subfolder`, `auto_tmm`, `max_ratio`) produce no header.
 pub async fn set_preferences(
     State(state): State<QbtState>,
     req: axum::extract::Request,
@@ -326,7 +326,7 @@ fn parse_preferences_patch(bytes: &[u8]) -> Result<QbtPreferencesPatch, QbtError
 /// # Semantics
 ///
 /// * `max_connec` and `max_connec_per_torrent` both map onto
-///   `max_peers_per_torrent` (IronTide has no session-wide cap distinct from
+///   `max_peers_per_torrent` (`IronTide` has no session-wide cap distinct from
 ///   per-torrent). `max_connec` is applied last so that it wins when both are
 ///   sent — matches qBt's UI order where the global cap is authoritative.
 /// * Negative `dl_limit` / `up_limit` means "unlimited" in qBt and maps to

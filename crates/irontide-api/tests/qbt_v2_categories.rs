@@ -256,7 +256,7 @@ async fn create_category_invalid_name_returns_400() {
 }
 
 /// M170 treats nested names (`a/b/c`) as labels only — no directory is
-/// materialised on disk from the category name. The save_path is used
+/// materialised on disk from the category name. The `save_path` is used
 /// verbatim as supplied.
 #[tokio::test]
 async fn create_category_nested_name_is_label_only() {

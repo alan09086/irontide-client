@@ -148,9 +148,9 @@ async fn set_preferences_dht_pex_lsd_toggle_applies() {
     let resp = post_json(&router, &sid, body).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let v = get_prefs(&router, &sid).await;
-    assert_eq!(v.get("dht").and_then(|b| b.as_bool()), Some(true));
-    assert_eq!(v.get("pex").and_then(|b| b.as_bool()), Some(true));
-    assert_eq!(v.get("lsd").and_then(|b| b.as_bool()), Some(true));
+    assert_eq!(v.get("dht").and_then(serde_json::Value::as_bool), Some(true));
+    assert_eq!(v.get("pex").and_then(serde_json::Value::as_bool), Some(true));
+    assert_eq!(v.get("lsd").and_then(serde_json::Value::as_bool), Some(true));
 }
 
 #[tokio::test]
@@ -159,7 +159,7 @@ async fn set_preferences_encryption_enum_string_to_int_0() {
     let resp = post_json(&router, &sid, serde_json::json!({"encryption": 0})).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let v = get_prefs(&router, &sid).await;
-    assert_eq!(v.get("encryption").and_then(|i| i.as_u64()), Some(0));
+    assert_eq!(v.get("encryption").and_then(serde_json::Value::as_u64), Some(0));
 }
 
 #[tokio::test]
@@ -168,7 +168,7 @@ async fn set_preferences_encryption_enum_string_to_int_1() {
     let resp = post_json(&router, &sid, serde_json::json!({"encryption": 1})).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let v = get_prefs(&router, &sid).await;
-    assert_eq!(v.get("encryption").and_then(|i| i.as_u64()), Some(1));
+    assert_eq!(v.get("encryption").and_then(serde_json::Value::as_u64), Some(1));
 }
 
 #[tokio::test]
@@ -177,7 +177,7 @@ async fn set_preferences_encryption_enum_string_to_int_2() {
     let resp = post_json(&router, &sid, serde_json::json!({"encryption": 2})).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let v = get_prefs(&router, &sid).await;
-    assert_eq!(v.get("encryption").and_then(|i| i.as_u64()), Some(2));
+    assert_eq!(v.get("encryption").and_then(serde_json::Value::as_u64), Some(2));
 }
 
 #[tokio::test]
@@ -246,7 +246,7 @@ async fn set_preferences_max_ratio_negative_sets_none() {
     assert_eq!(resp.status(), StatusCode::OK);
     let v = get_prefs(&router, &sid).await;
     assert_eq!(
-        v.get("max_ratio_enabled").and_then(|b| b.as_bool()),
+        v.get("max_ratio_enabled").and_then(serde_json::Value::as_bool),
         Some(false)
     );
 }
@@ -259,7 +259,7 @@ async fn set_preferences_max_ratio_enabled_false_clears() {
     assert_eq!(resp.status(), StatusCode::OK);
     let v = get_prefs(&router, &sid).await;
     assert_eq!(
-        v.get("max_ratio_enabled").and_then(|b| b.as_bool()),
+        v.get("max_ratio_enabled").and_then(serde_json::Value::as_bool),
         Some(false)
     );
 }
@@ -271,10 +271,10 @@ async fn set_preferences_max_ratio_positive_sets_limit() {
     assert_eq!(resp.status(), StatusCode::OK);
     let v = get_prefs(&router, &sid).await;
     assert_eq!(
-        v.get("max_ratio_enabled").and_then(|b| b.as_bool()),
+        v.get("max_ratio_enabled").and_then(serde_json::Value::as_bool),
         Some(true)
     );
-    assert!((v.get("max_ratio").and_then(|r| r.as_f64()).unwrap() - 2.5_f64).abs() < 1e-9);
+    assert!((v.get("max_ratio").and_then(serde_json::Value::as_f64).unwrap() - 2.5_f64).abs() < 1e-9);
 }
 
 // ── max_ratio_act ─────────────────────────────────────────────────────
@@ -317,9 +317,9 @@ async fn set_preferences_max_seeding_time_minutes_to_seconds() {
     let resp = post_json(&router, &sid, body).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let v = get_prefs(&router, &sid).await;
-    assert_eq!(v.get("max_seeding_time").and_then(|i| i.as_i64()), Some(60));
+    assert_eq!(v.get("max_seeding_time").and_then(serde_json::Value::as_i64), Some(60));
     assert_eq!(
-        v.get("max_seeding_time_enabled").and_then(|b| b.as_bool()),
+        v.get("max_seeding_time_enabled").and_then(serde_json::Value::as_bool),
         Some(true)
     );
 }
@@ -332,7 +332,7 @@ async fn set_preferences_max_seeding_time_negative_clears() {
     assert_eq!(resp.status(), StatusCode::OK);
     let v = get_prefs(&router, &sid).await;
     assert_eq!(
-        v.get("max_seeding_time_enabled").and_then(|b| b.as_bool()),
+        v.get("max_seeding_time_enabled").and_then(serde_json::Value::as_bool),
         Some(false)
     );
 }
@@ -345,7 +345,7 @@ async fn set_preferences_max_seeding_time_enabled_false_clears() {
     assert_eq!(resp.status(), StatusCode::OK);
     let v = get_prefs(&router, &sid).await;
     assert_eq!(
-        v.get("max_seeding_time_enabled").and_then(|b| b.as_bool()),
+        v.get("max_seeding_time_enabled").and_then(serde_json::Value::as_bool),
         Some(false)
     );
 }
@@ -358,7 +358,7 @@ async fn set_preferences_listen_port_applies() {
     let resp = post_json(&router, &sid, serde_json::json!({"listen_port": 6881})).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let v = get_prefs(&router, &sid).await;
-    assert_eq!(v.get("listen_port").and_then(|i| i.as_u64()), Some(6881));
+    assert_eq!(v.get("listen_port").and_then(serde_json::Value::as_u64), Some(6881));
 }
 
 #[tokio::test]
@@ -374,15 +374,15 @@ async fn set_preferences_four_bools_round_trip() {
     assert_eq!(resp.status(), StatusCode::OK);
     let v = get_prefs(&router, &sid).await;
     assert_eq!(
-        v.get("queueing_enabled").and_then(|b| b.as_bool()),
+        v.get("queueing_enabled").and_then(serde_json::Value::as_bool),
         Some(true)
     );
     assert_eq!(
-        v.get("create_subfolder_enabled").and_then(|b| b.as_bool()),
+        v.get("create_subfolder_enabled").and_then(serde_json::Value::as_bool),
         Some(false)
     );
     assert_eq!(
-        v.get("auto_tmm_enabled").and_then(|b| b.as_bool()),
+        v.get("auto_tmm_enabled").and_then(serde_json::Value::as_bool),
         Some(true)
     );
 }
@@ -406,11 +406,11 @@ async fn set_preferences_legacy_form_json_wrapper_accepted() {
     let resp = router.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let v = get_prefs(&router, &sid).await;
-    assert_eq!(v.get("dht").and_then(|b| b.as_bool()), Some(true));
-    assert_eq!(v.get("pex").and_then(|b| b.as_bool()), Some(false));
+    assert_eq!(v.get("dht").and_then(serde_json::Value::as_bool), Some(true));
+    assert_eq!(v.get("pex").and_then(serde_json::Value::as_bool), Some(false));
 }
 
-/// Minimal percent-encoder for the legacy-form fixture — serde_urlencoded
+/// Minimal percent-encoder for the legacy-form fixture — `serde_urlencoded`
 /// doesn't expose a single-key encoder and we don't want to pull in `urlencoding`.
 fn urlencoding_encode(s: &str) -> String {
     let mut out = String::with_capacity(s.len() * 3);
@@ -448,7 +448,7 @@ async fn set_preferences_only_rate_limits_no_restart_header() {
     );
 }
 
-/// M173 Lane B (B10) graduation: changing listen_port must NOT emit
+/// M173 Lane B (B10) graduation: changing `listen_port` must NOT emit
 /// the restart header anymore. The transactional apply pipeline
 /// performs the live rebind.
 #[tokio::test]
@@ -462,7 +462,7 @@ async fn set_preferences_listen_port_no_longer_flags_restart_required() {
     );
 }
 
-/// M173 Lane B (B10) graduation: changing listen_port + dht together
+/// M173 Lane B (B10) graduation: changing `listen_port` + dht together
 /// must NOT emit the restart header. Both fields are now immediate.
 #[tokio::test]
 async fn set_preferences_listen_port_and_dht_no_longer_flag_restart() {
@@ -500,8 +500,8 @@ async fn set_preferences_lsd_no_longer_flags_restart_required() {
 
 /// M173 Lane B (B10) `[REGRESSION CRITICAL]`: pin the EXACT field-name
 /// set in `X-IronTide-Restart-Pending` for fields that REMAIN in the
-/// restart_required pool post-graduation: pex, encryption,
-/// anonymous_mode, save_path. Downstream *arr clients parse this
+/// `restart_required` pool post-graduation: pex, encryption,
+/// `anonymous_mode`, `save_path`. Downstream *arr clients parse this
 /// header — silent rename = downstream regression.
 #[tokio::test]
 async fn set_preferences_remaining_restart_required_fields_pinned() {

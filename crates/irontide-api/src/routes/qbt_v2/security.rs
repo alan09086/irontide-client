@@ -1,6 +1,6 @@
 //! Origin/Referer CSRF middleware (M172a Lane B).
 //!
-//! Mirrors qBt WebUI v2 semantics exactly:
+//! Mirrors qBt `WebUI` v2 semantics exactly:
 //!
 //! | Method              | Origin present | Referer present | Result                     |
 //! |---------------------|----------------|-----------------|----------------------------|
@@ -218,7 +218,7 @@ fn validate_referer(referer_header: &str, expected: &Authority) -> bool {
     origins_match(&parsed, expected)
 }
 
-/// Parse either an Origin header (scheme://authority) or a Referer URL into
+/// Parse either an Origin header (<scheme://authority>) or a Referer URL into
 /// the `(scheme, host, port)` tuple we care about. A Referer's path /
 /// query / fragment are ignored. No dependency on the `url` crate — the
 /// grammar we accept is deliberately narrow.

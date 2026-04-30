@@ -8,7 +8,7 @@
 //! - `POST /webui/torrents/{hash}/seed-mode?enabled=<bool>`
 //!
 //! Each test creates an isolated session backed by a `TempDir` resume
-//! directory (see MEMORY.md feedback_irontide_resume_test_isolation.md) so
+//! directory (see MEMORY.md `feedback_irontide_resume_test_isolation.md`) so
 //! parallel runs do not collide in the shared XDG state dir.
 
 use axum::body::Body;

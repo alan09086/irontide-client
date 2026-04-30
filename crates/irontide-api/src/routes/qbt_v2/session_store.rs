@@ -160,7 +160,7 @@ mod tests {
     use super::*;
 
     fn store(max: usize) -> SessionStore {
-        SessionStore::new(Duration::from_secs(3600), max)
+        SessionStore::new(Duration::from_hours(1), max)
     }
 
     #[test]

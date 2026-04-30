@@ -44,7 +44,7 @@ fn fresh_paths() -> (PathBuf, PathBuf) {
     (resume_dir, reg_path)
 }
 
-/// Build a session with qbt_compat enabled and all three discovery
+/// Build a session with `qbt_compat` enabled and all three discovery
 /// subsystems (DHT/PeX/LSD) off by default so pseudo-tracker assertions
 /// are deterministic. Individual tests override knobs via the returned
 /// settings.

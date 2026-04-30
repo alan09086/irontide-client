@@ -9,14 +9,14 @@
 //! qBt v2 `GET /api/v2/torrents/files?hash=X` (M170 Lane B).
 //!
 //! Returns an array of `QbtFile` rows describing each file within a torrent.
-//! Matches the qBt WebUI v2 schema so `*arr` post-download import loops can
-//! enumerate the files they asked IronTide to download.
+//! Matches the qBt `WebUI` v2 schema so `*arr` post-download import loops can
+//! enumerate the files they asked `IronTide` to download.
 //!
 //! # Data sources
 //! - `torrent_stats`: probes the hash, gates 404 responses, reports
 //!   `has_metadata` so magnet-only torrents don't leak an empty array.
-//! - `torrent_info`: file paths + lengths, piece_length + num_pieces for the
-//!   piece_range computation.
+//! - `torrent_info`: file paths + lengths, `piece_length` + `num_pieces` for the
+//!   `piece_range` computation.
 //! - `torrent_file`: v1 metainfo used to read BEP 47 `attr` per file — pad
 //!   files (attr = "p") are filtered out to mirror qBt's behaviour. Hybrid
 //!   v1+v2 torrents expose `attr` here. v2-only torrents return `None` from
@@ -35,7 +35,7 @@ use super::torrents::HashQuery;
 
 /// A single row in the `/api/v2/torrents/files` response.
 ///
-/// Field names and serialisation order match qBt WebUI v2 verbatim so clients
+/// Field names and serialisation order match qBt `WebUI` v2 verbatim so clients
 /// that treat the response as a schema (not just JSON) are happy.
 #[derive(Debug, Clone, Serialize)]
 pub struct QbtFile {

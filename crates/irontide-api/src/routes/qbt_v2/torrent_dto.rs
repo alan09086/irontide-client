@@ -8,9 +8,9 @@
 
 //! qBt v2 torrent DTO shapes (M168 Task 9).
 //!
-//! IronTide's internal torrent model is richer than qBt's — the qBt DTOs
+//! `IronTide`'s internal torrent model is richer than qBt's — the qBt DTOs
 //! are a flattened *projection* that pick the fields `*arr` actually reads
-//! and wrap IronTide's state enum into qBt's string-based state enum.
+//! and wrap `IronTide`'s state enum into qBt's string-based state enum.
 //!
 //! # Mappings
 //! - `QbtTorrent` ← `TorrentStats`: the row shape returned by `torrents/info`.
@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
 /// This is 100 days in seconds — matches what real qBt returns.
 pub const QBT_ETA_INFINITE: i64 = 8_640_000;
 
-/// Map IronTide's `TorrentState` + rates + progress onto a qBt state string.
+/// Map `IronTide`'s `TorrentState` + rates + progress onto a qBt state string.
 ///
 /// qBt's state enum is richer than a plain enum because it reflects dynamics:
 /// a Downloading torrent with zero down-rate is `stalledDL`, not
@@ -135,13 +135,13 @@ impl From<&TorrentStats> for QbtTorrent {
             name: s.name.clone(),
             size: s.total,
             total_size: s.total,
-            progress: s.progress as f64,
+            progress: f64::from(s.progress),
             dlspeed: s.download_rate,
             upspeed: s.upload_rate,
             num_seeds: s.num_seeds as i64,
             num_leechs,
-            num_complete: s.num_complete as i64,
-            num_incomplete: s.num_incomplete as i64,
+            num_complete: i64::from(s.num_complete),
+            num_incomplete: i64::from(s.num_incomplete),
             ratio,
             eta,
             downloaded: s.all_time_download,
@@ -258,8 +258,8 @@ impl From<&TorrentStats> for QbtTorrentProperties {
             last_seen: s.last_seen_complete,
             peers: s.num_peers.saturating_sub(s.num_seeds) as i64,
             peers_total: s.list_peers as i64,
-            pieces_have: s.pieces_have as i64,
-            pieces_num: s.pieces_total as i64,
+            pieces_have: i64::from(s.pieces_have),
+            pieces_num: i64::from(s.pieces_total),
             reannounce: 0,
             seeds: s.num_seeds as i64,
             seeds_total: s.list_seeds as i64,

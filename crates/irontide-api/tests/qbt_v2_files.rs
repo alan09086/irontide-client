@@ -222,7 +222,7 @@ fn make_single_file_torrent(name: &str, piece_length: u64, length: u64) -> Vec<u
 
 // ── Tests ────────────────────────────────────────────────────────────
 
-/// Single-file torrent: response is a 1-element array with piece_range
+/// Single-file torrent: response is a 1-element array with `piece_range`
 /// spanning the whole file.
 #[tokio::test]
 async fn files_single_file_one_entry() {
@@ -261,7 +261,7 @@ async fn files_single_file_one_entry() {
     assert_eq!(entry["is_seed"], false);
 }
 
-/// Multi-file torrent: returns N entries, piece_range values increase
+/// Multi-file torrent: returns N entries, `piece_range` values increase
 /// monotonically across the file list.
 #[tokio::test]
 async fn files_multi_file_piece_range_monotonic() {
@@ -374,7 +374,7 @@ async fn files_progress_zero_on_fresh_torrent() {
     );
 }
 
-/// piece_range values match the arithmetic when pieces span file boundaries.
+/// `piece_range` values match the arithmetic when pieces span file boundaries.
 #[tokio::test]
 async fn files_piece_range_exact_tuples() {
     let session = test_session(true).await;

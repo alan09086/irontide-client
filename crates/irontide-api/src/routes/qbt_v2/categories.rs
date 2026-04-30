@@ -4,7 +4,7 @@
 //!
 //! - `GET  /api/v2/torrents/categories`    → list all categories
 //! - `POST /api/v2/torrents/createCategory` → add a new category
-//! - `POST /api/v2/torrents/editCategory`  → change an existing category's save_path
+//! - `POST /api/v2/torrents/editCategory`  → change an existing category's `save_path`
 //! - `POST /api/v2/torrents/removeCategories` → remove categories (newline-delimited)
 //!
 //! The underlying registry lives on the session actor (see
@@ -16,7 +16,7 @@
 //! qBt serialises category save paths with the JSON key `savePath` (camelCase),
 //! even though the internal Rust field is `save_path`. The `QbtCategory` DTO
 //! below handles the rename via `#[serde(rename)]` so domain types stay in
-//! snake_case while the wire stays byte-compatible with qBt.
+//! `snake_case` while the wire stays byte-compatible with qBt.
 //!
 //! `removeCategories` accepts `categories=A%0AB%0AC` where `%0A` decodes to a
 //! bare `\n`. Real qBt clients (including Radarr's built-in test) send `%0A`;
@@ -59,7 +59,7 @@ impl From<&CategoryMetadata> for QbtCategory {
 /// Form body accepted by `createCategory` and `editCategory`.
 ///
 /// qBt's canonical key is `savePath` (camelCase); Radarr and Sonarr send it
-/// that way. We also accept `savepath` because IronTide's own
+/// that way. We also accept `savepath` because `IronTide`'s own
 /// `/torrents/add` handler uses lowercase `savepath` on the add path and it
 /// would be a footgun to diverge. The `category` field carries the name.
 #[derive(Debug, Default, Deserialize)]

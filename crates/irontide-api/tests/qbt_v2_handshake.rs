@@ -238,7 +238,7 @@ async fn test_arr_full_usage_flow() {
         for c in magnet.bytes() {
             match c {
                 b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                    b.push(c as char)
+                    b.push(c as char);
                 }
                 _ => b.push_str(&format!("%{c:02X}")),
             }
@@ -354,13 +354,13 @@ async fn test_arr_full_usage_flow() {
 // ── M170: end-to-end *arr workflow (Lane D extension) ────────────────
 
 /// Walks through the full *arr request sequence post-M170:
-/// pre-create category → add with category → verify save_path inherits
+/// pre-create category → add with category → verify `save_path` inherits
 /// the category's path → filter info by category → poll /files (skipped
 /// if Lane B's route isn't registered yet) → delete with files=true.
 ///
 /// Every step is a single oneshot — no real network, no background
 /// tasks other than the session actor. The test is isolated from the
-/// other handshake tests by using a per-process SESSION_COUNTER id.
+/// other handshake tests by using a per-process `SESSION_COUNTER` id.
 #[tokio::test]
 async fn end_to_end_m170_arr_workflow() {
     use irontide::session::SessionAddTorrentParams;
@@ -411,7 +411,7 @@ async fn end_to_end_m170_arr_workflow() {
     for b in magnet.bytes() {
         match b {
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                body.push(b as char)
+                body.push(b as char);
             }
             _ => body.push_str(&format!("%{b:02X}")),
         }

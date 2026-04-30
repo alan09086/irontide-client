@@ -208,8 +208,7 @@ async fn malicious_browser_cross_origin_post_rejected() {
     assert_eq!(
         statuses[0].as_u16(),
         403,
-        "step 1 (login) must 403 under cross-origin CSRF — got {:?}",
-        statuses
+        "step 1 (login) must 403 under cross-origin CSRF — got {statuses:?}"
     );
     assert_eq!(
         statuses[4].as_u16(),

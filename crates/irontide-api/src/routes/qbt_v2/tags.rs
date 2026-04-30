@@ -31,7 +31,7 @@ use super::state::QbtState;
 /// Split a `tags=...` blob into trimmed, non-empty names.
 ///
 /// qBt accepts either comma- or newline-delimited blobs; the *arr clients
-/// mostly use commas, the WebUI uses newlines. We accept both (same as the
+/// mostly use commas, the `WebUI` uses newlines. We accept both (same as the
 /// categories `removeCategories` splitter).
 fn parse_tag_list(raw: &str) -> Vec<String> {
     raw.split([',', '\n'])

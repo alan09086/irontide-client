@@ -23,7 +23,7 @@ use irontide_api::routes::build_router;
 
 /// Monotonic counter so each session gets a unique resume directory within
 /// this test binary's process (see MEMORY.md
-/// feedback_irontide_resume_test_isolation.md).
+/// `feedback_irontide_resume_test_isolation.md`).
 static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 /// Create a minimal session with no network activity and an isolated resume

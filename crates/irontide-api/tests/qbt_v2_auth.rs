@@ -1,4 +1,4 @@
-//! Integration tests for the qBittorrent WebUI v2 compatibility surface (M168).
+//! Integration tests for the qBittorrent `WebUI` v2 compatibility surface (M168).
 //!
 //! Covers `QbtResponse`, `QbtError`, `SessionStore`, cookie parsing, and the
 //! `auth/login` / `auth/logout` endpoints plus the `qbt_gate` / `require_sid`
@@ -6,7 +6,7 @@
 //!
 //! M172a C3: the qBt login handler now requires `ConnectInfo<SocketAddr>`.
 //! The oneshot test fixtures here attach a `MockConnectInfo` layer that
-//! injects a synthetic peer address so the existing tower::ServiceExt path
+//! injects a synthetic peer address so the existing `tower::ServiceExt` path
 //! keeps working; `test_session_with_qbt_tcp` below is the real-TcpListener
 //! sibling used by the M172a argon2 integration tests.
 
@@ -26,11 +26,11 @@ static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 /// Synthetic peer address for oneshot-style tests (M172a C3).
 ///
-/// Any routable address works — the handler only checks that ConnectInfo
+/// Any routable address works — the handler only checks that `ConnectInfo`
 /// extraction *succeeds*, not the specific value. Lanes B and C (trust-hop
 /// CIDR + brute-force ban) tests override this via their own helpers.
 const MOCK_PEER: SocketAddr = SocketAddr::new(
-    std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)),
+    std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
     12345,
 );
 

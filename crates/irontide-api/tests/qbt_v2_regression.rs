@@ -1,7 +1,7 @@
 //! /api/v1 regression smoke tests (M168 Task 19).
 //!
 //! Proves the /api/v1 surface has zero behavioural change whether
-//! qbt_compat is enabled or disabled. If a v1 endpoint ever starts
+//! `qbt_compat` is enabled or disabled. If a v1 endpoint ever starts
 //! responding differently under the M168 feature flag, these tests
 //! break — fail loud rather than drift silently.
 
@@ -113,5 +113,5 @@ async fn v1_patch_settings_unaffected_when_qbt_compat_disabled() {
     let (status, body) = send(&router, req).await;
     assert_eq!(status, StatusCode::OK);
     let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(v.get("enable_pex").and_then(|b| b.as_bool()), Some(false));
+    assert_eq!(v.get("enable_pex").and_then(serde_json::Value::as_bool), Some(false));
 }

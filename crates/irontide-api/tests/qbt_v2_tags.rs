@@ -354,7 +354,7 @@ async fn auth_required_403_without_sid() {
 }
 
 /// When `qbt_compat.enabled = false`, the entire /api/v2/* surface
-/// responds 404 via the qbt_gate middleware (security-through-invisibility).
+/// responds 404 via the `qbt_gate` middleware (security-through-invisibility).
 #[tokio::test]
 async fn qbt_compat_disabled_returns_404() {
     let (resume_dir, cat_path, tag_path) = fresh_paths();
@@ -516,7 +516,7 @@ async fn max_tag_name_length_rejected() {
 
 /// E0.1 (CRITICAL REGRESSION): adding a torrent with BOTH a category and
 /// tags must result in both showing up on `stats.category` and `stats.tags`,
-/// AND both must survive a save_resume_state / restart round-trip.
+/// AND both must survive a `save_resume_state` / restart round-trip.
 #[tokio::test]
 async fn category_and_tags_coexist_and_persist() {
     // Two back-to-back sessions against the same paths, same pattern as

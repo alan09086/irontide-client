@@ -10,7 +10,7 @@
 //! legacy plaintext migration, setPreferences password rotation, and the
 //! global argon2 concurrency semaphore.
 //!
-//! Uses the same tower::ServiceExt::oneshot pattern as the other
+//! Uses the same `tower::ServiceExt::oneshot` pattern as the other
 //! `qbt_v2_*` tests; `MockConnectInfo` is layered inside `build_router`
 //! so the required `ConnectInfo<SocketAddr>` extractor on `auth::login`
 //! always succeeds.
@@ -522,7 +522,7 @@ async fn username_mismatch_runs_timing_equalizing_argon2_verify() {
 // mock peer against a CIDR whitelist.
 #[allow(dead_code)]
 const _MOCK_PEER_TYPECHECK: SocketAddr = SocketAddr::new(
-    std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)),
+    std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
     0,
 );
 
