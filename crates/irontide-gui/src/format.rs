@@ -36,8 +36,8 @@ pub(crate) fn format_ratio(uploaded: u64, downloaded: u64) -> String {
     irontide_format::format_ratio(uploaded, downloaded)
 }
 
-pub(crate) fn format_state(state: &TorrentState, user_seed_mode: bool) -> &'static str {
-    irontide_format::format_state(state, user_seed_mode)
+pub(crate) fn format_state(state: TorrentState, user_seed_mode: bool) -> &'static str {
+    irontide_format::format_state(&state, user_seed_mode)
 }
 
 /// Format a UNIX timestamp (seconds) as a relative time string.

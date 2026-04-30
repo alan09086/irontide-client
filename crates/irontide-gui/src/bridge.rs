@@ -623,7 +623,7 @@ async fn gather_delete_info(
 fn delete_torrent_files(save_path: &std::path::Path, name: &str, file_count: usize) {
     let torrent_path = save_path.join(name);
 
-    let canonical = if let Ok(p) = torrent_path.canonicalize() { p } else {
+    let Ok(canonical) = torrent_path.canonicalize() else {
         // File may not exist (magnet that never downloaded anything).
         tracing::debug!(
             path = %torrent_path.display(),

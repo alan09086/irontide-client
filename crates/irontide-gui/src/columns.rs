@@ -102,12 +102,9 @@ impl ColumnId {
             Self::Name => 200.0,
             Self::Progress => 120.0,
             Self::State => 90.0,
-            Self::DownRate => 80.0,
-            Self::UpRate => 80.0,
-            Self::Seeds => 50.0,
-            Self::Peers => 50.0,
+            Self::DownRate | Self::UpRate | Self::Size => 80.0,
+            Self::Seeds | Self::Peers => 50.0,
             Self::Eta => 70.0,
-            Self::Size => 80.0,
             Self::Ratio => 60.0,
         }
     }
@@ -117,14 +114,9 @@ impl ColumnId {
     pub fn min_width(self) -> f32 {
         match self {
             Self::Name => 100.0,
-            Self::Progress => 60.0,
-            Self::State => 60.0,
-            Self::DownRate => 50.0,
-            Self::UpRate => 50.0,
-            Self::Seeds => 35.0,
-            Self::Peers => 35.0,
-            Self::Eta => 50.0,
-            Self::Size => 50.0,
+            Self::Progress | Self::State => 60.0,
+            Self::DownRate | Self::UpRate | Self::Eta | Self::Size => 50.0,
+            Self::Seeds | Self::Peers => 35.0,
             Self::Ratio => 40.0,
         }
     }
@@ -219,7 +211,7 @@ impl ColumnConfig {
         if let Some(saved_widths) = &gui.column_widths {
             let order_len = cfg.order.len();
             if saved_widths.len() == order_len {
-                cfg.widths = saved_widths.clone();
+                cfg.widths.clone_from(saved_widths);
             } else if let Some(saved_order_names) = &gui.column_order {
                 // Lengths differ — try a best-effort column-by-column match.
                 let saved_order: Vec<ColumnId> = saved_order_names

@@ -291,7 +291,9 @@ fn main() -> Result<(), error::GuiError> {
         let cb_state = state.clone();
         let weak = main_window.as_weak();
         main_window.on_context_action(move |action_index| {
-            let Some(action) = app::ContextAction::from_index(action_index) else {
+            use app::ContextAction;
+
+            let Some(action) = ContextAction::from_index(action_index) else {
                 return;
             };
             let hashes: Vec<String> = {
@@ -302,9 +304,9 @@ fn main() -> Result<(), error::GuiError> {
             // Remove/RemoveAndDelete: show confirmation dialog instead of immediate action.
             if matches!(
                 action,
-                app::ContextAction::Remove | app::ContextAction::RemoveAndDelete
+                ContextAction::Remove | ContextAction::RemoveAndDelete
             ) {
-                let delete_files = matches!(action, app::ContextAction::RemoveAndDelete);
+                let delete_files = matches!(action, ContextAction::RemoveAndDelete);
                 let count = i32::try_from(hashes.len()).unwrap_or(i32::MAX);
                 let _ = weak.upgrade_in_event_loop(move |win| {
                     win.set_delete_dialog_count(count);
@@ -320,7 +322,6 @@ fn main() -> Result<(), error::GuiError> {
             };
             let Some(tx) = cmd_tx else { return };
 
-            use app::ContextAction;
             let cmd = match action {
                 ContextAction::Pause => app::GuiCommand::PauseTorrents { hashes },
                 ContextAction::Resume => app::GuiCommand::ResumeTorrents { hashes },

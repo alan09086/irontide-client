@@ -201,12 +201,13 @@ pub fn build_path_commands(scaled: &[i32], viewbox_w: i32, viewbox_h: i32) -> St
         f64::from(viewbox_w)
     };
     for (i, &y) in scaled.iter().enumerate() {
+        use std::fmt::Write;
         let x = (x_offset + step * i as f64) as i32;
         let y_clamped = y.clamp(0, viewbox_h);
         if i == 0 {
-            out.push_str(&format!("M {x} {y_clamped}"));
+            let _ = write!(out, "M {x} {y_clamped}");
         } else {
-            out.push_str(&format!(" L {x} {y_clamped}"));
+            let _ = write!(out, " L {x} {y_clamped}");
         }
     }
     out

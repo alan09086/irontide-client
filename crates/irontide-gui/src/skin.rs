@@ -100,7 +100,7 @@ impl Layout {
     /// Friendly label for the Tweaks pill / toolbar tooltip.
     /// Spec: `components/tweaks.jsx:83`.
     #[must_use]
-    pub fn label(&self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             Layout::L1 => "3-pane",
             Layout::L2 => "Drawer",
@@ -359,7 +359,7 @@ pub struct ResolvedTokens {
 
 impl SkinSettings {
     /// Look up the codegen'd palette for the active skin+theme.
-    const fn palette(&self) -> &'static TokenValues {
+    const fn palette(self) -> &'static TokenValues {
         match (self.skin, self.theme) {
             (Skin::Tide, Theme::Dark) => &TIDE_DARK,
             (Skin::Tide, Theme::Light) => &TIDE_LIGHT,
@@ -376,7 +376,7 @@ impl SkinSettings {
     /// The density and radius tables below come from the design-spec CSS
     /// (`[data-density=...]` / `[data-radius=...]` blocks).
     #[must_use]
-    pub fn resolve(&self) -> ResolvedTokens {
+    pub fn resolve(self) -> ResolvedTokens {
         let p = self.palette();
 
         // Density → (row_h, row_px, chrome_h, sidebar_w, filters_w)
@@ -505,7 +505,7 @@ impl SkinSettings {
     /// The caller is responsible for getting an `apply` call on the UI
     /// thread at startup — typically immediately after constructing
     /// `MainWindow` in `main()`.
-    pub fn apply(&self, weak: &slint::Weak<crate::MainWindow>) {
+    pub fn apply(self, weak: &slint::Weak<crate::MainWindow>) {
         let resolved = self.resolve();
         let skin_str = slint::SharedString::from(self.skin.to_string());
         let theme_str = slint::SharedString::from(self.theme.to_string());
@@ -688,7 +688,7 @@ impl SkinSettings {
     /// Write the current settings into a [`GuiConfig`] for persistence.
     ///
     /// Leaves any non-skin fields (column layout, etc.) untouched.
-    pub fn populate_gui_config(&self, gui: &mut irontide_config::GuiConfig) {
+    pub fn populate_gui_config(self, gui: &mut irontide_config::GuiConfig) {
         gui.skin = Some(self.skin.to_string());
         gui.theme = Some(self.theme.to_string());
         gui.density = Some(self.density.to_string());
@@ -1015,8 +1015,8 @@ mod tests {
         }
         .resolve();
         assert!(compact.row_h < spacious.row_h);
-        assert_eq!(compact.row_h, 24.0);
-        assert_eq!(spacious.row_h, 36.0);
+        assert!((compact.row_h - 24.0).abs() < f32::EPSILON);
+        assert!((spacious.row_h - 36.0).abs() < f32::EPSILON);
     }
 
     // ── Radius delta ──
@@ -1033,8 +1033,8 @@ mod tests {
             ..Default::default()
         }
         .resolve();
-        assert_eq!(sharp.r_sm, 0.0);
-        assert_eq!(rounded.r_sm, 6.0);
+        assert!((sharp.r_sm - 0.0).abs() < f32::EPSILON);
+        assert!((rounded.r_sm - 6.0).abs() < f32::EPSILON);
         assert!(sharp.r_xl < rounded.r_xl);
     }
 
@@ -1082,8 +1082,8 @@ mod tests {
                         assert_eq!(r.accent, p.accent, "accent mismatch for {skin:?}/{theme:?}");
 
                         // Spacing should be resolution-independent.
-                        assert_eq!(r.sp_1, 2.0);
-                        assert_eq!(r.sp_6, 16.0);
+                        assert!((r.sp_1 - 2.0).abs() < f32::EPSILON);
+                        assert!((r.sp_6 - 16.0).abs() < f32::EPSILON);
 
                         // Motion should be resolution-independent.
                         assert_eq!(r.dur_fast, 80);

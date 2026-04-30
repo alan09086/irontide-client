@@ -170,9 +170,8 @@ pub async fn poll_loop(
         let mut summaries: Vec<TorrentSummary> = Vec::with_capacity(ids.len());
         let mut rich: Vec<RowView> = Vec::with_capacity(ids.len());
         for id in ids {
-            let stats = match session.torrent_stats(id).await {
-                Ok(s) => s,
-                Err(_) => continue, // shutting down or vanishing — skip
+            let Ok(stats) = session.torrent_stats(id).await else {
+                continue; // shutting down or vanishing — skip
             };
             // The tracker_list call is best-effort; on failure we still
             // produce a row, just with empty tracker buckets.
@@ -218,7 +217,7 @@ pub async fn poll_loop(
                 .cloned()
                 .unwrap_or_else(|| RowView::from_summary(s))
         });
-        sort_summaries(&mut sorted, &sort);
+        sort_summaries(&mut sorted, sort);
 
         // Convert to Slint rows.
         let new_rows: Vec<crate::TorrentRow> =
@@ -320,7 +319,7 @@ pub async fn poll_loop(
                         let progress = session.file_progress(id).await.unwrap_or_default();
                         let flat = irontide_format::build_flat(info, &progress, &priorities);
                         // F9: cache flat files for folder-level priority resolution.
-                        state.lock().detail_flat_files = flat.clone();
+                        state.lock().detail_flat_files.clone_from(&flat);
                         crate::detail::flatten_files(
                             &flat,
                             &detail_expanded,
@@ -656,7 +655,7 @@ fn build_detail_props(
         "{} / {} pieces ({:.1}%)",
         stats.pieces_have, stats.pieces_total, pieces_pct
     );
-    let state_label = crate::format::format_state(&stats.state, stats.user_seed_mode).to_owned();
+    let state_label = crate::format::format_state(stats.state, stats.user_seed_mode).to_owned();
     let save_path = info.map_or_else(|| stats.save_path.clone(), |_| stats.save_path.clone());
 
     DetailProps {
@@ -828,7 +827,7 @@ pub fn enrich_summary_only(s: &TorrentSummary) -> RowView {
 /// Sort torrent summaries in-place according to the current sort state.
 ///
 /// Uses a secondary key (`info_hash`) for stable tie-breaking.
-pub fn sort_summaries(summaries: &mut [TorrentSummary], sort: &crate::columns::SortState) {
+pub fn sort_summaries(summaries: &mut [TorrentSummary], sort: crate::columns::SortState) {
     summaries.sort_by(|a, b| {
         let cmp = match sort.column {
             ColumnId::Name => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
@@ -836,8 +835,8 @@ pub fn sort_summaries(summaries: &mut [TorrentSummary], sort: &crate::columns::S
                 .progress
                 .partial_cmp(&b.progress)
                 .unwrap_or(std::cmp::Ordering::Equal),
-            ColumnId::State => crate::format::format_state(&a.state, a.user_seed_mode)
-                .cmp(crate::format::format_state(&b.state, b.user_seed_mode)),
+            ColumnId::State => crate::format::format_state(a.state, a.user_seed_mode)
+                .cmp(crate::format::format_state(b.state, b.user_seed_mode)),
             ColumnId::DownRate => a.download_rate.cmp(&b.download_rate),
             ColumnId::UpRate => a.upload_rate.cmp(&b.upload_rate),
             ColumnId::Seeds => a.num_seeds.cmp(&b.num_seeds),
@@ -917,9 +916,9 @@ fn to_slint_row(s: &TorrentSummary, selected: &HashSet<String>) -> crate::Torren
         state: if s.state == TorrentState::Checking {
             SharedString::from(format!("checking ({:.1}%)", s.checking_progress * 100.0))
         } else {
-            SharedString::from(crate::format::format_state(&s.state, s.user_seed_mode))
+            SharedString::from(crate::format::format_state(s.state, s.user_seed_mode))
         },
-        state_color: state_color(&s.state, s.user_seed_mode),
+        state_color: state_color(s.state, s.user_seed_mode),
         ratio: SharedString::from(crate::format::format_ratio(
             s.all_time_upload,
             s.all_time_download,
@@ -935,7 +934,7 @@ fn to_slint_row(s: &TorrentSummary, selected: &HashSet<String>) -> crate::Torren
 /// When `user_seed_mode` is true and the torrent is `Downloading`, returns
 /// purple (`#ab47bc`) — the same colour as `Sharing` — to visually indicate
 /// the seed-only constraint.
-pub fn state_color(state: &TorrentState, user_seed_mode: bool) -> slint::Color {
+pub fn state_color(state: TorrentState, user_seed_mode: bool) -> slint::Color {
     if user_seed_mode && matches!(state, TorrentState::Downloading) {
         return slint::Color::from_rgb_u8(0xab, 0x47, 0xbc); // #ab47bc (purple)
     }
@@ -944,8 +943,9 @@ pub fn state_color(state: &TorrentState, user_seed_mode: bool) -> slint::Color {
         TorrentState::Seeding => slint::Color::from_rgb_u8(0x21, 0x96, 0xf3),     // #2196f3
         TorrentState::Complete => slint::Color::from_rgb_u8(0x66, 0xbb, 0x6a),    // #66bb6a
         TorrentState::Paused => slint::Color::from_rgb_u8(0x9e, 0x9e, 0x9e),      // #9e9e9e
-        TorrentState::Checking => slint::Color::from_rgb_u8(0xff, 0x98, 0x00),    // #ff9800
-        TorrentState::FetchingMetadata => slint::Color::from_rgb_u8(0xff, 0x98, 0x00), // #ff9800
+        TorrentState::Checking | TorrentState::FetchingMetadata => {
+            slint::Color::from_rgb_u8(0xff, 0x98, 0x00) // #ff9800
+        }
         TorrentState::Stopped => slint::Color::from_rgb_u8(0xf4, 0x43, 0x36),     // #f44336
         TorrentState::Sharing => slint::Color::from_rgb_u8(0xab, 0x47, 0xbc),     // #ab47bc
     }
@@ -957,6 +957,7 @@ pub fn state_color(state: &TorrentState, user_seed_mode: bool) -> slint::Color {
 ///
 /// Used for incremental model updates — only calls `set_row_data` when
 /// the row has actually changed.
+#[allow(clippy::float_cmp, reason = "exact bitwise comparison for UI change detection")]
 pub fn rows_differ(a: &crate::TorrentRow, b: &crate::TorrentRow) -> bool {
     a.progress != b.progress
         || a.down_rate != b.down_rate
@@ -1018,7 +1019,7 @@ mod tests {
             column: ColumnId::Name,
             ascending: true,
         };
-        sort_summaries(&mut summaries, &sort);
+        sort_summaries(&mut summaries, sort);
         assert_eq!(summaries[0].name, "Alpha");
         assert_eq!(summaries[1].name, "Bravo");
         assert_eq!(summaries[2].name, "Charlie");
@@ -1028,7 +1029,7 @@ mod tests {
             column: ColumnId::Name,
             ascending: false,
         };
-        sort_summaries(&mut summaries, &sort);
+        sort_summaries(&mut summaries, sort);
         assert_eq!(summaries[0].name, "Charlie");
         assert_eq!(summaries[1].name, "Bravo");
         assert_eq!(summaries[2].name, "Alpha");
@@ -1058,7 +1059,7 @@ mod tests {
             column: ColumnId::DownRate,
             ascending: true,
         };
-        sort_summaries(&mut summaries, &sort);
+        sort_summaries(&mut summaries, sort);
         assert_eq!(summaries[0].download_rate, 50);
         assert_eq!(summaries[1].download_rate, 100);
         assert_eq!(summaries[2].download_rate, 200);
@@ -1083,7 +1084,7 @@ mod tests {
             column: ColumnId::DownRate,
             ascending: true,
         };
-        sort_summaries(&mut summaries, &sort);
+        sort_summaries(&mut summaries, sort);
         // Same rate — tiebroken by info_hash ascending.
         assert_eq!(summaries[0].info_hash, "aaa");
         assert_eq!(summaries[1].info_hash, "bbb");
@@ -1117,7 +1118,7 @@ mod tests {
         ];
 
         for (state, (r, g, b)) in cases {
-            let color = state_color(&state, false);
+            let color = state_color(state, false);
             assert_eq!(color.red(), r, "red mismatch for {state:?}");
             assert_eq!(color.green(), g, "green mismatch for {state:?}");
             assert_eq!(color.blue(), b, "blue mismatch for {state:?}");
@@ -1127,14 +1128,14 @@ mod tests {
     #[test]
     fn test_state_color_seed_mode() {
         // Downloading + seed mode → purple (#ab47bc), same as Sharing.
-        let color = state_color(&TorrentState::Downloading, true);
+        let color = state_color(TorrentState::Downloading, true);
         assert_eq!(color.red(), 0xab);
         assert_eq!(color.green(), 0x47);
         assert_eq!(color.blue(), 0xbc);
 
         // Seeding + seed mode → normal seeding colour (seed mode only
         // overrides Downloading).
-        let color = state_color(&TorrentState::Seeding, true);
+        let color = state_color(TorrentState::Seeding, true);
         assert_eq!(color.red(), 0x21);
         assert_eq!(color.green(), 0x96);
         assert_eq!(color.blue(), 0xf3);
@@ -1256,7 +1257,7 @@ mod tests {
             column: ColumnId::Name,
             ascending: true,
         };
-        sort_summaries(&mut out, &sort);
+        sort_summaries(&mut out, sort);
         assert_eq!(out.len(), 2);
         assert_eq!(out[0].name, "Bravo");
         assert_eq!(out[1].name, "Charlie");
