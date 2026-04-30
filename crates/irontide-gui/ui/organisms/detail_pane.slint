@@ -834,6 +834,255 @@ component HttpSourcesTab inherits VerticalLayout {
     }
 }
 
+// M180: Speed tab — historical speed graphs + per-torrent rate limit
+// controls. DL/UL paths are SVG path-command strings built in Rust;
+// the Path elements render them with viewbox-based coordinates.
+component SpeedTab inherits VerticalLayout {
+    in property <string> dl-path;
+    in property <string> ul-path;
+    in property <string> max-rate-label;
+    in property <string> current-dl;
+    in property <string> current-ul;
+    in property <string> dl-limit;
+    in property <string> ul-limit;
+    in property <string> elapsed;
+    callback dl-limit-applied(string);
+    callback ul-limit-applied(string);
+
+    spacing: Tokens.sp-3;
+    padding: Tokens.sp-5;
+
+    // Current rates.
+    HorizontalLayout {
+        spacing: Tokens.sp-5;
+        height: Tokens.row-h;
+        HorizontalLayout {
+            spacing: Tokens.sp-2;
+            Text {
+                text: "\u{2193}";
+                color: Tokens.status-downloading;
+                font-size: Tokens.fs-14;
+                vertical-alignment: center;
+            }
+            Text {
+                text: root.current-dl;
+                color: Tokens.fg-1;
+                font-size: Tokens.fs-13;
+                vertical-alignment: center;
+            }
+        }
+        HorizontalLayout {
+            spacing: Tokens.sp-2;
+            Text {
+                text: "\u{2191}";
+                color: Tokens.status-seeding;
+                font-size: Tokens.fs-14;
+                vertical-alignment: center;
+            }
+            Text {
+                text: root.current-ul;
+                color: Tokens.fg-1;
+                font-size: Tokens.fs-13;
+                vertical-alignment: center;
+            }
+        }
+        Rectangle { horizontal-stretch: 1; }
+    }
+
+    // Graph area with axis labels.
+    VerticalLayout {
+        vertical-stretch: 1;
+        spacing: Tokens.sp-1;
+
+        Rectangle {
+            background: Tokens.bg-2;
+            border-radius: Tokens.r-sm;
+            vertical-stretch: 1;
+            min-height: Tokens.sp-10 * 2;
+
+            // Y-axis max label (top-left).
+            Text {
+                x: Tokens.sp-2;
+                y: Tokens.sp-1;
+                text: root.max-rate-label;
+                color: Tokens.fg-3;
+                font-size: Tokens.fs-10;
+            }
+
+            // Y-axis zero label (bottom-left).
+            Text {
+                x: Tokens.sp-2;
+                y: parent.height - self.height - Tokens.sp-2;
+                text: "0";
+                color: Tokens.fg-3;
+                font-size: Tokens.fs-10;
+            }
+
+            // DL path.
+            Path {
+                x: 0;
+                y: 0;
+                width: parent.width;
+                height: parent.height;
+                viewbox-x: 0;
+                viewbox-y: 0;
+                viewbox-width: 1000;
+                viewbox-height: 1000;
+                commands: root.dl-path;
+                stroke: Tokens.status-downloading;
+                stroke-width: 1.5px;
+                fill: transparent;
+            }
+
+            // UL path.
+            Path {
+                x: 0;
+                y: 0;
+                width: parent.width;
+                height: parent.height;
+                viewbox-x: 0;
+                viewbox-y: 0;
+                viewbox-width: 1000;
+                viewbox-height: 1000;
+                commands: root.ul-path;
+                stroke: Tokens.status-seeding;
+                stroke-width: 1.5px;
+                fill: transparent;
+            }
+        }
+
+        // X-axis labels below graph.
+        HorizontalLayout {
+            height: Tokens.fs-10 + Tokens.sp-1;
+            padding-left: Tokens.sp-2;
+            padding-right: Tokens.sp-2;
+            Text {
+                text: root.elapsed;
+                color: Tokens.fg-3;
+                font-size: Tokens.fs-10;
+                horizontal-alignment: left;
+            }
+            Rectangle { horizontal-stretch: 1; }
+            Text {
+                text: "now";
+                color: Tokens.fg-3;
+                font-size: Tokens.fs-10;
+                horizontal-alignment: right;
+            }
+        }
+    }
+
+    // Rate limits section.
+    VerticalLayout {
+        spacing: Tokens.sp-3;
+        Text {
+            text: "Rate Limits";
+            color: Tokens.fg-2;
+            font-size: Tokens.fs-11;
+        }
+
+        // DL limit row.
+        HorizontalLayout {
+            spacing: Tokens.sp-3;
+            height: Tokens.row-h;
+            Text {
+                text: "DL";
+                color: Tokens.fg-2;
+                font-size: Tokens.fs-12;
+                width: Tokens.sp-10;
+                vertical-alignment: center;
+            }
+            Rectangle {
+                background: Tokens.bg-inset;
+                border-radius: Tokens.r-sm;
+                border-color: Tokens.border-2;
+                border-width: Tokens.border-width-thin;
+                horizontal-stretch: 1;
+                height: Tokens.sp-8;
+
+                dl-input := TextInput {
+                    x: Tokens.sp-2;
+                    width: parent.width - Tokens.sp-4;
+                    height: parent.height;
+                    color: Tokens.fg-1;
+                    font-size: Tokens.fs-12;
+                    text: root.dl-limit;
+                    vertical-alignment: center;
+                    accepted => { root.dl-limit-applied(self.text); }
+                }
+            }
+            Rectangle {
+                width: Tokens.sp-10 + Tokens.sp-4;
+                height: Tokens.sp-8;
+                border-radius: Tokens.r-sm;
+                background: dl-apply-touch.has-hover ? Tokens.bg-hover : Tokens.bg-2;
+                border-color: Tokens.border-2;
+                border-width: Tokens.border-width-thin;
+                Text {
+                    text: "Apply";
+                    color: Tokens.fg-1;
+                    font-size: Tokens.fs-11;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                dl-apply-touch := TouchArea {
+                    clicked => { root.dl-limit-applied(dl-input.text); }
+                }
+            }
+        }
+
+        // UL limit row.
+        HorizontalLayout {
+            spacing: Tokens.sp-3;
+            height: Tokens.row-h;
+            Text {
+                text: "UL";
+                color: Tokens.fg-2;
+                font-size: Tokens.fs-12;
+                width: Tokens.sp-10;
+                vertical-alignment: center;
+            }
+            Rectangle {
+                background: Tokens.bg-inset;
+                border-radius: Tokens.r-sm;
+                border-color: Tokens.border-2;
+                border-width: Tokens.border-width-thin;
+                horizontal-stretch: 1;
+                height: Tokens.sp-8;
+
+                ul-input := TextInput {
+                    x: Tokens.sp-2;
+                    width: parent.width - Tokens.sp-4;
+                    height: parent.height;
+                    color: Tokens.fg-1;
+                    font-size: Tokens.fs-12;
+                    text: root.ul-limit;
+                    vertical-alignment: center;
+                    accepted => { root.ul-limit-applied(self.text); }
+                }
+            }
+            Rectangle {
+                width: Tokens.sp-10 + Tokens.sp-4;
+                height: Tokens.sp-8;
+                border-radius: Tokens.r-sm;
+                background: ul-apply-touch.has-hover ? Tokens.bg-hover : Tokens.bg-2;
+                border-color: Tokens.border-2;
+                border-width: Tokens.border-width-thin;
+                Text {
+                    text: "Apply";
+                    color: Tokens.fg-1;
+                    font-size: Tokens.fs-11;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                ul-apply-touch := TouchArea {
+                    clicked => { root.ul-limit-applied(ul-input.text); }
+                }
+            }
+        }
+    }
+}
+
 // DetailPane — instantiated three times (L1 inline / L2 drawer / L3
 // popover). All inputs are forwarded from the surrounding MainWindow
 // scope. When `info-hash == ""` we render the M176 empty-state copy
@@ -883,6 +1132,18 @@ export component DetailPane inherits Rectangle {
     in property <[WebSeedRow]> http-sources;
     callback reannounce-clicked(string /*url*/);
 
+    // M180: Speed tab inputs (passthrough to SpeedTab).
+    in property <string> speed-dl-path;
+    in property <string> speed-ul-path;
+    in property <string> speed-max-rate;
+    in property <string> speed-current-dl;
+    in property <string> speed-current-ul;
+    in property <string> speed-dl-limit;
+    in property <string> speed-ul-limit;
+    in property <string> speed-elapsed;
+    callback speed-dl-limit-applied(string);
+    callback speed-ul-limit-applied(string);
+
     // M178 (Issue 1.4): when true, swap long tab labels for short ones
     // (only meaningful in L3 popover today). Default false keeps L1/L2
     // showing the full labels.
@@ -919,8 +1180,8 @@ export component DetailPane inherits Rectangle {
                 PillRow {
                     label: "";
                     options: root.compact-tabs
-                        ? ["General", "Content", "Peers", "Trackers", "Sources"]
-                        : ["General", "Content", "Peers", "Trackers", "HTTP Sources"];
+                        ? ["General", "Content", "Peers", "Trackers", "Sources", "Speed"]
+                        : ["General", "Content", "Peers", "Trackers", "HTTP Sources", "Speed"];
                     selected: root.compact-tabs && root.active-tab == "HTTP Sources"
                         ? "Sources"
                         : root.active-tab;
@@ -978,6 +1239,18 @@ export component DetailPane inherits Rectangle {
         }
         if root.active-tab == "HTTP Sources" : HttpSourcesTab {
             sources: root.http-sources;
+        }
+        if root.active-tab == "Speed" : SpeedTab {
+            dl-path: root.speed-dl-path;
+            ul-path: root.speed-ul-path;
+            max-rate-label: root.speed-max-rate;
+            current-dl: root.speed-current-dl;
+            current-ul: root.speed-current-ul;
+            dl-limit: root.speed-dl-limit;
+            ul-limit: root.speed-ul-limit;
+            elapsed: root.speed-elapsed;
+            dl-limit-applied(v) => { root.speed-dl-limit-applied(v); }
+            ul-limit-applied(v) => { root.speed-ul-limit-applied(v); }
         }
     }
 }

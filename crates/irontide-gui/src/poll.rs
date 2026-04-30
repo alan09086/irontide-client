@@ -182,6 +182,17 @@ pub async fn poll_loop(
             rich.push(sidebar_view::rich_row_view(&stats, &trackers));
         }
 
+        // M180: accumulate speed samples for ALL torrents every tick.
+        {
+            let mut st = state.lock();
+            for rv in &rich {
+                st.speed_histories
+                    .entry(rv.info_hash.clone())
+                    .or_insert_with(crate::speed::SpeedHistory::new)
+                    .push(rv.download_rate, rv.upload_rate);
+            }
+        }
+
         let sess_stats = match session.session_stats().await {
             Ok(s) => s,
             Err(e) => {
@@ -362,6 +373,37 @@ pub async fn poll_loop(
                                 Vec::new()
                             };
 
+                        // M180: Speed tab gated fetch.
+                        let speed = if detail_active_tab == "Speed" {
+                            let (dl_scaled, ul_scaled, max_rate, elapsed) = {
+                                let st = state.lock();
+                                if let Some(hist) = st.speed_histories.get(hash_hex) {
+                                    let (dl, ul) = hist.flatten_auto();
+                                    let mr = hist.max_rate();
+                                    let el = hist.elapsed_label();
+                                    (dl, ul, mr, el)
+                                } else {
+                                    (Vec::new(), Vec::new(), 0, String::new())
+                                }
+                            };
+                            let dl_path = crate::speed::build_path_commands(&dl_scaled, 1000, 1000);
+                            let ul_path = crate::speed::build_path_commands(&ul_scaled, 1000, 1000);
+                            let dl_lim = session.download_limit(id).await.unwrap_or(0);
+                            let ul_lim = session.upload_limit(id).await.unwrap_or(0);
+                            SpeedProps {
+                                dl_path,
+                                ul_path,
+                                dl_limit: if dl_lim == 0 { "0".into() } else { crate::format::format_rate(dl_lim) },
+                                ul_limit: if ul_lim == 0 { "0".into() } else { crate::format::format_rate(ul_lim) },
+                                max_rate: if max_rate == 0 { "\u{2014}".into() } else { crate::format::format_rate(max_rate) },
+                                current_dl: if detail_stats.download_rate > 0 { crate::format::format_rate(detail_stats.download_rate) } else { "\u{2014}".into() },
+                                current_ul: if detail_stats.upload_rate > 0 { crate::format::format_rate(detail_stats.upload_rate) } else { "\u{2014}".into() },
+                                elapsed,
+                            }
+                        } else {
+                            SpeedProps::default()
+                        };
+
                         let snapshot = build_detail_props(
                             &detail_stats,
                             cached_info.as_ref(),
@@ -370,6 +412,7 @@ pub async fn poll_loop(
                             peers,
                             trackers,
                             http_sources,
+                            speed,
                         );
 
                         let _ = weak.upgrade_in_event_loop(move |win| {
@@ -521,6 +564,41 @@ struct DetailProps {
     peers: Vec<crate::PeerRow>,
     trackers: Vec<crate::TrackerRow>,
     http_sources: Vec<crate::WebSeedRow>,
+    // M180: Speed tab data.
+    speed_dl_path: String,
+    speed_ul_path: String,
+    speed_dl_limit: String,
+    speed_ul_limit: String,
+    speed_max_rate: String,
+    speed_current_dl: String,
+    speed_current_ul: String,
+    speed_elapsed: String,
+}
+
+struct SpeedProps {
+    dl_path: String,
+    ul_path: String,
+    dl_limit: String,
+    ul_limit: String,
+    max_rate: String,
+    current_dl: String,
+    current_ul: String,
+    elapsed: String,
+}
+
+impl Default for SpeedProps {
+    fn default() -> Self {
+        Self {
+            dl_path: String::new(),
+            ul_path: String::new(),
+            dl_limit: String::from("0"),
+            ul_limit: String::from("0"),
+            max_rate: String::from("\u{2014}"),
+            current_dl: String::from("\u{2014}"),
+            current_ul: String::from("\u{2014}"),
+            elapsed: String::new(),
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -532,6 +610,7 @@ fn build_detail_props(
     peers: Vec<crate::PeerRow>,
     trackers: Vec<crate::TrackerRow>,
     http_sources: Vec<crate::WebSeedRow>,
+    speed: SpeedProps,
 ) -> DetailProps {
     let info_hash = stats.info_hashes.best_v1().to_hex();
     let down_rate = if stats.download_rate > 0 {
@@ -612,6 +691,14 @@ fn build_detail_props(
         peers,
         trackers,
         http_sources,
+        speed_dl_path: speed.dl_path,
+        speed_ul_path: speed.ul_path,
+        speed_dl_limit: speed.dl_limit,
+        speed_ul_limit: speed.ul_limit,
+        speed_max_rate: speed.max_rate,
+        speed_current_dl: speed.current_dl,
+        speed_current_ul: speed.current_ul,
+        speed_elapsed: speed.elapsed,
     }
 }
 
@@ -643,6 +730,14 @@ fn apply_detail_props(win: &crate::MainWindow, p: DetailProps) {
     win.set_detail_peers(ModelRc::new(VecModel::from(p.peers)));
     win.set_detail_trackers(ModelRc::new(VecModel::from(p.trackers)));
     win.set_detail_http_sources(ModelRc::new(VecModel::from(p.http_sources)));
+    win.set_detail_speed_dl_path(SharedString::from(p.speed_dl_path));
+    win.set_detail_speed_ul_path(SharedString::from(p.speed_ul_path));
+    win.set_detail_speed_dl_limit(SharedString::from(p.speed_dl_limit));
+    win.set_detail_speed_ul_limit(SharedString::from(p.speed_ul_limit));
+    win.set_detail_speed_max_rate(SharedString::from(p.speed_max_rate));
+    win.set_detail_speed_current_dl(SharedString::from(p.speed_current_dl));
+    win.set_detail_speed_current_ul(SharedString::from(p.speed_current_ul));
+    win.set_detail_speed_elapsed(SharedString::from(p.speed_elapsed));
 }
 
 fn clear_detail_props(win: &crate::MainWindow) {
@@ -673,6 +768,14 @@ fn clear_detail_props(win: &crate::MainWindow) {
     win.set_detail_peers(ModelRc::new(VecModel::from(Vec::<crate::PeerRow>::new())));
     win.set_detail_trackers(ModelRc::new(VecModel::from(Vec::<crate::TrackerRow>::new())));
     win.set_detail_http_sources(ModelRc::new(VecModel::from(Vec::<crate::WebSeedRow>::new())));
+    win.set_detail_speed_dl_path(SharedString::default());
+    win.set_detail_speed_ul_path(SharedString::default());
+    win.set_detail_speed_dl_limit(SharedString::from("0"));
+    win.set_detail_speed_ul_limit(SharedString::from("0"));
+    win.set_detail_speed_max_rate(SharedString::from("\u{2014}"));
+    win.set_detail_speed_current_dl(SharedString::from("\u{2014}"));
+    win.set_detail_speed_current_ul(SharedString::from("\u{2014}"));
+    win.set_detail_speed_elapsed(SharedString::default());
 }
 
 // ── Filtering (M173 Lane A) ─────────────────────────────────────────────────

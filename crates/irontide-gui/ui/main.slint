@@ -233,6 +233,18 @@ export component MainWindow inherits Window {
     in-out property <[TrackerRow]> detail-trackers: [];
     in-out property <[WebSeedRow]> detail-http-sources: [];
 
+    // ── M180: Speed tab ──
+    in-out property <string> detail-speed-dl-path: "";
+    in-out property <string> detail-speed-ul-path: "";
+    in-out property <string> detail-speed-max-rate: "\u{2014}";
+    in-out property <string> detail-speed-current-dl: "\u{2014}";
+    in-out property <string> detail-speed-current-ul: "\u{2014}";
+    in-out property <string> detail-speed-dl-limit: "0";
+    in-out property <string> detail-speed-ul-limit: "0";
+    in-out property <string> detail-speed-elapsed: "";
+    callback detail-speed-dl-limit-applied(/* value */ string);
+    callback detail-speed-ul-limit-applied(/* value */ string);
+
     // ── M178: file-priority popup state (custom-overlay pattern) ──
     in-out property <bool> show-file-priority-popup: false;
     in-out property <length> file-priority-popup-x: 0px;
@@ -559,7 +571,7 @@ export component MainWindow inherits Window {
                     horizontal-stretch: 1;
 
                     TorrentListView {
-                        vertical-stretch: 1;
+                        vertical-stretch: 2;
                         session-ready: root.session-ready;
                         error-text: root.error-text;
                         torrent-model: root.torrent-model;
@@ -583,7 +595,8 @@ export component MainWindow inherits Window {
                     }
 
                     if root.session-ready && root.error-text == "": Rectangle {
-                        height: Tokens.sp-10 * 6;
+                        vertical-stretch: 1;
+                        min-height: Tokens.sp-10 * 5;
                         background: Tokens.bg-1;
 
                         Rectangle {
@@ -626,6 +639,14 @@ export component MainWindow inherits Window {
                             peers: root.detail-peers;
                             trackers: root.detail-trackers;
                             http-sources: root.detail-http-sources;
+                            speed-dl-path: root.detail-speed-dl-path;
+                            speed-ul-path: root.detail-speed-ul-path;
+                            speed-max-rate: root.detail-speed-max-rate;
+                            speed-current-dl: root.detail-speed-current-dl;
+                            speed-current-ul: root.detail-speed-current-ul;
+                            speed-dl-limit: root.detail-speed-dl-limit;
+                            speed-ul-limit: root.detail-speed-ul-limit;
+                            speed-elapsed: root.detail-speed-elapsed;
                             tab-changed(t) => {
                                 root.detail-active-tab = t;
                                 root.detail-tab-changed(t);
@@ -636,6 +657,8 @@ export component MainWindow inherits Window {
                             file-right-clicked(i, x, y) => { root.detail-file-right-clicked(i, x, y); }
                             folder-right-clicked(k, x, y) => { root.detail-folder-right-clicked(k, x, y); }
                             reannounce-clicked(u) => { root.detail-reannounce(u); }
+                                                        speed-dl-limit-applied(v) => { root.detail-speed-dl-limit-applied(v); }
+                            speed-ul-limit-applied(v) => { root.detail-speed-ul-limit-applied(v); }
                         }
                     }
                 }
@@ -721,6 +744,16 @@ export component MainWindow inherits Window {
                         file-right-clicked(i, x, y) => { root.detail-file-right-clicked(i, x, y); }
                         folder-right-clicked(k, x, y) => { root.detail-folder-right-clicked(k, x, y); }
                         reannounce-clicked(u) => { root.detail-reannounce(u); }
+                        speed-dl-path: root.detail-speed-dl-path;
+                        speed-ul-path: root.detail-speed-ul-path;
+                        speed-max-rate: root.detail-speed-max-rate;
+                        speed-current-dl: root.detail-speed-current-dl;
+                        speed-current-ul: root.detail-speed-current-ul;
+                        speed-dl-limit: root.detail-speed-dl-limit;
+                        speed-ul-limit: root.detail-speed-ul-limit;
+                        speed-elapsed: root.detail-speed-elapsed;
+                                                speed-dl-limit-applied(v) => { root.detail-speed-dl-limit-applied(v); }
+                        speed-ul-limit-applied(v) => { root.detail-speed-ul-limit-applied(v); }
                     }
                 }
 
@@ -943,6 +976,16 @@ export component MainWindow inherits Window {
             file-right-clicked(i, x, y) => { root.detail-file-right-clicked(i, x, y); }
             folder-right-clicked(k, x, y) => { root.detail-folder-right-clicked(k, x, y); }
             reannounce-clicked(u) => { root.detail-reannounce(u); }
+            speed-dl-path: root.detail-speed-dl-path;
+            speed-ul-path: root.detail-speed-ul-path;
+            speed-max-rate: root.detail-speed-max-rate;
+            speed-current-dl: root.detail-speed-current-dl;
+            speed-current-ul: root.detail-speed-current-ul;
+            speed-dl-limit: root.detail-speed-dl-limit;
+            speed-ul-limit: root.detail-speed-ul-limit;
+            speed-elapsed: root.detail-speed-elapsed;
+                        speed-dl-limit-applied(v) => { root.detail-speed-dl-limit-applied(v); }
+            speed-ul-limit-applied(v) => { root.detail-speed-ul-limit-applied(v); }
         }
     }
 

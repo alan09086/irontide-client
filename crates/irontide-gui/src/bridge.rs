@@ -359,6 +359,14 @@ async fn handle_gui_command(
         } => {
             handle_set_file_priority(&info_hash, &file_indices, priority, session, weak).await;
         }
+        GuiCommand::SetTorrentRateLimit {
+            info_hash,
+            download_limit,
+            upload_limit,
+        } => {
+            handle_set_torrent_rate_limit(&info_hash, download_limit, upload_limit, session, weak)
+                .await;
+        }
         GuiCommand::ReannounceTracker { info_hash, url: _ } => {
             // M178: Per-tracker reannounce is not yet exposed via SessionHandle;
             // fall back to a torrent-wide reannounce (M178 ships the action,
@@ -793,6 +801,59 @@ async fn handle_set_file_priority(
         format!("{label} priority applied to {applied}/{total} files ({failed} failed)")
     };
     show_toast(weak, &msg, failed > 0);
+}
+
+async fn handle_set_torrent_rate_limit(
+    info_hash: &str,
+    download_limit: Option<u64>,
+    upload_limit: Option<u64>,
+    session: &irontide::session::SessionHandle,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    let Ok(id) = irontide::core::Id20::from_hex(info_hash) else {
+        show_toast(weak, &format!("Bad info-hash: {info_hash}"), true);
+        return;
+    };
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(bytes) = download_limit {
+        match session.set_download_limit(id, bytes).await {
+            Ok(()) => {
+                if bytes == 0 {
+                    parts.push("DL limit cleared".to_owned());
+                } else {
+                    parts.push(format!(
+                        "DL limit set to {}/s",
+                        irontide_format::format_size(bytes)
+                    ));
+                }
+            }
+            Err(e) => {
+                show_toast(weak, &format!("Failed to set DL limit: {e}"), true);
+                return;
+            }
+        }
+    }
+    if let Some(bytes) = upload_limit {
+        match session.set_upload_limit(id, bytes).await {
+            Ok(()) => {
+                if bytes == 0 {
+                    parts.push("UL limit cleared".to_owned());
+                } else {
+                    parts.push(format!(
+                        "UL limit set to {}/s",
+                        irontide_format::format_size(bytes)
+                    ));
+                }
+            }
+            Err(e) => {
+                show_toast(weak, &format!("Failed to set UL limit: {e}"), true);
+                return;
+            }
+        }
+    }
+    if !parts.is_empty() {
+        show_toast(weak, &parts.join(", "), false);
+    }
 }
 
 #[cfg(test)]

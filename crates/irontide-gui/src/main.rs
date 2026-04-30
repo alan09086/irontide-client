@@ -8,6 +8,7 @@ mod format;
 mod panic_hook;
 mod poll;
 mod sidebar;
+mod speed;
 mod sidebar_view;
 mod skin;
 mod skin_tokens;
@@ -354,6 +355,7 @@ fn main() -> Result<(), error::GuiError> {
                 // set grows unboundedly across long-running sessions.
                 for hash in &hashes {
                     st.prune_detail_expanded_for(hash);
+                    st.prune_speed_history_for(hash);
                 }
                 (hashes, st.cmd_tx.clone())
             };
@@ -660,6 +662,58 @@ fn main() -> Result<(), error::GuiError> {
                 info_hash: hash,
                 url: url.to_string(),
             });
+        });
+    }
+
+    // ── M180 speed-tab callbacks ───────────────────────────────────
+    {
+        let cb_state = state.clone();
+        main_window.on_detail_speed_dl_limit_applied(move |input| {
+            let st = cb_state.lock();
+            let Some(hash) = st.primary_selected().map(str::to_owned) else {
+                return;
+            };
+            let Some(tx) = st.cmd_tx.clone() else {
+                return;
+            };
+            drop(st);
+            match speed::parse_rate_limit(input.as_str()) {
+                Some(bytes) => {
+                    let _ = tx.send(app::GuiCommand::SetTorrentRateLimit {
+                        info_hash: hash,
+                        download_limit: Some(bytes),
+                        upload_limit: None,
+                    });
+                }
+                None => {
+                    tracing::warn!(input = %input, "invalid DL rate limit input");
+                }
+            }
+        });
+    }
+    {
+        let cb_state = state.clone();
+        main_window.on_detail_speed_ul_limit_applied(move |input| {
+            let st = cb_state.lock();
+            let Some(hash) = st.primary_selected().map(str::to_owned) else {
+                return;
+            };
+            let Some(tx) = st.cmd_tx.clone() else {
+                return;
+            };
+            drop(st);
+            match speed::parse_rate_limit(input.as_str()) {
+                Some(bytes) => {
+                    let _ = tx.send(app::GuiCommand::SetTorrentRateLimit {
+                        info_hash: hash,
+                        download_limit: None,
+                        upload_limit: Some(bytes),
+                    });
+                }
+                None => {
+                    tracing::warn!(input = %input, "invalid UL rate limit input");
+                }
+            }
         });
     }
 

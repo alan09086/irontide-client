@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 /// Application lifecycle phases.
 #[derive(Debug, Clone, PartialEq)]
@@ -103,6 +103,15 @@ pub enum GuiCommand {
         /// reannounce when the engine API lands).
         #[allow(dead_code, reason = "M178: per-URL dispatch deferred to M180 polish")]
         url: String,
+    },
+    /// M180: set per-torrent DL/UL rate limits.
+    SetTorrentRateLimit {
+        /// Hex-encoded info-hash string.
+        info_hash: String,
+        /// Bytes/sec download limit (`Some(0)` = unlimited, `None` = don't change).
+        download_limit: Option<u64>,
+        /// Bytes/sec upload limit (`Some(0)` = unlimited, `None` = don't change).
+        upload_limit: Option<u64>,
     },
 }
 
@@ -257,6 +266,8 @@ pub struct AppState {
     /// `collect_folder_file_indices` to resolve folder paths to contained
     /// file indices for folder-level priority targeting (F9).
     pub detail_flat_files: Vec<irontide_format::FlatFileEntry>,
+    /// M180: per-torrent speed histories for the Speed tab graph.
+    pub speed_histories: HashMap<String, crate::speed::SpeedHistory>,
 }
 
 impl AppState {
@@ -290,6 +301,7 @@ impl AppState {
             last_clicked_file_index: None,
             pending_file_priority_target: None,
             detail_flat_files: Vec::new(),
+            speed_histories: HashMap::new(),
         }
     }
 
@@ -393,6 +405,11 @@ impl AppState {
     pub fn prune_detail_expanded_for(&mut self, info_hash: &str) {
         let prefix = format!("{info_hash}/");
         self.detail_expanded.retain(|k| !k.starts_with(&prefix));
+    }
+
+    /// M180: remove speed history for a removed torrent.
+    pub fn prune_speed_history_for(&mut self, info_hash: &str) {
+        self.speed_histories.remove(info_hash);
     }
 
     /// M178 (D-eng-7 Iron Rule): clear file selection + popup state
@@ -737,6 +754,11 @@ mod tests {
         };
         let _reannounce = GuiCommand::ForceReannounce {
             hashes: vec!["5566".into()],
+        };
+        let _rate_limit = GuiCommand::SetTorrentRateLimit {
+            info_hash: "7788".into(),
+            download_limit: Some(1_048_576),
+            upload_limit: None,
         };
     }
 
