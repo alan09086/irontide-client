@@ -21,7 +21,11 @@ export component ContextMenu {
         background: transparent;
 
         dismiss-touch := TouchArea {
-            clicked => { root.dismiss(); }
+            pointer-event(e) => {
+                if (e.kind == PointerEventKind.up) {
+                    root.dismiss();
+                }
+            }
         }
 
         // Menu box at cursor position

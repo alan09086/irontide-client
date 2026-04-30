@@ -26,9 +26,13 @@ export component FilePriorityPopup {
     if root.show: Rectangle {
         background: transparent;
 
-        // Click-outside dismiss.
+        // Click-outside dismiss (any mouse button).
         dismiss-touch := TouchArea {
-            clicked => { root.dismiss(); }
+            pointer-event(e) => {
+                if (e.kind == PointerEventKind.up) {
+                    root.dismiss();
+                }
+            }
         }
 
         Rectangle {
