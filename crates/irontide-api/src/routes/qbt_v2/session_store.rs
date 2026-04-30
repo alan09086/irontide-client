@@ -87,6 +87,10 @@ impl SessionStore {
     /// Create a new session for the given username, returning the cookie token.
     ///
     /// Evicts the oldest session if the store is at capacity.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the random source fails to generate a session ID.
     pub fn create(&self, username: impl Into<String>) -> Result<String, RandomSourceError> {
         let sid = self.generate_sid()?;
         let now = Instant::now();
@@ -200,6 +204,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::many_single_char_names, reason = "concise session IDs in test")]
     fn session_store_lru_evicts_oldest_when_full() {
         let s = store(3);
         let a = s.create("a").unwrap();

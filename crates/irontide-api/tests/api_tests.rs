@@ -81,11 +81,6 @@ fn json(body: &[u8]) -> serde_json::Value {
 fn make_test_torrent_bytes() -> Vec<u8> {
     use serde::Serialize;
 
-    let data = vec![0xAB; 16384];
-    let hash = irontide::core::sha1(&data);
-    let mut pieces = Vec::new();
-    pieces.extend_from_slice(hash.as_bytes());
-
     #[derive(Serialize)]
     struct Info<'a> {
         length: u64,
@@ -100,6 +95,11 @@ fn make_test_torrent_bytes() -> Vec<u8> {
     struct Torrent<'a> {
         info: Info<'a>,
     }
+
+    let data = vec![0xAB; 16384];
+    let hash = irontide::core::sha1(&data);
+    let mut pieces = Vec::new();
+    pieces.extend_from_slice(hash.as_bytes());
 
     let t = Torrent {
         info: Info {

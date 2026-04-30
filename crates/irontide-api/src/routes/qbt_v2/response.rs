@@ -126,6 +126,10 @@ impl IntoResponse for QbtError {
 }
 
 /// Convenience: serialise any `Serialize` value straight into a `QbtResponse::Json`.
+///
+/// # Errors
+///
+/// Returns an error if JSON serialization fails.
 #[allow(dead_code)]
 pub fn json_ok<T: Serialize>(value: &T) -> Result<QbtResponse, QbtError> {
     let v =

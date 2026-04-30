@@ -459,18 +459,6 @@ async fn username_mismatch_runs_timing_equalizing_argon2_verify() {
 
     use std::time::Instant;
 
-    let session = test_session(|_| {}).await;
-    let router = build_router(session);
-
-    // Warmup: the very first argon2 verify in the process pays page-fault
-    // costs (parameter setup, allocator warmup). Discard it so the three
-    // measurements below are comparable.
-    let _ = router
-        .clone()
-        .oneshot(login_req("admin", "adminadmin"))
-        .await
-        .expect("warmup");
-
     async fn time_login(
         router: axum::Router,
         user: &str,
@@ -488,6 +476,18 @@ async fn username_mismatch_runs_timing_equalizing_argon2_verify() {
         let _ = resp.into_body().collect().await.expect("drain body");
         (status, elapsed)
     }
+
+    let session = test_session(|_| {}).await;
+    let router = build_router(session);
+
+    // Warmup: the very first argon2 verify in the process pays page-fault
+    // costs (parameter setup, allocator warmup). Discard it so the three
+    // measurements below are comparable.
+    let _ = router
+        .clone()
+        .oneshot(login_req("admin", "adminadmin"))
+        .await
+        .expect("warmup");
 
     let (s_wrong_user, t_wrong_user) =
         time_login(router.clone(), "nonexistent", "adminadmin").await;

@@ -69,11 +69,10 @@ pub fn qbt_state_string(s: &TorrentStats) -> &'static str {
                 "stalledUP"
             }
         }
-        TorrentState::Paused => {
+        TorrentState::Paused | TorrentState::Stopped => {
             // Already handled above; kept for match exhaustiveness.
             "pausedDL"
         }
-        TorrentState::Stopped => "pausedDL",
         TorrentState::Sharing => "forcedUP",
     }
 }

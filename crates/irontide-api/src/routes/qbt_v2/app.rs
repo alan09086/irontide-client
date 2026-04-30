@@ -33,6 +33,9 @@ use super::preferences::QbtPreferences;
 use super::response::{QbtError, QbtResponse};
 use super::state::QbtState;
 
+/// # Errors
+///
+/// Returns an error if reading session settings fails.
 pub async fn version(State(state): State<QbtState>) -> Result<QbtResponse, QbtError> {
     let settings = state
         .session
@@ -44,6 +47,9 @@ pub async fn version(State(state): State<QbtState>) -> Result<QbtResponse, QbtEr
     ))
 }
 
+/// # Errors
+///
+/// Returns an error if reading session settings fails.
 pub async fn webapi_version(State(state): State<QbtState>) -> Result<QbtResponse, QbtError> {
     let settings = state
         .session
@@ -70,6 +76,10 @@ pub async fn build_info() -> QbtResponse {
 
 /// `GET /api/v2/app/preferences` — projects the live `Settings` onto the qBt
 /// preferences DTO shape that `*arr` clients expect.
+///
+/// # Errors
+///
+/// Returns an error if reading session settings fails.
 pub async fn preferences(State(state): State<QbtState>) -> Result<QbtResponse, QbtError> {
     let settings = state
         .session
@@ -213,6 +223,10 @@ struct QbtPreferencesPatch {
 /// response carries an `X-IronTide-Restart-Pending: <comma-joined-fields>`
 /// header. Immediate fields (rate limiters, peer cap, queueing, ratio
 /// action, `create_subfolder`, `auto_tmm`, `max_ratio`) produce no header.
+///
+/// # Errors
+///
+/// Returns an error if the request body is malformed or settings application fails.
 pub async fn set_preferences(
     State(state): State<QbtState>,
     req: axum::extract::Request,
@@ -304,6 +318,11 @@ pub async fn set_preferences(
 /// Detect JSON body first, fall back to qBt's legacy `json=<...>` URL-encoded
 /// form. Errors as 400 Bad Request in either case with a descriptive prefix.
 fn parse_preferences_patch(bytes: &[u8]) -> Result<QbtPreferencesPatch, QbtError> {
+    #[derive(Deserialize)]
+    struct JsonForm {
+        json: String,
+    }
+
     if bytes.is_empty() {
         return Ok(QbtPreferencesPatch::default());
     }
@@ -312,10 +331,6 @@ fn parse_preferences_patch(bytes: &[u8]) -> Result<QbtPreferencesPatch, QbtError
         return Ok(patch);
     }
 
-    #[derive(Deserialize)]
-    struct JsonForm {
-        json: String,
-    }
     let form: JsonForm = serde_urlencoded::from_bytes(bytes)
         .map_err(|e| QbtError::BadRequest(format!("parse form: {e}")))?;
     serde_json::from_str(&form.json).map_err(|e| QbtError::BadRequest(format!("parse json: {e}")))
@@ -571,9 +586,8 @@ mod tests {
         // `size_of::<usize>()` so we just assert it's in {32, 64} —
         // the canonical values for every production IronTide target.
         let resp = build_info().await;
-        let json = match resp {
-            QbtResponse::Json(v) => v,
-            _ => panic!("build_info must return JSON"),
+        let QbtResponse::Json(json) = resp else {
+            panic!("build_info must return JSON");
         };
         assert_eq!(json["qt"], "6.5.3");
         assert_eq!(json["libtorrent"], "2.0.9");

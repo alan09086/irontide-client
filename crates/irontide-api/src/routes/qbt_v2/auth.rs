@@ -170,18 +170,15 @@ pub async fn login(
     // until after we've recorded the outcome — that way a thundering-herd
     // flood cannot saturate argon2 beyond `max_failed_auth_count`
     // verifies per IP.
-    let admit_guard = match state.brute_force.check_and_admit(
+    let Ok(admit_guard) = state.brute_force.check_and_admit(
         client_ip,
         cfg.max_failed_auth_count,
         cfg.ban_duration_secs,
-    ) {
-        Ok(guard) => guard,
-        Err(_) => {
-            // C4 qBt parity: 403 `Fails.` — same response body as the
-            // wrong-password path so an attacker can't distinguish "am
-            // I banned?" from "did I guess wrong?".
-            return Err(QbtError::Forbidden);
-        }
+    ) else {
+        // C4 qBt parity: 403 `Fails.` — same response body as the
+        // wrong-password path so an attacker can't distinguish "am
+        // I banned?" from "did I guess wrong?".
+        return Err(QbtError::Forbidden);
     };
 
     // Wrap the plaintext in Zeroizing to minimise stack residue. Serde
@@ -367,11 +364,10 @@ fn verify_qbt_password_blocking(
     use argon2::Argon2;
     use argon2::password_hash::{Error as PhcError, PasswordHash, PasswordVerifier};
 
-    let parsed = match PasswordHash::new(password_hash) {
-        Ok(p) => p,
+    let Ok(parsed) = PasswordHash::new(password_hash) else {
         // C2: malformed operator-side hash. Opaque to the client; investigate
         // via server-side logging (logged at the call site if needed).
-        Err(_) => return Ok(false),
+        return Ok(false);
     };
     match Argon2::default().verify_password(plaintext.as_bytes(), &parsed) {
         Ok(()) => Ok(true),

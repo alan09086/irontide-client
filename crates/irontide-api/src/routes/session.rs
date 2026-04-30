@@ -25,6 +25,10 @@ struct CounterEntry {
 ///
 /// Returns a JSON object with overall session metrics such as total
 /// download/upload bytes, peer counts, and disk cache stats.
+///
+/// # Errors
+///
+/// Returns an API error if session stats cannot be retrieved.
 pub async fn get_stats(State(session): State<AppState>) -> ApiResult<impl IntoResponse> {
     let stats = session.session_stats().await?;
     Ok(Json(stats))
@@ -36,6 +40,10 @@ pub async fn get_stats(State(session): State<AppState>) -> ApiResult<impl IntoRe
 /// is either `"counter"` (monotonically increasing) or `"gauge"` (point-
 /// in-time value). The array is indexed identically to the static metric
 /// descriptors.
+///
+/// # Errors
+///
+/// Returns an API error if the counter snapshot cannot be obtained.
 pub async fn get_counters(State(session): State<AppState>) -> ApiResult<impl IntoResponse> {
     let metrics = session_stats_metrics();
     let values = session.counters().snapshot();
@@ -57,6 +65,10 @@ pub async fn get_counters(State(session): State<AppState>) -> ApiResult<impl Int
 /// Get current session settings.
 ///
 /// Returns the full [`Settings`](irontide::session::Settings) object as JSON.
+///
+/// # Errors
+///
+/// Returns an API error if settings cannot be retrieved.
 pub async fn get_settings(State(session): State<AppState>) -> ApiResult<impl IntoResponse> {
     let settings = session.settings().await?;
     Ok(Json(settings))
@@ -69,6 +81,11 @@ pub async fn get_settings(State(session): State<AppState>) -> ApiResult<impl Int
 /// applied to the running session.
 ///
 /// Returns the full updated settings on success.
+///
+/// # Errors
+///
+/// Returns an API error if the patch is invalid, validation fails, or
+/// settings cannot be applied.
 pub async fn patch_settings(
     State(session): State<AppState>,
     Json(patch): Json<serde_json::Value>,
@@ -102,6 +119,10 @@ pub async fn patch_settings(
 ///
 /// Returns **204 No Content** on success. After this call, the session
 /// begins tearing down all torrents and connections.
+///
+/// # Errors
+///
+/// Returns an API error if the shutdown command fails.
 pub async fn shutdown(State(session): State<AppState>) -> ApiResult<impl IntoResponse> {
     session.shutdown().await?;
     Ok(StatusCode::NO_CONTENT)

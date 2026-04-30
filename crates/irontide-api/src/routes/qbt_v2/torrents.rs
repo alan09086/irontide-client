@@ -161,6 +161,10 @@ fn parse_bool_flag(raw: &str) -> bool {
 /// Apply a qBt-style `filter=` term to a `TorrentStats`.
 fn matches_filter(s: &TorrentStats, filter: &str) -> bool {
     match filter {
+        // These are distinct from `_` because `_` is the permissive fallback
+        // for unknown filter values (qBt parity), while these are explicit
+        // no-op states.
+        #[allow(clippy::match_same_arms, reason = "explicit qBt filter values distinct from unknown fallback")]
         "" | "all" => true,
         "downloading" => matches!(
             qbt_state_string(s),
@@ -199,6 +203,9 @@ async fn all_stats(state: &QbtState) -> Result<Vec<TorrentStats>, QbtError> {
 
 // ── GET /api/v2/torrents/info ─────────────────────────────────────────
 
+/// # Errors
+///
+/// Returns an error if fetching torrent stats or serialization fails.
 pub async fn info(
     State(state): State<QbtState>,
     Query(q): Query<ListQuery>,
@@ -284,15 +291,17 @@ pub async fn info(
 
 // ── GET /api/v2/torrents/properties ───────────────────────────────────
 
+/// # Errors
+///
+/// Returns an error if the hash is invalid or the torrent is not found.
 pub async fn properties(
     State(state): State<QbtState>,
     Query(q): Query<HashQuery>,
 ) -> Result<QbtResponse, QbtError> {
     let id =
         Id20::from_hex(&q.hash).map_err(|e| QbtError::BadRequest(format!("invalid hash: {e}")))?;
-    let stats = match state.session.torrent_stats(id).await {
-        Ok(s) => s,
-        Err(_) => return Err(QbtError::NotFound),
+    let Ok(stats) = state.session.torrent_stats(id).await else {
+        return Err(QbtError::NotFound);
     };
     let props = QbtTorrentProperties::from(&stats);
     Ok(QbtResponse::Json(serde_json::to_value(&props).map_err(
@@ -328,6 +337,9 @@ impl AddFormState {
     }
 }
 
+/// # Errors
+///
+/// Returns an error if the request body is malformed or adding the torrent fails.
 pub async fn add(
     State(state): State<QbtState>,
     headers: axum::http::HeaderMap,
@@ -531,6 +543,10 @@ async fn resolve_hashes(state: &QbtState, hashes: Option<&str>) -> Result<Vec<Id
 /// `WebUI` v2 bulk-idempotency semantics we still return 200 OK — individual
 /// torrent errors must not take down a whole bulk action — but the caller
 /// and operator now have a visible failure signal.
+///
+/// # Errors
+///
+/// Returns an error if the request parameters are malformed.
 pub async fn pause(
     State(state): State<QbtState>,
     req: axum::extract::Request,
@@ -548,6 +564,10 @@ pub async fn pause(
 
 /// v0.173.1 Class B + C fix: form-body acceptance + logged session
 /// errors on `resume`. See [`pause`] for the full rationale.
+///
+/// # Errors
+///
+/// Returns an error if the request parameters are malformed.
 pub async fn resume(
     State(state): State<QbtState>,
     req: axum::extract::Request,
@@ -571,6 +591,10 @@ pub async fn resume(
 ///
 /// [`SessionHandle::remove_torrent_with_files`]: irontide::session::SessionHandle::remove_torrent_with_files
 /// [`SessionHandle::remove_torrent`]: irontide::session::SessionHandle::remove_torrent
+///
+/// # Errors
+///
+/// Returns an error if the request parameters are malformed.
 pub async fn delete(
     State(state): State<QbtState>,
     req: axum::extract::Request,
@@ -599,6 +623,10 @@ pub async fn delete(
 
 /// v0.173.1 Class B + C fix: form-body acceptance + logged session
 /// errors on `recheck`. See [`pause`] for the full rationale.
+///
+/// # Errors
+///
+/// Returns an error if the request parameters are malformed.
 pub async fn recheck(
     State(state): State<QbtState>,
     req: axum::extract::Request,
@@ -616,6 +644,10 @@ pub async fn recheck(
 
 /// v0.173.1 Class B + C fix: form-body acceptance + logged session
 /// errors on `reannounce`. See [`pause`] for the full rationale.
+///
+/// # Errors
+///
+/// Returns an error if the request parameters are malformed.
 pub async fn reannounce(
     State(state): State<QbtState>,
     req: axum::extract::Request,
@@ -633,6 +665,9 @@ pub async fn reannounce(
 
 // ── GET /api/v2/transferInfo ──────────────────────────────────────────
 
+/// # Errors
+///
+/// Returns an error if fetching torrent stats fails.
 pub async fn transfer_info(State(state): State<QbtState>) -> Result<QbtResponse, QbtError> {
     // Sum rates and totals across all torrents.
     let stats = all_stats(&state).await?;

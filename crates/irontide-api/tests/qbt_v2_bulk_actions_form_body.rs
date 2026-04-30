@@ -122,11 +122,6 @@ async fn post(
 fn make_test_torrent_bytes() -> Vec<u8> {
     use serde::Serialize;
 
-    let data = vec![0xCD_u8; 16384];
-    let hash = irontide::core::sha1(&data);
-    let mut pieces = Vec::new();
-    pieces.extend_from_slice(hash.as_bytes());
-
     #[derive(Serialize)]
     struct Info {
         #[serde(rename = "piece length")]
@@ -141,6 +136,11 @@ fn make_test_torrent_bytes() -> Vec<u8> {
         announce: String,
         info: Info,
     }
+
+    let data = vec![0xCD_u8; 16384];
+    let hash = irontide::core::sha1(&data);
+    let mut pieces = Vec::new();
+    pieces.extend_from_slice(hash.as_bytes());
 
     let root = Root {
         announce: "http://example.com/announce".into(),

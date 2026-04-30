@@ -192,7 +192,7 @@ async fn qbt_v2_add_magnet_form_without_optional_fields_still_works() {
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
                 body.push(b as char);
             }
-            _ => body.push_str(&format!("%{b:02X}")),
+            _ => { use std::fmt::Write; let _ = write!(body, "%{b:02X}"); }
         }
     }
     let req = Request::builder()

@@ -28,6 +28,10 @@ struct SetSeedModeRequest {
 ///
 /// Returns a JSON array of [`TorrentSummary`](irontide::session::TorrentSummary)
 /// objects, one per torrent managed by the session.
+///
+/// # Errors
+///
+/// Returns an API error if the session is unavailable.
 pub async fn list_torrents(State(session): State<AppState>) -> ApiResult<impl IntoResponse> {
     let summaries = session.list_torrent_summaries().await?;
     Ok(Json(summaries))
@@ -38,6 +42,10 @@ pub async fn list_torrents(State(session): State<AppState>) -> ApiResult<impl In
 /// The `hash` path parameter must be a 40-character hex-encoded SHA-1
 /// info hash (64-character SHA-256 hashes are validated but not yet
 /// supported for lookup).
+///
+/// # Errors
+///
+/// Returns an API error if the hash is invalid or the torrent is not found.
 pub async fn get_torrent(
     State(session): State<AppState>,
     Path(hash): Path<String>,
@@ -58,6 +66,10 @@ pub async fn get_torrent(
 ///
 /// Returns **201 Created** with the resulting [`InfoHashes`](irontide::core::InfoHashes)
 /// as JSON on success.
+///
+/// # Errors
+///
+/// Returns an API error if the body is malformed or the torrent cannot be added.
 pub async fn add_torrent(
     State(session): State<AppState>,
     headers: HeaderMap,
@@ -85,6 +97,10 @@ pub async fn add_torrent(
 /// Remove a torrent from the session.
 ///
 /// Returns **204 No Content** on success.
+///
+/// # Errors
+///
+/// Returns an API error if the hash is invalid or the torrent is not found.
 pub async fn delete_torrent(
     State(session): State<AppState>,
     Path(hash): Path<String>,
@@ -97,6 +113,10 @@ pub async fn delete_torrent(
 /// Pause an active torrent.
 ///
 /// Returns **204 No Content** on success.
+///
+/// # Errors
+///
+/// Returns an API error if the hash is invalid or the torrent is not found.
 pub async fn pause_torrent(
     State(session): State<AppState>,
     Path(hash): Path<String>,
@@ -109,6 +129,10 @@ pub async fn pause_torrent(
 /// Resume a paused torrent.
 ///
 /// Returns **204 No Content** on success.
+///
+/// # Errors
+///
+/// Returns an API error if the hash is invalid or the torrent is not found.
 pub async fn resume_torrent(
     State(session): State<AppState>,
     Path(hash): Path<String>,
@@ -125,6 +149,11 @@ pub async fn resume_torrent(
 /// normal piece scheduling resumes.
 ///
 /// Returns **204 No Content** on success.
+///
+/// # Errors
+///
+/// Returns an API error if the hash is invalid, the JSON body is
+/// malformed, or the torrent is not found.
 pub async fn set_seed_mode(
     State(session): State<AppState>,
     Path(hash): Path<String>,

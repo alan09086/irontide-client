@@ -254,6 +254,7 @@ fn error_fragment(status: StatusCode, message: &str) -> Response {
 
 /// Translate an [`ApiError`] into the HTML fragment the Web UI expects,
 /// preserving the original HTTP status.
+#[allow(clippy::needless_pass_by_value, reason = "callers pass owned errors from match arms")]
 fn api_error_fragment(e: ApiError) -> Response {
     error_fragment(e.status, &e.message)
 }
@@ -717,18 +718,14 @@ pub async fn patch_file_priority(
     Path((hash, idx)): Path<(String, usize)>,
     axum::Form(form): axum::Form<FilePriorityForm>,
 ) -> Response {
-    let id = match crate::extractors::parse_info_hash(&hash) {
-        Ok(id) => id,
-        Err(e) => return api_error_fragment(e),
+    let Ok(id) = crate::extractors::parse_info_hash(&hash) else {
+        return error_fragment(StatusCode::BAD_REQUEST, "invalid info hash");
     };
-    let priority = match parse_priority_form_value(&form.priority) {
-        Some(p) => p,
-        None => {
-            return error_fragment(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "priority must be one of: skip, low, normal, high",
-            );
-        }
+    let Some(priority) = parse_priority_form_value(&form.priority) else {
+        return error_fragment(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "priority must be one of: skip, low, normal, high",
+        );
     };
 
     // Bounds-check idx before hitting the engine — engine errors on
@@ -1049,6 +1046,7 @@ pub async fn serve_static(req: Request) -> impl IntoResponse {
 mod tests {
     use super::*;
 
+    #[allow(clippy::fn_params_excessive_bools, reason = "mirrors PeerInfo wire protocol fields")]
     fn make_peer(
         am_choking: bool,
         am_interested: bool,

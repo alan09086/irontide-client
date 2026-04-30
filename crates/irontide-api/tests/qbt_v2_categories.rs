@@ -149,7 +149,7 @@ fn form_encode(s: &str) -> String {
                 out.push(b as char);
             }
             b' ' => out.push('+'),
-            _ => out.push_str(&format!("%{b:02X}")),
+            _ => { use std::fmt::Write; let _ = write!(out, "%{b:02X}"); }
         }
     }
     out
