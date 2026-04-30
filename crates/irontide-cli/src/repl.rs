@@ -280,9 +280,7 @@ pub(crate) fn run(opts: ShellOpts) -> anyhow::Result<()> {
         // Snapshot the cached state into a local copy so we release
         // the mutex before the blocking readline call.
         let snapshot = cached
-            .lock()
-            .map(|g| *g)
-            .unwrap_or_else(|poisoned| *poisoned.into_inner());
+            .lock().map_or_else(|poisoned| *poisoned.into_inner(), |g| *g);
         let prompt = render_prompt(&snapshot, tty);
         let line = match editor.readline(&prompt) {
             Ok(line) => line,

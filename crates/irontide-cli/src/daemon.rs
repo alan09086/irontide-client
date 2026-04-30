@@ -21,7 +21,7 @@ pub(crate) struct DaemonOpts {
     pub api_bind: String,
     /// Default download directory for torrents added via the API.
     pub download_dir: PathBuf,
-    /// BitTorrent listen port.
+    /// `BitTorrent` listen port.
     pub port: u16,
     /// Disable the DHT.
     pub no_dht: bool,

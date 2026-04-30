@@ -9,7 +9,7 @@
 
 use clap::{Parser, Subcommand};
 
-/// BitTorrent client
+/// `BitTorrent` client
 #[derive(Parser)]
 #[command(name = "irontide", version, about = "BitTorrent client")]
 pub(crate) struct Cli {
@@ -18,7 +18,7 @@ pub(crate) struct Cli {
     pub log_level: String,
 
     /// URL of the irontide daemon HTTP API
-    /// (default: $IRONTIDE_API_URL or http://127.0.0.1:9080)
+    /// (default: $`IRONTIDE_API_URL` or <http://127.0.0.1:9080>)
     #[arg(long, global = true)]
     pub api_url: Option<String>,
 
@@ -61,13 +61,13 @@ pub(crate) enum Command {
         /// parsed today but has no behavioural effect yet)
         #[arg(long)]
         json: bool,
-        /// Use io_uring for disk writes (Linux only, requires io-uring feature)
+        /// Use `io_uring` for disk writes (Linux only, requires io-uring feature)
         #[arg(long)]
         io_uring: bool,
-        /// Enable O_DIRECT for io_uring writes (implies --io-uring)
+        /// Enable `O_DIRECT` for `io_uring` writes (implies --io-uring)
         #[arg(long)]
         direct_io: bool,
-        /// io_uring submission queue depth (default: 256)
+        /// `io_uring` submission queue depth (default: 256)
         #[arg(long)]
         uring_sq_depth: Option<u32>,
         /// Use memory-mapped I/O (mmap) for disk operations
@@ -97,7 +97,7 @@ pub(crate) enum Command {
         /// Max choke rotation evictions per tick (default: 0 = disabled)
         #[arg(long)]
         choke_rotation: Option<u32>,
-        /// Maximum concurrent outbound connects (M147: ConnectPool size)
+        /// Maximum concurrent outbound connects (M147: `ConnectPool` size)
         #[arg(long)]
         max_concurrent_connects: Option<u16>,
         /// Seconds without TCP SYN-ACK before soft reap disconnects (default: 3)
@@ -124,7 +124,7 @@ pub(crate) enum Command {
         /// Default download directory for torrents added via the API
         #[arg(long, default_value = ".")]
         download_dir: std::path::PathBuf,
-        /// BitTorrent listen port
+        /// `BitTorrent` listen port
         #[arg(short, long, default_value_t = 42020)]
         port: u16,
         /// Disable DHT

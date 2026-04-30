@@ -106,8 +106,7 @@ fn setup_daemon() -> DaemonHandle {
         if Instant::now() >= deadline {
             let _ = child.kill();
             panic!(
-                "irontide daemon did not start within {:?} (port {port})",
-                DAEMON_STARTUP_TIMEOUT
+                "irontide daemon did not start within {DAEMON_STARTUP_TIMEOUT:?} (port {port})"
             );
         }
         buf.clear();

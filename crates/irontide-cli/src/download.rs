@@ -290,7 +290,7 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
             tokio::spawn(async move {
                 tokio::select! {
                     _ = tokio::signal::ctrl_c() => {},
-                    _ = tokio::time::sleep(Duration::from_secs(5)) => return,
+                    () = tokio::time::sleep(Duration::from_secs(5)) => return,
                 }
                 fq2.store(true, Ordering::SeqCst);
                 std::process::exit(1);
@@ -306,7 +306,7 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
     let mut total_wanted: u64 = 0;
     let mut last_save = Instant::now();
     let mut last_diagnose = Instant::now();
-    const SAVE_INTERVAL: Duration = Duration::from_secs(60);
+    const SAVE_INTERVAL: Duration = Duration::from_mins(1);
     const POLL_INTERVAL: Duration = Duration::from_secs(1);
     const DIAGNOSE_INTERVAL: Duration = Duration::from_secs(5);
     const NON_TTY_INTERVAL: Duration = Duration::from_secs(10);
@@ -410,8 +410,7 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
                     PresentationMode::TtyLine => {
                         let files_known = info_dto
                             .as_ref()
-                            .map(|i| i.files.len() > 1)
-                            .unwrap_or(false);
+                            .is_some_and(|i| i.files.len() > 1);
                         if files_known {
                             last_block_lines = emit_tty_block(
                                 &stats_dto,
@@ -438,7 +437,7 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
                 if let Ok(peers) = session.get_peer_info(info_hash).await {
                     let stats = session.torrent_stats(info_hash).await.ok();
                     let pipeline = stats.as_ref().and_then(|s| s.pipeline);
-                    let choke_rotations = stats.map(|s| s.choke_rotations).unwrap_or(0);
+                    let choke_rotations = stats.map_or(0, |s| s.choke_rotations);
                     print_pipeline_diagnostics(
                         &peers,
                         start_time.elapsed(),
@@ -472,12 +471,10 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
                 let stats_snapshot = session.torrent_stats(info_hash).await.ok();
                 let unique_attempted = stats_snapshot
                     .as_ref()
-                    .map(|s| s.unique_peers_attempted)
-                    .unwrap_or(0);
+                    .map_or(0, |s| s.unique_peers_attempted);
                 let choke_rotations = stats_snapshot
                     .as_ref()
-                    .map(|s| s.choke_rotations)
-                    .unwrap_or(0);
+                    .map_or(0, |s| s.choke_rotations);
                 let pipeline = stats_snapshot.and_then(|s| s.pipeline);
                 print_final_summary(
                     &peers,
@@ -578,8 +575,7 @@ fn print_pipeline_diagnostics(
     }
     eprintln!("  Choke rotations: {choke_rotations}");
     eprintln!(
-        "  Peers: {} total | {} unchoked | {} downloading | {} choked ({:.0}%)",
-        total, unchoked, downloading, choked, choke_pct,
+        "  Peers: {total} total | {unchoked} unchoked | {downloading} downloading | {choked} choked ({choke_pct:.0}%)",
     );
     eprintln!(
         "  Pipeline: {} in-flight requests | {}/s aggregate",
@@ -589,14 +585,12 @@ fn print_pipeline_diagnostics(
     eprintln!("  Per-peer avg: {per_peer_avg:.2} MB/s ({unchoked} unchoked peers)");
     eprintln!("  Throughput buckets (unchoked peers):");
     eprintln!(
-        "    0 MB/s:       {:3}  |  0.1-0.5 MB/s: {:3}",
-        bucket_0, bucket_mid,
+        "    0 MB/s:       {bucket_0:3}  |  0.1-0.5 MB/s: {bucket_mid:3}",
     );
     eprintln!(
-        "    0-0.1 MB/s:   {:3}  |  0.5-1.0 MB/s: {:3}",
-        bucket_low, bucket_high,
+        "    0-0.1 MB/s:   {bucket_low:3}  |  0.5-1.0 MB/s: {bucket_high:3}",
     );
-    eprintln!("    >=1.0 MB/s:   {:3}", bucket_top);
+    eprintln!("    >=1.0 MB/s:   {bucket_top:3}");
 
     if !top10.is_empty() {
         eprintln!("  Top peers:");
@@ -621,8 +615,7 @@ fn print_pipeline_diagnostics(
     if unchoked > 0 && total_pending < unchoked.saturating_mul(10) {
         let avg_pending = total_pending as f64 / unchoked as f64;
         eprintln!(
-            "  \x1b[1;33mWARN: LOW PIPELINE: {} in-flight for {} unchoked peers (avg {:.1}/peer, expected ~128)\x1b[0m",
-            total_pending, unchoked, avg_pending,
+            "  \x1b[1;33mWARN: LOW PIPELINE: {total_pending} in-flight for {unchoked} unchoked peers (avg {avg_pending:.1}/peer, expected ~128)\x1b[0m",
         );
     }
     if total > 0 && choked as f64 / total as f64 > 0.8 {

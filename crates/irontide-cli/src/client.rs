@@ -18,7 +18,7 @@
 //! # Hash field handling
 //!
 //! The engine's `Id20` / `Id32` implementations serialize via
-//! `serialize_bytes`, which serde_json encodes as an integer array
+//! `serialize_bytes`, which `serde_json` encodes as an integer array
 //! (`[170, 244, ...]`, not a hex string). The DTOs therefore decode
 //! hashes as `Vec<u8>` and expose `info_hash_hex()` helpers that the
 //! caller uses for display / command dispatch. `TorrentSummary` on the
@@ -87,7 +87,7 @@ pub(crate) struct TorrentStatsDto {
     /// Progress fraction in `[0.0, 1.0]`.
     #[serde(default)]
     pub(crate) progress: f64,
-    /// Progress in parts-per-million (0..=1_000_000).
+    /// Progress in parts-per-million (`0..=1_000_000`).
     #[serde(default)]
     pub(crate) progress_ppm: u32,
     /// Verified payload bytes. Mapped from the engine's `total_done`
@@ -325,7 +325,7 @@ pub(crate) struct PeerInfoDto {
     pub(crate) connected_duration_secs: u64,
 }
 
-/// Mirror of `irontide::core::InfoHashes` (core/src/info_hashes.rs:14).
+/// Mirror of `irontide::core::InfoHashes` (`core/src/info_hashes.rs:14`).
 ///
 /// The engine serializes `Id20` / `Id32` as byte arrays (not hex
 /// strings) because their serde impls call `serialize_bytes`. The DTO

@@ -11,7 +11,7 @@ mod progress;
 mod repl;
 mod tui;
 
-use cli_def::*;
+use cli_def::{Cli, Command};
 
 use clap::Parser as _;
 use irontide_config as config;
@@ -365,7 +365,7 @@ where
 mod tests {
     use super::*;
 
-    /// Helper: parse a Download command and return the max_peers field.
+    /// Helper: parse a Download command and return the `max_peers` field.
     fn parse_max_peers(args: &[&str]) -> usize {
         let cli = Cli::try_parse_from(args).expect("failed to parse args");
         match cli.command {

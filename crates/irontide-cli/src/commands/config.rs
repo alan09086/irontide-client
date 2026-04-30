@@ -269,7 +269,7 @@ fn build_default_config_document() -> toml_edit::DocumentMut {
 ///
 /// This works by inserting the key with a prefix decorator that includes
 /// the comment and the `# ` prefix for the key line, then the key itself
-/// is removed after its comment is set. Instead, we use toml_edit's
+/// is removed after its comment is set. Instead, we use `toml_edit`'s
 /// decoration to prefix the key with `# ` to comment it out.
 fn add_commented_field(
     table: &mut toml_edit::Table,
@@ -421,13 +421,13 @@ mod tests {
         let config_path = dir.path().join("config.toml");
         std::fs::write(
             &config_path,
-            r#"
+            r"
 [session]
 listen_port = 42020
 
 [limits]
 max_peers_per_torrent = 64
-"#,
+",
         )
         .expect("write config file");
 
