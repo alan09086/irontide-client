@@ -222,7 +222,7 @@ impl ConfigFile {
 
         // [session]
         if let Some(ref dir) = self.session.download_dir {
-            s.download_dir = dir.clone();
+            s.download_dir.clone_from(dir);
         }
         if let Some(port) = self.session.listen_port {
             s.listen_port = port;
@@ -439,7 +439,7 @@ pub fn write_config_bytes_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
         && !parent.as_os_str().is_empty()
     {
         std::fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create config directory: {parent:?}"))?;
+            .with_context(|| format!("failed to create config directory: {}", parent.display()))?;
     }
 
     // One-time `.bak` snapshot: copy the *existing* file before we overwrite it,
@@ -450,10 +450,10 @@ pub fn write_config_bytes_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
         let bak_path = bak_path_for(path);
         if !bak_path.exists() {
             std::fs::copy(path, &bak_path)
-                .with_context(|| format!("failed to snapshot config to {bak_path:?}"))?;
+                .with_context(|| format!("failed to snapshot config to {}", bak_path.display()))?;
             #[cfg(unix)]
             apply_owner_only_perms(&bak_path)
-                .with_context(|| format!("failed to chmod 0600 {bak_path:?}"))?;
+                .with_context(|| format!("failed to chmod 0600 {}", bak_path.display()))?;
         }
     }
 
@@ -465,16 +465,16 @@ pub fn write_config_bytes_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
     let mut tmp = tempfile::NamedTempFile::new_in(parent)
-        .with_context(|| format!("failed to create temp file in {parent:?}"))?;
+        .with_context(|| format!("failed to create temp file in {}", parent.display()))?;
     std::io::Write::write_all(tmp.as_file_mut(), bytes)
         .context("failed to write config body to temp file")?;
     std::io::Write::flush(tmp.as_file_mut()).context("failed to flush temp file")?;
     #[cfg(unix)]
     apply_owner_only_perms(tmp.path())
-        .with_context(|| format!("failed to chmod 0600 temp config {:?}", tmp.path()))?;
+        .with_context(|| format!("failed to chmod 0600 temp config {}", tmp.path().display()))?;
 
     tmp.persist(path)
-        .map_err(|e| anyhow::anyhow!("failed to atomically rename config to {path:?}: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("failed to atomically rename config to {}: {e}", path.display()))?;
 
     Ok(())
 }
@@ -551,10 +551,10 @@ pub fn migrate_qbt_credentials_in_file(path: &Path) -> Result<QbtFileMigration> 
         return Ok(QbtFileMigration::NoOp);
     }
     let text = std::fs::read_to_string(path)
-        .with_context(|| format!("failed to read config file: {path:?}"))?;
+        .with_context(|| format!("failed to read config file: {}", path.display()))?;
     let mut doc: toml::Value = text
         .parse()
-        .with_context(|| format!("config file is not valid TOML: {path:?}"))?;
+        .with_context(|| format!("config file is not valid TOML: {}", path.display()))?;
 
     // Carve out the `[qbt_compat]` table — exit cleanly if it's not present.
     let Some(qbt) = doc.get_mut("qbt_compat").and_then(|v| v.as_table_mut()) else {
@@ -618,9 +618,9 @@ pub fn save_gui_config(config_path: Option<&Path>, gui: &GuiConfig) -> Result<()
 
     let mut config = if path.exists() {
         let text = std::fs::read_to_string(&path)
-            .with_context(|| format!("failed to read config file: {path:?}"))?;
+            .with_context(|| format!("failed to read config file: {}", path.display()))?;
         toml::from_str::<ConfigFile>(&text)
-            .with_context(|| format!("failed to parse config file: {path:?}"))?
+            .with_context(|| format!("failed to parse config file: {}", path.display()))?
     } else {
         ConfigFile::default()
     };
@@ -644,9 +644,9 @@ pub fn save_session_download_dir(config_path: Option<&Path>, download_dir: &Path
 
     let mut config = if path.exists() {
         let text = std::fs::read_to_string(&path)
-            .with_context(|| format!("failed to read config file: {path:?}"))?;
+            .with_context(|| format!("failed to read config file: {}", path.display()))?;
         toml::from_str::<ConfigFile>(&text)
-            .with_context(|| format!("failed to parse config file: {path:?}"))?
+            .with_context(|| format!("failed to parse config file: {}", path.display()))?
     } else {
         ConfigFile::default()
     };
