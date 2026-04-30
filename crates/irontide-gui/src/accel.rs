@@ -72,7 +72,7 @@ pub fn format_shortcut(parts: &[&str]) -> SharedString {
 /// Match a key event against the platform accelerator.
 ///
 /// `event_text` is the character produced by the event (e.g. `"T"`).
-/// `held_ctrl` and `held_meta` mirror the FocusScope `meta-held` /
+/// `held_ctrl` and `held_meta` mirror the `FocusScope` `meta-held` /
 /// `ctrl-held` properties.
 #[must_use]
 pub fn matches_accel(event_text: &str, held_ctrl: bool, held_meta: bool) -> bool {

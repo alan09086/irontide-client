@@ -318,7 +318,7 @@ pub fn flatten_peer_rows(peers: &[PeerInfo]) -> Vec<PeerRow> {
 /// M178: project the merged tracker list (synthesized pseudo-trackers
 /// + real trackers) into Slint-renderable rows.
 ///
-/// Pseudo-trackers (DHT / PeX / LSD — detected via [`is_pseudo_tracker`])
+/// Pseudo-trackers (DHT / `PeX` / LSD — detected via [`is_pseudo_tracker`])
 /// get a friendly `tier_label` derived from the URL; real trackers show
 /// their tier integer.
 #[must_use]
@@ -338,17 +338,11 @@ pub fn flatten_tracker_rows(trackers: &[TrackerInfo]) -> Vec<TrackerRow> {
                 TrackerStatus::Error => "error",
             };
             let peers = t
-                .seeders
-                .map(|s| s.saturating_add(t.leechers.unwrap_or(0)).to_string())
-                .unwrap_or_else(|| "—".to_owned());
+                .seeders.map_or_else(|| "—".to_owned(), |s| s.saturating_add(t.leechers.unwrap_or(0)).to_string());
             let seeds = t
-                .seeders
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "—".to_owned());
+                .seeders.map_or_else(|| "—".to_owned(), |s| s.to_string());
             let leeches = t
-                .leechers
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "—".to_owned());
+                .leechers.map_or_else(|| "—".to_owned(), |s| s.to_string());
             let next_announce = if is_pseudo {
                 "—".to_owned()
             } else {

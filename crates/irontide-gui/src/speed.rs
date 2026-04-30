@@ -191,14 +191,14 @@ pub fn build_path_commands(scaled: &[i32], viewbox_w: i32, viewbox_h: i32) -> St
     // Right-align: if fewer points than the view width, start from the
     // right edge so the graph grows from right to left.
     let step = if n > 1 {
-        viewbox_w as f64 / (n - 1) as f64
+        f64::from(viewbox_w) / (n - 1) as f64
     } else {
         0.0
     };
     let x_offset = if n > 1 {
-        viewbox_w as f64 - step * (n - 1) as f64
+        f64::from(viewbox_w) - step * (n - 1) as f64
     } else {
-        viewbox_w as f64
+        f64::from(viewbox_w)
     };
     for (i, &y) in scaled.iter().enumerate() {
         let x = (x_offset + step * i as f64) as i32;

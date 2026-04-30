@@ -479,9 +479,7 @@ async fn handle_add_torrent_file(
         params = params.download_dir(dir);
     }
     let filename = std::path::Path::new(&path)
-        .file_name()
-        .map(|f| f.to_string_lossy().into_owned())
-        .unwrap_or_else(|| path.clone());
+        .file_name().map_or_else(|| path.clone(), |f| f.to_string_lossy().into_owned());
     match params.add_to(session).await {
         Ok(_id) => {
             // Clear file-selection state in the dialog.
@@ -625,16 +623,13 @@ async fn gather_delete_info(
 fn delete_torrent_files(save_path: &std::path::Path, name: &str, file_count: usize) {
     let torrent_path = save_path.join(name);
 
-    let canonical = match torrent_path.canonicalize() {
-        Ok(p) => p,
-        Err(_) => {
-            // File may not exist (magnet that never downloaded anything).
-            tracing::debug!(
-                path = %torrent_path.display(),
-                "cannot canonicalize torrent path, skipping file deletion"
-            );
-            return;
-        }
+    let canonical = if let Ok(p) = torrent_path.canonicalize() { p } else {
+        // File may not exist (magnet that never downloaded anything).
+        tracing::debug!(
+            path = %torrent_path.display(),
+            "cannot canonicalize torrent path, skipping file deletion"
+        );
+        return;
     };
 
     let canonical_save = match save_path.canonicalize() {

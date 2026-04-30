@@ -52,8 +52,7 @@ pub(crate) fn format_relative_time(unix_secs: i64) -> String {
     }
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
+        .map_or(0, |d| d.as_secs() as i64);
     let delta = now - unix_secs;
     let abs = delta.unsigned_abs();
     let label = if abs < 60 {
@@ -128,7 +127,7 @@ mod tests {
         let three_hours_ago = now - 3 * 3600;
         let s = format_relative_time(three_hours_ago);
         assert!(
-            s.ends_with(" ago") && s.contains("h"),
+            s.ends_with(" ago") && s.contains('h'),
             "expected '<n>h ago', got {s}"
         );
     }
@@ -142,7 +141,7 @@ mod tests {
         let two_days_from_now = now + 2 * 86_400;
         let s = format_relative_time(two_days_from_now);
         assert!(
-            s.starts_with("in ") && s.contains("d"),
+            s.starts_with("in ") && s.contains('d'),
             "expected 'in <n>d', got {s}"
         );
     }

@@ -75,9 +75,7 @@ fn build_library_rows(counts: &SectionCounts, active: &SidebarPredicate) -> Vec<
         let show_dot = matches!(filter, LibraryFilter::Errored) && count > 0;
         // Slot 1..=8 maps onto the 8 Library filters.
         let shortcut = u8::try_from(slot.saturating_add(1))
-            .ok()
-            .map(sidebar_shortcut_label)
-            .unwrap_or_else(SharedString::new);
+            .ok().map_or_else(SharedString::new, sidebar_shortcut_label);
         out.push(SidebarRow {
             token: section.to_token().into(),
             label: library_label(filter).into(),

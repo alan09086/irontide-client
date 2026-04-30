@@ -222,7 +222,7 @@ pub struct AppState {
     pub sidebar_dirty: bool,
     /// Per-section sidebar collapsed flags (M173 Lane A task A9).
     /// Mirrors the four `<section>-collapsed` Slint properties on
-    /// MainWindow. Initialised from `[gui.sidebar]` at startup,
+    /// `MainWindow`. Initialised from `[gui.sidebar]` at startup,
     /// re-read at shutdown to compose the saved config.
     pub sidebar_library_collapsed: bool,
     /// Categories collapsed flag — see [`Self::sidebar_library_collapsed`].
@@ -524,7 +524,7 @@ impl AppState {
         true
     }
 
-    /// Shift+click: select range from last_clicked to this hash.
+    /// Shift+click: select range from `last_clicked` to this hash.
     /// Uses `current_order` to determine the range.
     pub fn selection_shift_click(&mut self, info_hash: &str) {
         let Some(anchor) = self.last_clicked.as_ref() else {

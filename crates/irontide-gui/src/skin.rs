@@ -161,7 +161,7 @@ pub fn default_inspector_shown(layout: Layout) -> bool {
 /// [`SkinSettings::resolve`] → [`SkinSettings::apply`] to mutate the
 /// Slint `Tokens` global on each change.
 ///
-/// Structural axes (layout, l3_sidebar_mode, inspector_shown) bypass
+/// Structural axes (layout, `l3_sidebar_mode`, `inspector_shown`) bypass
 /// resolve/apply: they are persisted via [`SkinSettings::populate_gui_config`]
 /// and consumed directly by `main.slint` property bindings, since they
 /// change the layout tree rather than design-token values.
@@ -328,8 +328,8 @@ pub struct ResolvedTokens {
     pub border_width_thick: f32,
 
     // ── Shadows (flat triples; Slint struct rebuilt at apply time) ──
-    /// Small shadow (alpha, blur, offset_y) — alpha is the premultiplied
-    /// hex colour (`[r, g, b, a]`), blur in px, offset_y in px.
+    /// Small shadow (alpha, blur, `offset_y`) — alpha is the premultiplied
+    /// hex colour (`[r, g, b, a]`), blur in px, `offset_y` in px.
     pub shadow_sm_rgba: [u8; 4],
     /// Small shadow blur radius.
     pub shadow_sm_blur: f32,

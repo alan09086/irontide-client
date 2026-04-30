@@ -1,6 +1,6 @@
 //! Sidebar information architecture (M173 Lane A).
 //!
-//! Implements the four sidebar sections defined in the IronTide GUI design
+//! Implements the four sidebar sections defined in the `IronTide` GUI design
 //! spec §3:
 //!
 //! - **Library** — eight built-in filters (`All`, `Downloading`, `Seeding`,
@@ -37,7 +37,7 @@
 //! `SessionHandle::tracker_list`, `SessionHandle::list_torrent_summaries`).
 //!
 //! The module-level `#![allow(dead_code)]` lifts in task A8 once the
-//! MainWindow wires the sidebar event channel through to the model. Tests
+//! `MainWindow` wires the sidebar event channel through to the model. Tests
 //! exercise every public item from the start.
 
 #![allow(dead_code)]
@@ -385,7 +385,7 @@ impl RowView {
 /// optional port (`:6969`), and the path/query/fragment.
 #[must_use]
 pub fn tracker_host(url: &str) -> Option<String> {
-    let after_scheme = url.split_once("://").map(|(_, rest)| rest).unwrap_or(url);
+    let after_scheme = url.split_once("://").map_or(url, |(_, rest)| rest);
     if after_scheme.is_empty() {
         return None;
     }
