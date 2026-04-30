@@ -266,30 +266,41 @@ component FileTreeRowView inherits Rectangle {
     callback folder-toggled(string);
     callback clicked-with-modifiers(int, bool, bool);
     callback right-clicked(int, length, length);
+    callback folder-right-clicked(string, length, length);
 
     height: Tokens.row-h;
     background: root.data.selected
         ? Tokens.accent-bg-soft
         : (row-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1);
 
-    // Whole-row touch area, only firing on file rows. Folder triangle
-    // touch sits on top of this and consumes the click via stacking.
+    // Whole-row touch area. Folder left-clicks are no-ops (folder toggle
+    // handled by the inner triangle TouchArea). Folder right-clicks fire
+    // folder-right-clicked for folder-level priority targeting (F9).
     row-touch := TouchArea {
-        enabled: !root.data.is-folder;
         pointer-event(e) => {
             if (e.kind == PointerEventKind.up) {
-                if (e.button == PointerEventButton.right) {
-                    root.right-clicked(
-                        root.data.index,
-                        self.absolute-position.x + self.mouse-x,
-                        self.absolute-position.y + self.mouse-y,
-                    );
-                } else if (e.button == PointerEventButton.left) {
-                    root.clicked-with-modifiers(
-                        root.data.index,
-                        e.modifiers.control,
-                        e.modifiers.shift,
-                    );
+                if (root.data.is-folder) {
+                    if (e.button == PointerEventButton.right) {
+                        root.folder-right-clicked(
+                            root.data.key,
+                            self.absolute-position.x + self.mouse-x,
+                            self.absolute-position.y + self.mouse-y,
+                        );
+                    }
+                } else {
+                    if (e.button == PointerEventButton.right) {
+                        root.right-clicked(
+                            root.data.index,
+                            self.absolute-position.x + self.mouse-x,
+                            self.absolute-position.y + self.mouse-y,
+                        );
+                    } else if (e.button == PointerEventButton.left) {
+                        root.clicked-with-modifiers(
+                            root.data.index,
+                            e.modifiers.control,
+                            e.modifiers.shift,
+                        );
+                    }
                 }
             }
         }
@@ -374,6 +385,8 @@ component ContentTab inherits VerticalLayout {
     // M178: file selection + per-file priority popup callbacks.
     callback file-clicked(int /*index*/, bool /*ctrl*/, bool /*shift*/);
     callback file-right-clicked(int /*index*/, length /*x*/, length /*y*/);
+    // F9: folder-level priority targeting.
+    callback folder-right-clicked(string /*key*/, length /*x*/, length /*y*/);
 
     spacing: Tokens.sp-3;
     padding: Tokens.sp-5;
@@ -437,6 +450,7 @@ component ContentTab inherits VerticalLayout {
                     folder-toggled(k) => { root.folder-toggled(k); }
                     clicked-with-modifiers(i, c, s) => { root.file-clicked(i, c, s); }
                     right-clicked(i, x, y) => { root.file-right-clicked(i, x, y); }
+                    folder-right-clicked(k, x, y) => { root.folder-right-clicked(k, x, y); }
                 }
             }
         }
@@ -860,6 +874,8 @@ export component DetailPane inherits Rectangle {
     // M178: per-file selection / popup signal.
     callback file-clicked(int /*index*/, bool /*ctrl*/, bool /*shift*/);
     callback file-right-clicked(int /*index*/, length /*x*/, length /*y*/);
+    // F9: folder-level priority targeting.
+    callback folder-right-clicked(string /*key*/, length /*x*/, length /*y*/);
 
     // M178: Peers / Trackers / HTTP Sources tab inputs.
     in property <[PeerRow]> peers;
@@ -951,6 +967,7 @@ export component DetailPane inherits Rectangle {
             sequential-toggled(b) => { root.sequential-toggled(b); }
             file-clicked(i, c, s) => { root.file-clicked(i, c, s); }
             file-right-clicked(i, x, y) => { root.file-right-clicked(i, x, y); }
+            folder-right-clicked(k, x, y) => { root.folder-right-clicked(k, x, y); }
         }
         if root.active-tab == "Peers" : PeersTab {
             peers: root.peers;

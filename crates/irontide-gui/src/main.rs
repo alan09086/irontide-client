@@ -613,6 +613,36 @@ fn main() -> Result<(), error::GuiError> {
         });
     }
     {
+        // F9: Folder right-click → resolve folder path to contained file
+        // indices, store as pending target, show priority popup.
+        let cb_state = state.clone();
+        let cb_weak = main_window.as_weak();
+        main_window.on_detail_folder_right_clicked(move |key, x, y| {
+            let key_str = key.to_string();
+            // Key format: "{info_hash}/{folder_path}"
+            let Some(slash_pos) = key_str.find('/') else {
+                return;
+            };
+            let info_hash = key_str[..slash_pos].to_owned();
+            let folder_path = std::path::Path::new(&key_str[slash_pos + 1..]);
+
+            let mut st = cb_state.lock();
+            let indices =
+                crate::detail::collect_folder_file_indices(&st.detail_flat_files, folder_path);
+            if indices.is_empty() {
+                return;
+            }
+            st.pending_file_priority_target = Some((info_hash, indices));
+            drop(st);
+
+            let _ = cb_weak.upgrade_in_event_loop(move |win| {
+                win.set_file_priority_popup_x(x);
+                win.set_file_priority_popup_y(y);
+                win.set_show_file_priority_popup(true);
+            });
+        });
+    }
+    {
         // Trackers tab "Reannounce" button click — torrent-wide
         // reannounce until the engine exposes a per-URL endpoint
         // (M180 polish).
@@ -695,6 +725,22 @@ fn main() -> Result<(), error::GuiError> {
             if let Some(win) = weak.upgrade() {
                 win.set_current_layout_label(label.clone());
                 win.set_inspector_shown(inspector_shown);
+            }
+        });
+    }
+
+    // F7: Ctrl+Shift+L — cycle layout L1→L2→L3→L1. Reuses the existing
+    // tweaks_layout_changed handler to avoid duplicating layout-change logic.
+    {
+        let weak = main_window.as_weak();
+        let cb_state = state.clone();
+        main_window.on_layout_cycle(move || {
+            let label = {
+                let st = cb_state.lock();
+                st.skin.layout.cycle().label().to_owned()
+            };
+            if let Some(win) = weak.upgrade() {
+                win.invoke_tweaks_layout_changed(label.into());
             }
         });
     }

@@ -248,6 +248,8 @@ export component MainWindow inherits Window {
     // M178: per-file selection + priority popup signals.
     callback detail-file-clicked(/* index */ int, /* ctrl */ bool, /* shift */ bool);
     callback detail-file-right-clicked(/* index */ int, /* x */ length, /* y */ length);
+    // F9: folder-level priority targeting.
+    callback detail-folder-right-clicked(/* key */ string, /* x */ length, /* y */ length);
     callback detail-reannounce(/* tracker url */ string);
     callback file-priority-selected(/* priority repr */ int);
     callback file-priority-dismissed();
@@ -366,6 +368,7 @@ export component MainWindow inherits Window {
     in-out property <string> current-l3-sidebar-mode: "icons";
     in-out property <bool> inspector-shown: true;
     callback tweaks-layout-changed(string);
+    callback layout-cycle();
     callback inspector-toggle();
     callback l3-sidebar-toggle();
 
@@ -432,6 +435,12 @@ export component MainWindow inherits Window {
                 if root.shift-held && (root.ctrl-held || root.meta-held)
                    && (event.text == "s" || event.text == "S") {
                     root.l3-sidebar-toggle();
+                    return accept;
+                }
+                // F7: Ctrl+Shift+L (Cmd+Shift+L) — cycle layout L1→L2→L3→L1.
+                if root.shift-held && (root.ctrl-held || root.meta-held)
+                   && (event.text == "l" || event.text == "L") {
+                    root.layout-cycle();
                     return accept;
                 }
                 // M176: Ctrl+I (Cmd+I) — toggle the inspector pane.
@@ -625,6 +634,7 @@ export component MainWindow inherits Window {
                             sequential-toggled(b) => { root.detail-sequential-toggled(b); }
                             file-clicked(i, c, s) => { root.detail-file-clicked(i, c, s); }
                             file-right-clicked(i, x, y) => { root.detail-file-right-clicked(i, x, y); }
+                            folder-right-clicked(k, x, y) => { root.detail-folder-right-clicked(k, x, y); }
                             reannounce-clicked(u) => { root.detail-reannounce(u); }
                         }
                     }
@@ -709,6 +719,7 @@ export component MainWindow inherits Window {
                         sequential-toggled(b) => { root.detail-sequential-toggled(b); }
                         file-clicked(i, c, s) => { root.detail-file-clicked(i, c, s); }
                         file-right-clicked(i, x, y) => { root.detail-file-right-clicked(i, x, y); }
+                        folder-right-clicked(k, x, y) => { root.detail-folder-right-clicked(k, x, y); }
                         reannounce-clicked(u) => { root.detail-reannounce(u); }
                     }
                 }
@@ -930,6 +941,7 @@ export component MainWindow inherits Window {
             sequential-toggled(b) => { root.detail-sequential-toggled(b); }
             file-clicked(i, c, s) => { root.detail-file-clicked(i, c, s); }
             file-right-clicked(i, x, y) => { root.detail-file-right-clicked(i, x, y); }
+            folder-right-clicked(k, x, y) => { root.detail-folder-right-clicked(k, x, y); }
             reannounce-clicked(u) => { root.detail-reannounce(u); }
         }
     }

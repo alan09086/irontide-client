@@ -418,6 +418,23 @@ pub fn priority_label(p: FilePriority) -> &'static str {
     }
 }
 
+/// Resolve a folder path to the file indices it contains (recursive).
+///
+/// `flat` must be in file-index order (as produced by `build_flat`), so
+/// positional index == file index. Uses `starts_with` for recursive
+/// inclusion of all descendants.
+#[must_use]
+pub fn collect_folder_file_indices(
+    flat: &[FlatFileEntry],
+    folder_path: &Path,
+) -> Vec<usize> {
+    flat.iter()
+        .enumerate()
+        .filter(|(_, e)| e.path.starts_with(folder_path))
+        .map(|(i, _)| i)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -587,6 +604,36 @@ mod tests {
             "folder progress must aggregate child progress: got {}",
             out[0].progress
         );
+    }
+
+    // ── collect_folder_file_indices (F9) ──────────────────────────────
+
+    #[test]
+    fn folder_indices_collects_all_descendants() {
+        let flat = vec![
+            flat_entry("readme.txt", 100, 100, FilePriority::Normal),
+            flat_entry("video/intro.mp4", 50_000, 25_000, FilePriority::High),
+            flat_entry("video/extras/bts.mkv", 80_000, 0, FilePriority::Skip),
+            flat_entry("audio/track.flac", 10_000, 10_000, FilePriority::Normal),
+        ];
+        let indices = collect_folder_file_indices(&flat, Path::new("video"));
+        assert_eq!(indices, vec![1, 2]);
+    }
+
+    #[test]
+    fn folder_indices_no_match_returns_empty() {
+        let flat = vec![
+            flat_entry("readme.txt", 100, 100, FilePriority::Normal),
+            flat_entry("video/intro.mp4", 50_000, 25_000, FilePriority::High),
+        ];
+        let indices = collect_folder_file_indices(&flat, Path::new("audio"));
+        assert!(indices.is_empty());
+    }
+
+    #[test]
+    fn folder_indices_empty_input_returns_empty() {
+        let indices = collect_folder_file_indices(&[], Path::new("video"));
+        assert!(indices.is_empty());
     }
 
     // ── priority_label ────────────────────────────────────────────────

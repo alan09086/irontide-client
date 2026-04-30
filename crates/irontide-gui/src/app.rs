@@ -253,6 +253,10 @@ pub struct AppState {
     /// torrent-change. Last-write-wins (Issue 2.1) — a second right-click
     /// overwrites the previous pending target.
     pub pending_file_priority_target: Option<(String, Vec<usize>)>,
+    /// Cached flat file list for the currently selected torrent. Used by
+    /// `collect_folder_file_indices` to resolve folder paths to contained
+    /// file indices for folder-level priority targeting (F9).
+    pub detail_flat_files: Vec<irontide_format::FlatFileEntry>,
 }
 
 impl AppState {
@@ -285,6 +289,7 @@ impl AppState {
             detail_files_selected: HashSet::new(),
             last_clicked_file_index: None,
             pending_file_priority_target: None,
+            detail_flat_files: Vec::new(),
         }
     }
 
@@ -398,6 +403,7 @@ impl AppState {
         self.detail_files_selected.clear();
         self.last_clicked_file_index = None;
         self.pending_file_priority_target = None;
+        self.detail_flat_files.clear();
     }
 
     /// M178 (TODO-1): apply a multi-select click to the file selection.

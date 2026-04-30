@@ -310,6 +310,8 @@ pub async fn poll_loop(
                                 session.file_priorities(id).await.unwrap_or_default();
                             let progress = session.file_progress(id).await.unwrap_or_default();
                             let flat = irontide_format::build_flat(info, &progress, &priorities);
+                            // F9: cache flat files for folder-level priority resolution.
+                            state.lock().detail_flat_files = flat.clone();
                             crate::detail::flatten_files(
                                 &flat,
                                 &detail_expanded,
