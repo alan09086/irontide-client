@@ -108,6 +108,15 @@ impl Layout {
         }
     }
 
+    #[must_use]
+    pub fn cycle(self) -> Layout {
+        match self {
+            Layout::L1 => Layout::L2,
+            Layout::L2 => Layout::L3,
+            Layout::L3 => Layout::L1,
+        }
+    }
+
     /// Parse from a friendly label (Tweaks pill / toolbar callback).
     /// Returns `None` on an unknown label; caller decides whether to warn.
     #[must_use]
@@ -780,6 +789,13 @@ mod tests {
         assert_eq!(Layout::from_label("Compact"), None);
         assert_eq!(Layout::from_label(""), None);
         assert_eq!(Layout::from_label("L1"), None); // tokens are not labels
+    }
+
+    #[test]
+    fn layout_cycle_l1_l2_l3_l1() {
+        assert_eq!(Layout::L1.cycle(), Layout::L2);
+        assert_eq!(Layout::L2.cycle(), Layout::L3);
+        assert_eq!(Layout::L3.cycle(), Layout::L1);
     }
 
     #[test]
