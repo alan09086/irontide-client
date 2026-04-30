@@ -667,8 +667,7 @@ pub fn save_session_download_dir(config_path: Option<&Path>, download_dir: &Path
 pub fn build_runtime(settings: &Settings) -> tokio::runtime::Runtime {
     let worker_count = if settings.runtime_worker_threads == 0 {
         std::thread::available_parallelism()
-            .map(|n| n.get().min(8))
-            .unwrap_or(4)
+            .map_or(4, |n| n.get().min(8))
     } else {
         settings.runtime_worker_threads
     };
@@ -724,14 +723,14 @@ mod tests {
 
     #[test]
     fn partial_config_overrides_only_specified_fields() {
-        let toml_str = r#"
+        let toml_str = r"
 [session]
 listen_port = 12345
 workers = 2
 
 [limits]
 max_peers_per_torrent = 64
-"#;
+";
         let config: ConfigFile = toml::from_str(toml_str).expect("valid TOML");
         let settings = config.to_settings_overrides();
 
@@ -829,13 +828,13 @@ max_peers_per_torrent = 64
         let config_path = dir.path().join("config.toml");
         std::fs::write(
             &config_path,
-            r#"
+            r"
 [session]
 listen_port = 31337
 
 [limits]
 max_peers_per_torrent = 42
-"#,
+",
         )
         .expect("write config file");
 
@@ -893,11 +892,11 @@ max_peers_per_torrent = 42
         let config_path = dir.path().join("config.toml");
         std::fs::write(
             &config_path,
-            r#"
+            r"
 [session]
 listen_port = 10000
 workers = 8
-"#,
+",
         )
         .expect("write config file");
 
@@ -923,10 +922,10 @@ workers = 8
         let config_path = dir.path().join("config.toml");
         std::fs::write(
             &config_path,
-            r#"
+            r"
 [session]
 listen_port = 10000
-"#,
+",
         )
         .expect("write config file");
 
@@ -950,10 +949,10 @@ listen_port = 10000
         let config_path = dir.path().join("config.toml");
         std::fs::write(
             &config_path,
-            r#"
+            r"
 [limits]
 max_peers_per_torrent = 50
-"#,
+",
         )
         .expect("write config file");
 
@@ -1170,10 +1169,10 @@ max_peers_per_torrent = 50
 
     #[test]
     fn test_gui_config_default_absent() {
-        let toml_str = r#"
+        let toml_str = r"
 [session]
 listen_port = 12345
-"#;
+";
         let config: ConfigFile = toml::from_str(toml_str).expect("valid TOML");
         assert_eq!(
             config.gui,
@@ -1190,10 +1189,10 @@ listen_port = 12345
         // Write a file with [session] already present.
         std::fs::write(
             &config_path,
-            r#"
+            r"
 [session]
 listen_port = 42020
-"#,
+",
         )
         .expect("write initial config");
 
