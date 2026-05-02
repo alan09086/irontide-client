@@ -127,10 +127,10 @@ impl LibraryFilter {
                     TorrentState::Complete | TorrentState::Seeding | TorrentState::Sharing
                 ) || row.progress >= 1.0
             }
-            Self::Paused => matches!(row.state, TorrentState::Paused),
+            Self::Paused => matches!(row.state, TorrentState::Paused | TorrentState::Queued),
             Self::Active => row.download_rate > 0 || row.upload_rate > 0,
             Self::Inactive => {
-                !matches!(row.state, TorrentState::Paused)
+                !matches!(row.state, TorrentState::Paused | TorrentState::Queued)
                     && row.download_rate == 0
                     && row.upload_rate == 0
             }
@@ -847,8 +847,9 @@ mod tests {
     }
 
     #[test]
-    fn library_paused_matches_paused_only() {
+    fn library_paused_matches_paused_and_queued() {
         assert!(LibraryFilter::Paused.matches(&row(TorrentState::Paused, 0.5)));
+        assert!(LibraryFilter::Paused.matches(&row(TorrentState::Queued, 0.5)));
         assert!(!LibraryFilter::Paused.matches(&row(TorrentState::Downloading, 0.5)));
     }
 
@@ -865,13 +866,18 @@ mod tests {
     }
 
     #[test]
-    fn library_inactive_excludes_paused() {
+    fn library_inactive_excludes_paused_and_queued() {
         let r = row(TorrentState::Downloading, 0.5); // both rates 0
         assert!(LibraryFilter::Inactive.matches(&r));
         let r_paused = row(TorrentState::Paused, 0.5);
         assert!(
             !LibraryFilter::Inactive.matches(&r_paused),
             "Paused must not count as Inactive (otherwise counted twice)"
+        );
+        let r_queued = row(TorrentState::Queued, 0.5);
+        assert!(
+            !LibraryFilter::Inactive.matches(&r_queued),
+            "Queued must not count as Inactive (otherwise counted twice)"
         );
         let mut r_active = row(TorrentState::Downloading, 0.5);
         r_active.download_rate = 1;

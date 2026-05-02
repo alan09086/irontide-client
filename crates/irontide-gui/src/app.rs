@@ -598,7 +598,7 @@ impl ContextMenuState {
         let mut any_fetching_or_checking = false;
 
         for &state_str in states {
-            if state_str == "paused" {
+            if state_str == "paused" || state_str == "queued" {
                 any_paused = true;
             } else {
                 any_not_paused = true;
@@ -851,6 +851,23 @@ mod tests {
         assert!(state.can_seed_only);
         assert!(!state.can_resume_download);
         assert!(state.can_recheck);
+    }
+
+    #[test]
+    fn ctx_menu_all_queued() {
+        let state = ContextMenuState::compute(&["queued", "queued"]);
+        assert!(!state.can_pause);
+        assert!(state.can_resume);
+        assert!(state.can_seed_only);
+        assert!(!state.can_resume_download);
+        assert!(state.can_recheck);
+    }
+
+    #[test]
+    fn ctx_menu_mixed_queued_downloading() {
+        let state = ContextMenuState::compute(&["queued", "downloading"]);
+        assert!(state.can_pause);
+        assert!(state.can_resume);
     }
 
     #[test]

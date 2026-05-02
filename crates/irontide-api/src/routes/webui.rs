@@ -266,6 +266,7 @@ fn state_css_class(state: &str) -> &'static str {
         "seeding" => "seeding",
         "complete" => "complete",
         "paused" => "paused",
+        "queued" => "queued",
         "stopped" => "stopped",
         "checking" => "checking",
         "fetching metadata" => "fetching",
@@ -319,7 +320,7 @@ pub async fn torrent_list_fragment(State(session): State<AppState>) -> impl Into
         .map(|t| {
             let state_label = irontide_format::format_state(&t.state, t.user_seed_mode).to_owned();
             let css_class = state_css_class(&state_label).to_owned();
-            let is_paused = matches!(t.state, TorrentState::Paused);
+            let is_paused = matches!(t.state, TorrentState::Paused | TorrentState::Queued);
             let user_seed_mode = t.user_seed_mode;
             let info_hash = t.info_hash.clone();
             TorrentRow {

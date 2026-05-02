@@ -101,7 +101,7 @@ pub fn check_all_paused(hashes: &HashSet<String>) -> bool {
                 && hashes.contains(row.info_hash.as_str())
             {
                 found_any = true;
-                if row.state.as_str() != "paused" {
+                if row.state.as_str() != "paused" && row.state.as_str() != "queued" {
                     return false;
                 }
             }
@@ -943,6 +943,7 @@ pub fn state_color(state: TorrentState, user_seed_mode: bool) -> slint::Color {
         TorrentState::Seeding => slint::Color::from_rgb_u8(0x21, 0x96, 0xf3),     // #2196f3
         TorrentState::Complete => slint::Color::from_rgb_u8(0x66, 0xbb, 0x6a),    // #66bb6a
         TorrentState::Paused => slint::Color::from_rgb_u8(0x9e, 0x9e, 0x9e),      // #9e9e9e
+        TorrentState::Queued => slint::Color::from_rgb_u8(0xff, 0xb3, 0x00),      // #ffb300 amber
         TorrentState::Checking | TorrentState::FetchingMetadata => {
             slint::Color::from_rgb_u8(0xff, 0x98, 0x00) // #ff9800
         }
@@ -1111,6 +1112,7 @@ mod tests {
             (TorrentState::Seeding, (0x21, 0x96, 0xf3)),
             (TorrentState::Complete, (0x66, 0xbb, 0x6a)),
             (TorrentState::Paused, (0x9e, 0x9e, 0x9e)),
+            (TorrentState::Queued, (0xff, 0xb3, 0x00)),
             (TorrentState::Checking, (0xff, 0x98, 0x00)),
             (TorrentState::FetchingMetadata, (0xff, 0x98, 0x00)),
             (TorrentState::Stopped, (0xf4, 0x43, 0x36)),

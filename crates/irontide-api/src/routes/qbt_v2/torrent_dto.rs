@@ -34,6 +34,14 @@ pub const QBT_ETA_INFINITE: i64 = 8_640_000;
 /// `downloading`. Real qBt's Web UI and *arr clients depend on these strings.
 #[must_use] 
 pub fn qbt_state_string(s: &TorrentStats) -> &'static str {
+    // Queued takes precedence (system-managed pause — maps to qBt's queued states).
+    if s.is_queued {
+        return if s.progress >= 1.0 {
+            "queuedUP"
+        } else {
+            "queuedDL"
+        };
+    }
     // Paused takes precedence over other flags (real qBt behaviour).
     if s.is_paused {
         return if s.progress >= 1.0 {
@@ -69,7 +77,7 @@ pub fn qbt_state_string(s: &TorrentStats) -> &'static str {
                 "stalledUP"
             }
         }
-        TorrentState::Paused | TorrentState::Stopped => {
+        TorrentState::Paused | TorrentState::Queued | TorrentState::Stopped => {
             // Already handled above; kept for match exhaustiveness.
             "pausedDL"
         }
@@ -367,6 +375,22 @@ mod tests {
         assert_eq!(qbt_state_string(&s), "pausedDL");
         s.progress = 1.0;
         assert_eq!(qbt_state_string(&s), "pausedUP");
+    }
+
+    #[test]
+    fn qbt_state_string_queued_dl() {
+        let mut s = sample_stats();
+        s.is_queued = true;
+        s.progress = 0.3;
+        assert_eq!(qbt_state_string(&s), "queuedDL");
+    }
+
+    #[test]
+    fn qbt_state_string_queued_up() {
+        let mut s = sample_stats();
+        s.is_queued = true;
+        s.progress = 1.0;
+        assert_eq!(qbt_state_string(&s), "queuedUP");
     }
 
     #[test]

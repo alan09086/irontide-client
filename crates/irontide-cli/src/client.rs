@@ -202,6 +202,7 @@ fn render_torrent_state(state: irontide::session::TorrentState) -> String {
         S::Complete => "Complete",
         S::Seeding => "Seeding",
         S::Paused => "Paused",
+        S::Queued => "Queued",
         S::Stopped => "Stopped",
         S::Sharing => "Sharing",
     }

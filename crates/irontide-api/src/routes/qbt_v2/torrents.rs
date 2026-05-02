@@ -172,7 +172,7 @@ fn matches_filter(s: &TorrentStats, filter: &str) -> bool {
         ),
         "seeding" => matches!(qbt_state_string(s), "uploading" | "stalledUP" | "forcedUP"),
         "completed" => s.progress >= 1.0,
-        "paused" => s.is_paused,
+        "paused" => s.is_paused || s.is_queued,
         "active" => s.download_rate > 0 || s.upload_rate > 0,
         "inactive" => s.download_rate == 0 && s.upload_rate == 0,
         "resumed" => !s.is_paused,
