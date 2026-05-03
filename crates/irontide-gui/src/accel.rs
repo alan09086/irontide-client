@@ -99,6 +99,13 @@ pub fn sidebar_shortcut_label(n: u8) -> SharedString {
     format_shortcut(&refs)
 }
 
+/// Returns the platform-appropriate shortcut label for the command palette.
+#[must_use]
+#[allow(dead_code)]
+pub fn palette_shortcut_label() -> SharedString {
+    format_shortcut(&["K"])
+}
+
 /// Try to interpret a Slint key event as a sidebar `Ctrl+N` / `⌘N`
 /// shortcut. Returns the slot index `1..=9` on match, or `None` for
 /// any other key.

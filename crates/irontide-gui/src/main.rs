@@ -5,6 +5,7 @@ mod columns;
 mod detail;
 mod error;
 mod format;
+mod palette;
 mod panic_hook;
 mod poll;
 mod sidebar;
@@ -715,6 +716,116 @@ fn main() -> Result<(), error::GuiError> {
                     tracing::warn!(input = %input, "invalid UL rate limit input");
                 }
             }
+        });
+    }
+
+    // ── M183 command palette callbacks ──────────────────────────────────
+    {
+        let cb_state = state.clone();
+        let weak = main_window.as_weak();
+        main_window.on_palette_query_changed(move |query| {
+            let (has_selection, recent) = {
+                let st = cb_state.lock();
+                (!st.selected.is_empty(), st.palette_recent.clone())
+            };
+            let query_str = query.to_string();
+            let results = palette::filter_commands(&query_str);
+            let categories =
+                palette::build_slint_categories(&results, has_selection, &recent, query_str.is_empty());
+            let total = palette::count_items(&categories);
+            if let Some(win) = weak.upgrade() {
+                win.set_palette_categories(categories);
+                win.set_palette_total_count(total);
+                win.set_palette_active_index(0);
+            }
+        });
+    }
+    {
+        let cb_state = state.clone();
+        let weak = main_window.as_weak();
+        main_window.on_palette_item_selected(move |flat_index| {
+            let Some(idx) = usize::try_from(flat_index)
+                .ok()
+                .filter(|&i| i < palette::COMMANDS.len())
+            else {
+                return;
+            };
+            let cmd_id = palette::COMMANDS[idx].id;
+            let (selected, cmd_tx) = {
+                let mut st = cb_state.lock();
+                palette::record_recent(&mut st.palette_recent, cmd_id);
+                let sel: Vec<String> = st.selected.iter().cloned().collect();
+                (sel, st.cmd_tx.clone())
+            };
+
+            if !palette::is_enabled(cmd_id, !selected.is_empty()) {
+                return;
+            }
+
+            // Close palette
+            let _ = weak.upgrade_in_event_loop(|win| {
+                win.set_show_command_palette(false);
+            });
+
+            let action = palette::dispatch(cmd_id, &selected);
+            let weak2 = weak.clone();
+            let cb_state2 = cb_state.clone();
+            match action {
+                palette::DispatchAction::ShowAddMagnet => {
+                    let _ = weak2.upgrade_in_event_loop(|win| {
+                        win.set_show_add_magnet_dialog(true);
+                    });
+                }
+                palette::DispatchAction::ShowAddTorrent => {
+                    let _ = weak2.upgrade_in_event_loop(|win| {
+                        win.set_show_add_torrent_dialog(true);
+                    });
+                }
+                palette::DispatchAction::SendCommand(gui_cmd) => {
+                    if let Some(tx) = cmd_tx {
+                        let _ = tx.send(gui_cmd);
+                    }
+                }
+                palette::DispatchAction::SetPredicate(pred) => {
+                    cb_state2.lock().set_predicate(pred);
+                }
+                palette::DispatchAction::ToggleInspector => {
+                    let _ = weak2.upgrade_in_event_loop(|win| {
+                        win.invoke_inspector_toggle();
+                    });
+                }
+                palette::DispatchAction::CycleLayout => {
+                    let _ = weak2.upgrade_in_event_loop(|win| {
+                        win.invoke_layout_cycle();
+                    });
+                }
+                palette::DispatchAction::ToggleTweaks => {
+                    let _ = weak2.upgrade_in_event_loop(|win| {
+                        let current = win.get_show_tweaks();
+                        win.set_show_tweaks(!current);
+                    });
+                }
+                palette::DispatchAction::SelectAll => {
+                    let (new_selected, primary) = {
+                        let mut st = cb_state2.lock();
+                        let all_hashes = st.current_order.clone();
+                        st.select_all(&all_hashes);
+                        (st.selected.clone(), st.primary_selected().map(str::to_owned))
+                    };
+                    crate::poll::update_selection(&new_selected);
+                    crate::poll::update_primary_selection(primary.as_deref());
+                }
+                palette::DispatchAction::Quit => {
+                    let _ = weak2.upgrade_in_event_loop(|win| {
+                        win.invoke_quit_requested();
+                    });
+                }
+            }
+        });
+    }
+    {
+        main_window.on_palette_dismissed(|| {
+            // No state cleanup needed beyond closing (handled by Slint side)
         });
     }
 

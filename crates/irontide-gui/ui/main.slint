@@ -27,8 +27,9 @@ import { Toolbar } from "organisms/toolbar.slint";
 // L3 popover). Step 4 lights up the populated tab body.
 import { DetailPane, FileTreeRow, PeerRow, TrackerRow, WebSeedRow } from "organisms/detail_pane.slint";
 import { FilePriorityPopup } from "molecules/file_priority_popup.slint";
+import { CommandPalette, PaletteItem, PaletteCategory } from "organisms/command_palette.slint";
 
-export { Tokens, Shadow, SidebarRow, TorrentRow, FileTreeRow }
+export { Tokens, Shadow, SidebarRow, TorrentRow, FileTreeRow, PaletteItem, PaletteCategory }
 
 component MenuButton {
     in property <string> text;
@@ -388,6 +389,15 @@ export component MainWindow inherits Window {
         root.show-tweaks = false;
     }
 
+    // ── Command Palette (M183) ──
+    in-out property <bool> show-command-palette: false;
+    in property <[PaletteCategory]> palette-categories;
+    in-out property <int> palette-active-index: 0;
+    in property <int> palette-total-count: 0;
+    callback palette-query-changed(string);
+    callback palette-item-selected(int);
+    callback palette-dismissed();
+
     // ── Callbacks ──
     callback menu-file-action(int);
     callback quit-requested();
@@ -406,11 +416,21 @@ export component MainWindow inherits Window {
                 root.show-tweaks = !root.show-tweaks;
                 return accept;
             }
+            // Ctrl+K (Cmd+K on macOS): toggle command palette.
+            if !root.shift-held
+               && (root.ctrl-held || root.meta-held)
+               && (event.text == "k" || event.text == "K") {
+                root.show-command-palette = !root.show-command-palette;
+                if root.show-command-palette {
+                    root.palette-query-changed("");
+                }
+                return accept;
+            }
             // Keyboard shortcuts (only when no dialog/menu is open).
             // The Tweaks overlay is treated as modal too — it absorbs
             // its own keys above, so any leftover key event with
             // root.show-tweaks should not trigger sidebar shortcuts.
-            if !root.show-add-magnet-dialog && !root.show-add-torrent-dialog && !root.show-delete-dialog && !root.show-context-menu && !root.show-tweaks {
+            if !root.show-add-magnet-dialog && !root.show-add-torrent-dialog && !root.show-delete-dialog && !root.show-context-menu && !root.show-tweaks && !root.show-command-palette {
                 if event.text == " " {
                     root.toggle-pause-resume();
                     return accept;
@@ -466,6 +486,11 @@ export component MainWindow inherits Window {
             }
             // Escape: dismiss open dialogs/menus (priority order)
             if event.text == Key.Escape {
+                if root.show-command-palette {
+                    root.show-command-palette = false;
+                    root.palette-dismissed();
+                    return accept;
+                }
                 if root.show-tweaks {
                     root.show-tweaks = false;
                     return accept;
@@ -906,13 +931,13 @@ export component MainWindow inherits Window {
     //   3. ContextMenu
     //   4. ConfirmDeleteDialog
     //   5. DetailPopover (L3-only, M176)
-    //   6. TweaksOverlay  ◄── MUST be the very last child of MainWindow.
+    //   6. FilePriorityPopup (M178)
+    //   7. CommandPalette (M183)
+    //   8. TweaksOverlay  ◄── MUST be the very last child of MainWindow.
     //
     // Moving TweaksOverlay earlier breaks its readability when the L3
     // detail popover is visible (the popover would float on top of
     // Tweaks, hiding the controls the user is actively driving).
-    //
-    // Verified manually in M176 QA — see `Verification` in the plan.
     // ──────────────────────────────────────────────────────────
 
     // L3 detail popover overlay (M176 wrapper, M177 detail content).
@@ -1006,6 +1031,22 @@ export component MainWindow inherits Window {
         dismiss => {
             root.show-file-priority-popup = false;
             root.file-priority-dismissed();
+        }
+    }
+
+    // M183: Command palette (Ctrl+K / Cmd+K).
+    CommandPalette {
+        show: root.show-command-palette;
+        categories: root.palette-categories;
+        active-index: root.palette-active-index;
+        total-count: root.palette-total-count;
+        width: root.width;
+        height: root.height;
+        query-changed(q) => { root.palette-query-changed(q); }
+        item-selected(i) => { root.palette-item-selected(i); }
+        dismiss => {
+            root.show-command-palette = false;
+            root.palette-dismissed();
         }
     }
 

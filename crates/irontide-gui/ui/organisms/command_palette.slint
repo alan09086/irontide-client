@@ -1,0 +1,210 @@
+// Command palette overlay (M183 — Ctrl+K).
+//
+// Custom overlay pattern (Rectangle scrim + card), NOT Slint's native
+// PopupWindow — mirrors the M164 ContextMenu and M178 FilePriorityPopup
+// precedent. TextInput for search, categorised scrollable results.
+
+import { Tokens } from "../tokens.slint";
+
+export struct PaletteItem {
+    label: string,
+    hotkey: string,
+    enabled: bool,
+    index: int,
+}
+
+export struct PaletteCategory {
+    name: string,
+    items: [PaletteItem],
+}
+
+export component CommandPalette {
+    in property <bool> show;
+    in property <[PaletteCategory]> categories;
+    in property <int> active-index: 0;
+    in property <int> total-count: 0;
+    callback query-changed(string);
+    callback item-selected(int);
+    callback dismiss();
+
+    if root.show: Rectangle {
+        background: Tokens.bg-0.with-alpha(0.55);
+
+        // Click-outside dismiss
+        dismiss-touch := TouchArea {
+            clicked => { root.dismiss(); }
+        }
+
+        // Centered card, offset ~100px from top
+        card := Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: 100px;
+            width: 620px;
+            min-height: Tokens.row-h * 6;
+            max-height: parent.height - 200px;
+            background: Tokens.bg-1;
+            border-color: Tokens.border-2;
+            border-width: Tokens.border-width-thin;
+            border-radius: Tokens.r-lg;
+            drop-shadow-color: Tokens.shadow-lg.color;
+            drop-shadow-blur: Tokens.shadow-lg.blur;
+            drop-shadow-offset-y: Tokens.shadow-lg.offset-y;
+
+            // Block dismiss passthrough
+            TouchArea { }
+
+            card-layout := VerticalLayout {
+                // Search header
+                HorizontalLayout {
+                    padding-left: Tokens.sp-5;
+                    padding-right: Tokens.sp-5;
+                    padding-top: Tokens.sp-5;
+                    padding-bottom: Tokens.sp-4;
+                    spacing: Tokens.sp-3;
+                    alignment: center;
+
+                    Text {
+                        text: "›";
+                        color: Tokens.fg-2;
+                        font-size: Tokens.fs-14;
+                        vertical-alignment: center;
+                    }
+
+                    search-input := TextInput {
+                        horizontal-stretch: 1;
+                        font-size: Tokens.fs-14;
+                        color: Tokens.fg-0;
+                        selection-foreground-color: Tokens.fg-0;
+                        selection-background-color: Tokens.bg-selected;
+                        edited => {
+                            root.query-changed(self.text);
+                        }
+                        accepted => {
+                            root.item-selected(root.active-index);
+                        }
+                    }
+
+                    Text {
+                        text: "Esc";
+                        color: Tokens.fg-3;
+                        font-size: Tokens.fs-11;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // Divider
+                Rectangle {
+                    height: 1px;
+                    background: Tokens.border-1;
+                }
+
+                // Scrollable results
+                results-flick := Flickable {
+                    min-height: Tokens.row-h * 3;
+                    max-height: Tokens.row-h * 14;
+                    viewport-height: results-col.preferred-height;
+
+                    results-col := VerticalLayout {
+                        padding: Tokens.sp-2;
+                        spacing: 0;
+
+                        for category[cat-idx] in root.categories: VerticalLayout {
+                            spacing: 0;
+
+                            // Category header
+                            Rectangle {
+                                height: Tokens.sp-7;
+                                HorizontalLayout {
+                                    padding-left: Tokens.sp-4;
+                                    alignment: start;
+                                    Text {
+                                        text: category.name;
+                                        color: Tokens.fg-3;
+                                        font-size: Tokens.fs-10;
+                                        letter-spacing: 0.8px;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+
+                            // Items
+                            for item[item-idx] in category.items: Rectangle {
+                                height: Tokens.row-h;
+                                border-radius: Tokens.r-sm;
+                                background: item-touch.has-hover
+                                    ? (item.enabled ? Tokens.bg-hover : transparent)
+                                    : transparent;
+
+                                item-touch := TouchArea {
+                                    enabled: item.enabled;
+                                    clicked => {
+                                        root.item-selected(item.index);
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    padding-left: Tokens.sp-4;
+                                    padding-right: Tokens.sp-4;
+                                    spacing: Tokens.sp-3;
+
+                                    Text {
+                                        text: "›";
+                                        color: item.enabled ? Tokens.fg-3 : Tokens.fg-3;
+                                        font-size: Tokens.fs-11;
+                                        vertical-alignment: center;
+                                        width: Tokens.sp-4;
+                                    }
+
+                                    Text {
+                                        text: item.label;
+                                        color: item.enabled ? Tokens.fg-0 : Tokens.fg-3;
+                                        font-size: Tokens.fs-13;
+                                        vertical-alignment: center;
+                                        horizontal-stretch: 1;
+                                        overflow: elide;
+                                    }
+
+                                    Text {
+                                        text: item.hotkey;
+                                        color: Tokens.fg-3;
+                                        font-size: Tokens.fs-11;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Divider
+                Rectangle {
+                    height: 1px;
+                    background: Tokens.border-1;
+                }
+
+                // Footer
+                HorizontalLayout {
+                    padding-left: Tokens.sp-5;
+                    padding-right: Tokens.sp-5;
+                    padding-top: Tokens.sp-3;
+                    padding-bottom: Tokens.sp-3;
+
+                    Text {
+                        text: "↑↓ navigate  ↵ select  Esc close";
+                        color: Tokens.fg-3;
+                        font-size: Tokens.fs-11;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+
+                    Text {
+                        text: root.total-count > 0 ? root.total-count + " commands" : "No results";
+                        color: Tokens.fg-3;
+                        font-size: Tokens.fs-11;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+    }
+}

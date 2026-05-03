@@ -268,6 +268,8 @@ pub struct AppState {
     pub detail_flat_files: Vec<irontide_format::FlatFileEntry>,
     /// M180: per-torrent speed histories for the Speed tab graph.
     pub speed_histories: HashMap<String, crate::speed::SpeedHistory>,
+    /// M183: recently dispatched palette commands (most-recent-first, cap 5).
+    pub palette_recent: Vec<crate::palette::PaletteCommandId>,
 }
 
 impl AppState {
@@ -302,6 +304,7 @@ impl AppState {
             pending_file_priority_target: None,
             detail_flat_files: Vec::new(),
             speed_histories: HashMap::new(),
+            palette_recent: Vec::new(),
         }
     }
 
