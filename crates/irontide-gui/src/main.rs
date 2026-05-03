@@ -90,6 +90,7 @@ fn main() -> Result<(), error::GuiError> {
             st.skin,
             &gui_config,
             main_window.get_default_download_dir().as_str(),
+            &settings,
         );
     }
 
@@ -833,12 +834,18 @@ fn main() -> Result<(), error::GuiError> {
                 st.prefs_dirty = true;
                 (result, st.cmd_tx.clone())
             };
-            if result.has_engine_changes()
-                && let Some(tx) = cmd_tx
-            {
+            if let Some(tx) = cmd_tx {
+                let mut ep = result
+                    .engine_prefs
+                    .unwrap_or_else(|| Box::new(app::EnginePrefs::default()));
+                if let Some(dir) = result.download_dir {
+                    ep.download_dir = Some(dir);
+                }
+                if let Some(sf) = result.create_subfolder {
+                    ep.create_subfolder = Some(sf);
+                }
                 let _ = tx.send(app::GuiCommand::ApplySettings {
-                    download_dir: result.download_dir,
-                    create_subfolder: result.create_subfolder,
+                    engine_prefs: ep,
                 });
             }
         });

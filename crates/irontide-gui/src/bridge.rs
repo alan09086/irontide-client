@@ -390,13 +390,8 @@ async fn handle_gui_command(
             handle_set_torrent_rate_limit(&info_hash, download_limit, upload_limit, session, weak)
                 .await;
         }
-        GuiCommand::ApplySettings {
-            download_dir,
-            create_subfolder: _,
-        } => {
-            if let Some(dir) = download_dir {
-                handle_set_default_download_dir(&dir, session, weak).await;
-            }
+        GuiCommand::ApplySettings { engine_prefs } => {
+            handle_apply_engine_prefs(*engine_prefs, session, weak).await;
         }
         GuiCommand::ReannounceTracker { info_hash, url: _ } => {
             // M178: Per-tracker reannounce is not yet exposed via SessionHandle;
@@ -879,6 +874,151 @@ async fn handle_set_torrent_rate_limit(
     }
     if !parts.is_empty() {
         show_toast(weak, &parts.join(", "), false);
+    }
+}
+
+async fn handle_apply_engine_prefs(
+    ep: crate::app::EnginePrefs,
+    session: &irontide::session::SessionHandle,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    if let Some(ref dir) = ep.download_dir {
+        handle_set_default_download_dir(dir, session, weak).await;
+    }
+
+    let Ok(mut settings) = session.settings().await else {
+        tracing::warn!("failed to read session settings for prefs apply");
+        return;
+    };
+
+    let mut changed = false;
+
+    if let Some(port) = ep.listen_port {
+        settings.listen_port = port;
+        changed = true;
+    }
+    if let Some(v) = ep.randomize_port_on_startup {
+        settings.randomize_port_on_startup = v;
+        changed = true;
+    }
+    if let Some(v) = ep.enable_upnp {
+        settings.enable_upnp = v;
+        changed = true;
+    }
+    if let Some(v) = ep.enable_natpmp {
+        settings.enable_natpmp = v;
+        changed = true;
+    }
+    if let Some(v) = ep.max_connections_global {
+        settings.max_connections_global = v;
+        changed = true;
+    }
+    if let Some(v) = ep.max_peers_per_torrent {
+        settings.max_peers_per_torrent = v;
+        changed = true;
+    }
+    if let Some(v) = ep.max_upload_slots_global {
+        settings.max_upload_slots_global = v;
+        changed = true;
+    }
+    if let Some(v) = ep.max_upload_slots_per_torrent {
+        settings.max_upload_slots_per_torrent = v;
+        changed = true;
+    }
+    if let Some(v) = ep.active_downloads {
+        settings.active_downloads = v;
+        changed = true;
+    }
+    if let Some(v) = ep.active_seeds {
+        settings.active_seeds = v;
+        changed = true;
+    }
+    if let Some(v) = ep.active_limit {
+        settings.active_limit = v;
+        changed = true;
+    }
+    if let Some(ref dl) = ep.download_rate_limit {
+        settings.download_rate_limit = *dl;
+        changed = true;
+    }
+    if let Some(ref ul) = ep.upload_rate_limit {
+        settings.upload_rate_limit = *ul;
+        changed = true;
+    }
+    if let Some(v) = ep.alt_download_rate_limit {
+        settings.alt_download_rate_limit = v;
+        changed = true;
+    }
+    if let Some(v) = ep.alt_upload_rate_limit {
+        settings.alt_upload_rate_limit = v;
+        changed = true;
+    }
+    if let Some(v) = ep.alt_speed_enabled {
+        settings.alt_speed_enabled = v;
+        changed = true;
+    }
+    if let Some(v) = ep.rate_limit_includes_overhead {
+        settings.rate_limit_includes_overhead = v;
+        changed = true;
+    }
+    if let Some(v) = ep.rate_limit_utp {
+        settings.rate_limit_utp = v;
+        changed = true;
+    }
+    if let Some(v) = ep.rate_limit_lan {
+        settings.rate_limit_lan = v;
+        changed = true;
+    }
+    if let Some(v) = ep.ip_filter_enabled {
+        settings.ip_filter_enabled = v;
+        changed = true;
+    }
+    if let Some(ref v) = ep.ip_filter_path {
+        settings.ip_filter_path.clone_from(v);
+        changed = true;
+    }
+    if let Some(v) = ep.ip_filter_auto_refresh {
+        settings.ip_filter_auto_refresh = v;
+        changed = true;
+    }
+
+    // Proxy
+    if let Some(ref pt) = ep.proxy_type {
+        use irontide::session::ProxyType;
+        settings.proxy.proxy_type = match pt.as_str() {
+            "SOCKS4" => ProxyType::Socks4,
+            "SOCKS5" => ProxyType::Socks5,
+            "SOCKS5 (password)" => ProxyType::Socks5Password,
+            "HTTP" => ProxyType::Http,
+            "HTTP (password)" => ProxyType::HttpPassword,
+            _ => ProxyType::None,
+        };
+        changed = true;
+    }
+    if let Some(ref h) = ep.proxy_host {
+        settings.proxy.hostname.clone_from(h);
+        changed = true;
+    }
+    if let Some(p) = ep.proxy_port {
+        settings.proxy.port = p;
+        changed = true;
+    }
+    if let Some(v) = ep.proxy_peer_connections {
+        settings.proxy.proxy_peer_connections = v;
+        changed = true;
+    }
+    if let Some(v) = ep.proxy_hostnames {
+        settings.proxy.proxy_hostnames = v;
+        changed = true;
+    }
+
+    if changed {
+        if let Err(e) = session.apply_settings(settings).await {
+            tracing::warn!(error = %e, "failed to apply engine prefs");
+            show_toast(weak, &format!("Settings apply failed: {e}"), true);
+        } else {
+            show_toast(weak, "Settings applied", false);
+        }
     }
 }
 

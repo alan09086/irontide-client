@@ -50,6 +50,39 @@ export component PreferencesDialog {
     in-out property <string> pref-move-completed-to: "";
     in-out property <string> pref-dl-on-complete-program: "";
 
+    // ── Connection tab fields ────────────────────────────────────────
+    in-out property <string> pref-listen-port: "42020";
+    in-out property <bool> pref-randomize-port: false;
+    in-out property <bool> pref-enable-upnp: true;
+    in-out property <bool> pref-enable-natpmp: true;
+    in-out property <string> pref-max-connections-global: "-1";
+    in-out property <string> pref-max-peers-per-torrent: "128";
+    in-out property <string> pref-max-upload-slots-global: "-1";
+    in-out property <string> pref-max-upload-slots-per-torrent: "4";
+    in-out property <string> pref-active-downloads: "3";
+    in-out property <string> pref-active-seeds: "5";
+    in-out property <string> pref-active-limit: "500";
+    in-out property <string> pref-proxy-type: "None";
+    in-out property <string> pref-proxy-host: "";
+    in-out property <string> pref-proxy-port: "0";
+    in-out property <bool> pref-proxy-peer-connections: true;
+    in-out property <bool> pref-proxy-hostnames: true;
+    in-out property <bool> pref-ip-filter-enabled: false;
+    in-out property <string> pref-ip-filter-path: "";
+    in-out property <bool> pref-ip-filter-auto-refresh: false;
+
+    // ── Speed tab fields ─────────────────────────────────────────────
+    in-out property <bool> pref-dl-limit-enabled: false;
+    in-out property <string> pref-dl-limit-value: "0";
+    in-out property <bool> pref-ul-limit-enabled: false;
+    in-out property <string> pref-ul-limit-value: "0";
+    in-out property <string> pref-alt-dl-limit: "0";
+    in-out property <string> pref-alt-ul-limit: "0";
+    in-out property <bool> pref-alt-speed-enabled: false;
+    in-out property <bool> pref-rate-limit-overhead: true;
+    in-out property <bool> pref-rate-limit-utp: true;
+    in-out property <bool> pref-rate-limit-lan: false;
+
     // ── Callbacks ─────────────────────────────────────────────────────
     callback apply-requested();
     callback cancel-requested();
@@ -667,8 +700,419 @@ export component PreferencesDialog {
                                     }
                                 }
 
+                                // ── Connection tab ───────────────────
+                                if root.active-tab == "connection": VerticalLayout {
+                                    spacing: Tokens.sp-4;
+
+                                    // Listening Port
+                                    PrefGroup { title: "LISTENING PORT"; }
+
+                                    PrefField {
+                                        label: "Incoming port";
+                                        PrefTextInput {
+                                            value: root.pref-listen-port;
+                                            placeholder: "42020";
+                                            edited(v) => {
+                                                root.pref-listen-port = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Use different port on each startup";
+                                        PrefToggle {
+                                            checked: root.pref-randomize-port;
+                                            toggled(v) => {
+                                                root.pref-randomize-port = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "UPnP / NAT-PMP port forwarding";
+                                        PrefToggle {
+                                            checked: root.pref-enable-upnp;
+                                            toggled(v) => {
+                                                root.pref-enable-upnp = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Port mapping status";
+                                        not-yet-active: true;
+                                        Text {
+                                            text: "Unknown";
+                                            color: Tokens.fg-3;
+                                            font-size: Tokens.fs-13;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+
+                                    // Connection Limits
+                                    PrefGroup { title: "CONNECTION LIMITS"; }
+
+                                    PrefField {
+                                        label: "Global max connections";
+                                        PrefTextInput {
+                                            value: root.pref-max-connections-global;
+                                            placeholder: "-1";
+                                            edited(v) => {
+                                                root.pref-max-connections-global = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Max connections per torrent";
+                                        PrefTextInput {
+                                            value: root.pref-max-peers-per-torrent;
+                                            placeholder: "128";
+                                            edited(v) => {
+                                                root.pref-max-peers-per-torrent = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Max upload slots (global)";
+                                        PrefTextInput {
+                                            value: root.pref-max-upload-slots-global;
+                                            placeholder: "-1";
+                                            edited(v) => {
+                                                root.pref-max-upload-slots-global = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Max upload slots per torrent";
+                                        PrefTextInput {
+                                            value: root.pref-max-upload-slots-per-torrent;
+                                            placeholder: "4";
+                                            edited(v) => {
+                                                root.pref-max-upload-slots-per-torrent = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Max active downloads";
+                                        PrefTextInput {
+                                            value: root.pref-active-downloads;
+                                            placeholder: "3";
+                                            edited(v) => {
+                                                root.pref-active-downloads = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Max active uploads";
+                                        PrefTextInput {
+                                            value: root.pref-active-seeds;
+                                            placeholder: "5";
+                                            edited(v) => {
+                                                root.pref-active-seeds = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Max active torrents total";
+                                        PrefTextInput {
+                                            value: root.pref-active-limit;
+                                            placeholder: "500";
+                                            edited(v) => {
+                                                root.pref-active-limit = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    // Proxy
+                                    PrefGroup { title: "PROXY"; }
+
+                                    PrefField {
+                                        label: "Type";
+                                        PrefSelect {
+                                            current-value: root.pref-proxy-type;
+                                            options: ["None", "SOCKS4", "SOCKS5", "SOCKS5 (password)", "HTTP", "HTTP (password)"];
+                                            value-changed(v) => {
+                                                root.pref-proxy-type = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Host";
+                                        field-enabled: root.pref-proxy-type != "None";
+                                        PrefTextInput {
+                                            value: root.pref-proxy-host;
+                                            placeholder: "proxy.example.com";
+                                            input-enabled: root.pref-proxy-type != "None";
+                                            edited(v) => {
+                                                root.pref-proxy-host = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Port";
+                                        field-enabled: root.pref-proxy-type != "None";
+                                        PrefTextInput {
+                                            value: root.pref-proxy-port;
+                                            placeholder: "1080";
+                                            input-enabled: root.pref-proxy-type != "None";
+                                            edited(v) => {
+                                                root.pref-proxy-port = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Use proxy for peer connections";
+                                        field-enabled: root.pref-proxy-type != "None";
+                                        PrefToggle {
+                                            checked: root.pref-proxy-peer-connections;
+                                            toggle-enabled: root.pref-proxy-type != "None";
+                                            toggled(v) => {
+                                                root.pref-proxy-peer-connections = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Use proxy for hostname lookups";
+                                        field-enabled: root.pref-proxy-type != "None";
+                                        PrefToggle {
+                                            checked: root.pref-proxy-hostnames;
+                                            toggle-enabled: root.pref-proxy-type != "None";
+                                            toggled(v) => {
+                                                root.pref-proxy-hostnames = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    // IP Filtering
+                                    PrefGroup { title: "IP FILTERING"; }
+
+                                    PrefField {
+                                        label: "Enable IP filter";
+                                        not-yet-active: true;
+                                        PrefToggle {
+                                            checked: root.pref-ip-filter-enabled;
+                                            toggle-enabled: false;
+                                            toggled(v) => {
+                                                root.pref-ip-filter-enabled = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Filter file";
+                                        not-yet-active: true;
+                                        field-enabled: root.pref-ip-filter-enabled;
+                                        PrefTextInput {
+                                            value: root.pref-ip-filter-path;
+                                            placeholder: "/path/to/ipfilter.dat";
+                                            input-enabled: false;
+                                            edited(v) => {
+                                                root.pref-ip-filter-path = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Automatically refresh filter on startup";
+                                        not-yet-active: true;
+                                        field-enabled: root.pref-ip-filter-enabled;
+                                        PrefToggle {
+                                            checked: root.pref-ip-filter-auto-refresh;
+                                            toggle-enabled: false;
+                                            toggled(v) => {
+                                                root.pref-ip-filter-auto-refresh = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // ── Speed tab ────────────────────────
+                                if root.active-tab == "speed": VerticalLayout {
+                                    spacing: Tokens.sp-4;
+
+                                    // Global Rate Limits
+                                    PrefGroup { title: "GLOBAL RATE LIMITS"; }
+
+                                    PrefField {
+                                        label: "Download limit";
+                                        HorizontalLayout {
+                                            spacing: Tokens.sp-4;
+                                            PrefToggle {
+                                                checked: root.pref-dl-limit-enabled;
+                                                toggled(v) => {
+                                                    root.pref-dl-limit-enabled = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+                                            PrefTextInput {
+                                                value: root.pref-dl-limit-value;
+                                                placeholder: "0";
+                                                input-enabled: root.pref-dl-limit-enabled;
+                                                edited(v) => {
+                                                    root.pref-dl-limit-value = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+                                            Text {
+                                                text: "B/s";
+                                                color: Tokens.fg-3;
+                                                font-size: Tokens.fs-13;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Upload limit";
+                                        HorizontalLayout {
+                                            spacing: Tokens.sp-4;
+                                            PrefToggle {
+                                                checked: root.pref-ul-limit-enabled;
+                                                toggled(v) => {
+                                                    root.pref-ul-limit-enabled = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+                                            PrefTextInput {
+                                                value: root.pref-ul-limit-value;
+                                                placeholder: "0";
+                                                input-enabled: root.pref-ul-limit-enabled;
+                                                edited(v) => {
+                                                    root.pref-ul-limit-value = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+                                            Text {
+                                                text: "B/s";
+                                                color: Tokens.fg-3;
+                                                font-size: Tokens.fs-13;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    // Alternative Rate Limits
+                                    PrefGroup { title: "ALTERNATIVE RATE LIMITS"; }
+
+                                    PrefField {
+                                        label: "Alternative download limit";
+                                        PrefTextInput {
+                                            value: root.pref-alt-dl-limit;
+                                            placeholder: "0";
+                                            edited(v) => {
+                                                root.pref-alt-dl-limit = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Alternative upload limit";
+                                        PrefTextInput {
+                                            value: root.pref-alt-ul-limit;
+                                            placeholder: "0";
+                                            edited(v) => {
+                                                root.pref-alt-ul-limit = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Enable alternative speed limits";
+                                        PrefToggle {
+                                            checked: root.pref-alt-speed-enabled;
+                                            toggled(v) => {
+                                                root.pref-alt-speed-enabled = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Scheduled hours";
+                                        not-yet-active: true;
+                                        Text {
+                                            text: "Schedule timer not yet active";
+                                            color: Tokens.fg-3;
+                                            font-size: Tokens.fs-13;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+
+                                    // Rate Limits Apply To
+                                    PrefGroup { title: "RATE LIMITS APPLY TO"; }
+
+                                    PrefField {
+                                        label: "Transport overhead";
+                                        not-yet-active: true;
+                                        PrefToggle {
+                                            checked: root.pref-rate-limit-overhead;
+                                            toggle-enabled: false;
+                                            toggled(v) => {
+                                                root.pref-rate-limit-overhead = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "\u{00b5}TP connections";
+                                        not-yet-active: true;
+                                        PrefToggle {
+                                            checked: root.pref-rate-limit-utp;
+                                            toggle-enabled: false;
+                                            toggled(v) => {
+                                                root.pref-rate-limit-utp = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Peers on the same LAN";
+                                        not-yet-active: true;
+                                        PrefToggle {
+                                            checked: root.pref-rate-limit-lan;
+                                            toggle-enabled: false;
+                                            toggled(v) => {
+                                                root.pref-rate-limit-lan = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+                                }
+
                                 // ── Placeholder tabs ──────────────────
-                                if root.active-tab != "behavior" && root.active-tab != "downloads": VerticalLayout {
+                                if root.active-tab != "behavior" && root.active-tab != "downloads" && root.active-tab != "connection" && root.active-tab != "speed": VerticalLayout {
                                     alignment: center;
                                     vertical-stretch: 1;
 

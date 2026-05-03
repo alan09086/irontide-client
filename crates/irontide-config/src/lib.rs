@@ -183,6 +183,29 @@ pub struct GuiConfig {
     pub move_completed_to: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dl_on_complete_program: Option<String>,
+    // ── M185: Connection preferences ────────────────────────────────
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dl_limit_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dl_limit_value: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ul_limit_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ul_limit_value: Option<u64>,
+    // ── M185: Speed preferences ─────────────────────────────────────
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alt_dl_limit: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alt_ul_limit: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alt_speed_enabled: Option<bool>,
+    // ── M185: IP filter persistence ─────────────────────────────────
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ip_filter_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ip_filter_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ip_filter_auto_refresh: Option<bool>,
 }
 
 /// `[gui.sidebar]` — per-user sidebar selection + collapsed state

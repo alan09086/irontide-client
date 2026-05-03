@@ -397,6 +397,37 @@ export component MainWindow inherits Window {
     in-out property <bool> pref-move-completed-enabled: false;
     in-out property <string> pref-move-completed-to: "";
     in-out property <string> pref-dl-on-complete-program: "";
+    // ── M185: Connection tab ──
+    in-out property <string> pref-listen-port: "42020";
+    in-out property <bool> pref-randomize-port: false;
+    in-out property <bool> pref-enable-upnp: true;
+    in-out property <bool> pref-enable-natpmp: true;
+    in-out property <string> pref-max-connections-global: "-1";
+    in-out property <string> pref-max-peers-per-torrent: "128";
+    in-out property <string> pref-max-upload-slots-global: "-1";
+    in-out property <string> pref-max-upload-slots-per-torrent: "4";
+    in-out property <string> pref-active-downloads: "3";
+    in-out property <string> pref-active-seeds: "5";
+    in-out property <string> pref-active-limit: "500";
+    in-out property <string> pref-proxy-type: "None";
+    in-out property <string> pref-proxy-host: "";
+    in-out property <string> pref-proxy-port: "0";
+    in-out property <bool> pref-proxy-peer-connections: true;
+    in-out property <bool> pref-proxy-hostnames: true;
+    in-out property <bool> pref-ip-filter-enabled: false;
+    in-out property <string> pref-ip-filter-path: "";
+    in-out property <bool> pref-ip-filter-auto-refresh: false;
+    // ── M185: Speed tab ──
+    in-out property <bool> pref-dl-limit-enabled: false;
+    in-out property <string> pref-dl-limit-value: "0";
+    in-out property <bool> pref-ul-limit-enabled: false;
+    in-out property <string> pref-ul-limit-value: "0";
+    in-out property <string> pref-alt-dl-limit: "0";
+    in-out property <string> pref-alt-ul-limit: "0";
+    in-out property <bool> pref-alt-speed-enabled: false;
+    in-out property <bool> pref-rate-limit-overhead: true;
+    in-out property <bool> pref-rate-limit-utp: true;
+    in-out property <bool> pref-rate-limit-lan: false;
     in-out property <bool> pref-dirty: false;
     callback preferences-apply-requested();
     callback preferences-cancel-requested();
@@ -1125,6 +1156,37 @@ export component MainWindow inherits Window {
         pref-move-completed-enabled <=> root.pref-move-completed-enabled;
         pref-move-completed-to <=> root.pref-move-completed-to;
         pref-dl-on-complete-program <=> root.pref-dl-on-complete-program;
+        // M185 Connection
+        pref-listen-port <=> root.pref-listen-port;
+        pref-randomize-port <=> root.pref-randomize-port;
+        pref-enable-upnp <=> root.pref-enable-upnp;
+        pref-enable-natpmp <=> root.pref-enable-natpmp;
+        pref-max-connections-global <=> root.pref-max-connections-global;
+        pref-max-peers-per-torrent <=> root.pref-max-peers-per-torrent;
+        pref-max-upload-slots-global <=> root.pref-max-upload-slots-global;
+        pref-max-upload-slots-per-torrent <=> root.pref-max-upload-slots-per-torrent;
+        pref-active-downloads <=> root.pref-active-downloads;
+        pref-active-seeds <=> root.pref-active-seeds;
+        pref-active-limit <=> root.pref-active-limit;
+        pref-proxy-type <=> root.pref-proxy-type;
+        pref-proxy-host <=> root.pref-proxy-host;
+        pref-proxy-port <=> root.pref-proxy-port;
+        pref-proxy-peer-connections <=> root.pref-proxy-peer-connections;
+        pref-proxy-hostnames <=> root.pref-proxy-hostnames;
+        pref-ip-filter-enabled <=> root.pref-ip-filter-enabled;
+        pref-ip-filter-path <=> root.pref-ip-filter-path;
+        pref-ip-filter-auto-refresh <=> root.pref-ip-filter-auto-refresh;
+        // M185 Speed
+        pref-dl-limit-enabled <=> root.pref-dl-limit-enabled;
+        pref-dl-limit-value <=> root.pref-dl-limit-value;
+        pref-ul-limit-enabled <=> root.pref-ul-limit-enabled;
+        pref-ul-limit-value <=> root.pref-ul-limit-value;
+        pref-alt-dl-limit <=> root.pref-alt-dl-limit;
+        pref-alt-ul-limit <=> root.pref-alt-ul-limit;
+        pref-alt-speed-enabled <=> root.pref-alt-speed-enabled;
+        pref-rate-limit-overhead <=> root.pref-rate-limit-overhead;
+        pref-rate-limit-utp <=> root.pref-rate-limit-utp;
+        pref-rate-limit-lan <=> root.pref-rate-limit-lan;
         apply-requested => { root.preferences-apply-requested(); }
         cancel-requested => { root.preferences-cancel-requested(); }
         ok-requested => { root.preferences-ok-requested(); }

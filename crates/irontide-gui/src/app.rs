@@ -16,6 +16,51 @@ pub enum MenuAction {
     Quit,
 }
 
+/// M185: Engine-backed settings from the Preferences dialog.
+///
+/// Boxed through the `GuiCommand` channel to keep the enum size small.
+/// Each `Option` field is `Some` only when the user changed it.
+#[derive(Debug, Default)]
+pub struct EnginePrefs {
+    pub download_dir: Option<String>,
+    pub create_subfolder: Option<bool>,
+    pub listen_port: Option<u16>,
+    pub randomize_port_on_startup: Option<bool>,
+    pub enable_upnp: Option<bool>,
+    pub enable_natpmp: Option<bool>,
+    pub max_connections_global: Option<i32>,
+    pub max_peers_per_torrent: Option<usize>,
+    pub max_upload_slots_global: Option<i32>,
+    pub max_upload_slots_per_torrent: Option<i32>,
+    pub active_downloads: Option<i32>,
+    pub active_seeds: Option<i32>,
+    pub active_limit: Option<i32>,
+    pub proxy_type: Option<String>,
+    pub proxy_host: Option<String>,
+    pub proxy_port: Option<u16>,
+    pub proxy_peer_connections: Option<bool>,
+    pub proxy_hostnames: Option<bool>,
+    pub ip_filter_enabled: Option<bool>,
+    pub ip_filter_path: Option<String>,
+    pub ip_filter_auto_refresh: Option<bool>,
+    pub download_rate_limit: Option<u64>,
+    pub upload_rate_limit: Option<u64>,
+    pub dl_limit_enabled: Option<bool>,
+    pub ul_limit_enabled: Option<bool>,
+    pub alt_download_rate_limit: Option<u64>,
+    pub alt_upload_rate_limit: Option<u64>,
+    pub alt_speed_enabled: Option<bool>,
+    pub rate_limit_includes_overhead: Option<bool>,
+    pub rate_limit_utp: Option<bool>,
+    pub rate_limit_lan: Option<bool>,
+    #[allow(dead_code, reason = "M187: BitTorrent tab will wire these")]
+    pub encryption_mode: Option<String>,
+    #[allow(dead_code, reason = "M187: BitTorrent tab will wire these")]
+    pub anonymous_mode: Option<bool>,
+    #[allow(dead_code, reason = "M187: BitTorrent tab will wire these")]
+    pub queueing_enabled: Option<bool>,
+}
+
 /// Commands sent from the Slint UI thread to the async session thread.
 ///
 /// The GUI callbacks are synchronous (main thread), but `SessionHandle` methods
@@ -104,14 +149,9 @@ pub enum GuiCommand {
         #[allow(dead_code, reason = "M178: per-URL dispatch deferred to M180 polish")]
         url: String,
     },
-    /// M184: apply changed session-level settings from the Preferences dialog.
+    /// M185: apply changed session-level settings from the Preferences dialog.
     ApplySettings {
-        /// New default download directory (if changed).
-        download_dir: Option<String>,
-        /// New create-subfolder setting (if changed). Wired to engine in a
-        /// future milestone when `SessionHandle::apply_settings` supports it.
-        #[allow(dead_code, reason = "M184: engine plumbing deferred")]
-        create_subfolder: Option<bool>,
+        engine_prefs: Box<EnginePrefs>,
     },
     /// M180: set per-torrent DL/UL rate limits.
     SetTorrentRateLimit {
