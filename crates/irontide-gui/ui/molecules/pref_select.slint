@@ -1,0 +1,96 @@
+// Preferences dropdown select with popup overlay (M184).
+//
+// Follows the FilePriorityPopup custom-overlay pattern: a button showing
+// the current value + chevron, and a popup option list rendered at
+// MainWindow level via conditional `if root.open`. Click-outside dismisses.
+
+import { Tokens } from "../tokens.slint";
+
+export component PrefSelect inherits Rectangle {
+    in-out property <string> current-value: "";
+    in property <[string]> options: [];
+    in property <bool> select-enabled: true;
+    callback value-changed(string);
+
+    in-out property <bool> open: false;
+
+    height: Tokens.chrome-h - Tokens.sp-2;
+    horizontal-stretch: 1;
+    background: select-touch.has-hover && root.select-enabled
+        ? Tokens.bg-hover : Tokens.bg-inset;
+    border-color: root.open ? Tokens.accent : Tokens.border-1;
+    border-width: Tokens.border-width-thin;
+    border-radius: Tokens.r-md;
+    opacity: root.select-enabled ? 1.0 : 0.5;
+
+    HorizontalLayout {
+        padding-left: Tokens.sp-4;
+        padding-right: Tokens.sp-4;
+        alignment: space-between;
+
+        Text {
+            text: root.current-value;
+            color: root.select-enabled ? Tokens.fg-0 : Tokens.fg-3;
+            font-size: Tokens.fs-13;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+
+        Text {
+            text: root.open ? "▲" : "▼";
+            color: Tokens.fg-2;
+            font-size: 10px;
+            vertical-alignment: center;
+        }
+    }
+
+    select-touch := TouchArea {
+        enabled: root.select-enabled;
+        clicked => {
+            root.open = !root.open;
+        }
+    }
+
+    if root.open: Rectangle {
+        x: 0;
+        y: parent.height + Tokens.sp-1;
+        width: parent.width;
+        height: option-layout.preferred-height + Tokens.sp-4;
+        background: Tokens.bg-1;
+        border-color: Tokens.border-1;
+        border-width: Tokens.border-width-thin;
+        border-radius: Tokens.r-md;
+
+        // Block click-through
+        TouchArea { }
+
+        option-layout := VerticalLayout {
+            padding: Tokens.sp-2;
+            spacing: Tokens.sp-1;
+
+            for option in root.options: Rectangle {
+                height: 30px;
+                background: opt-touch.has-hover
+                    ? Tokens.bg-hover
+                    : (option == root.current-value ? Tokens.bg-selected : Tokens.bg-1);
+                border-radius: Tokens.r-sm;
+
+                Text {
+                    text: option;
+                    color: Tokens.fg-0;
+                    font-size: Tokens.fs-13;
+                    vertical-alignment: center;
+                    x: Tokens.sp-4;
+                }
+
+                opt-touch := TouchArea {
+                    clicked => {
+                        root.current-value = option;
+                        root.open = false;
+                        root.value-changed(option);
+                    }
+                }
+            }
+        }
+    }
+}

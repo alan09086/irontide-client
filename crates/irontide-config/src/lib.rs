@@ -127,6 +127,62 @@ pub struct GuiConfig {
     /// table on a pre-M173 config.toml round-trips unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sidebar: Option<SidebarConfig>,
+    // ── M184: Behaviour preferences ──────────────────────────────────
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confirm_delete: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confirm_pause_all: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub show_torrent_added_toast: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub double_click_action: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_minimized: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minimize_to_tray: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume_previous_session: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notify_on_complete: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notify_on_error: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notify_on_rss: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub play_sound_on_complete: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on_complete_program: Option<String>,
+    // ── M184: Downloads preferences ──────────────────────────────────
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub create_subfolder: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pre_allocate: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub show_add_torrent_dialog: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skip_hash_check: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub use_incomplete_dir: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub incomplete_dir: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub incomplete_extension: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub use_auto_categories: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub append_date_to_path: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub watched_folder: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub copy_torrent_to: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delete_torrent_after_add: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub move_completed_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub move_completed_to: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dl_on_complete_program: Option<String>,
 }
 
 /// `[gui.sidebar]` — per-user sidebar selection + collapsed state
@@ -1258,6 +1314,7 @@ column_widths = [200.0, 80.0]
             l3_sidebar_mode: None,
             inspector_shown: None,
             sidebar: None,
+            ..Default::default()
         };
         let serialized = toml::to_string_pretty(&original).expect("serialize");
         let deserialized: GuiConfig = toml::from_str(&serialized).expect("deserialize");

@@ -32,7 +32,7 @@ pub enum PaletteCommandId {
     // Tools
     ToggleInspector,
     CycleLayout,
-    ToggleTweaks,
+    OpenPreferences,
     SelectAll,
     // Settings
     Quit,
@@ -90,9 +90,9 @@ pub static COMMANDS: &[PaletteCommand] = &[
     // Tools
     PaletteCommand { id: PaletteCommandId::ToggleInspector, label: "Toggle Inspector", category: PaletteCategory::Tools, hotkey_hint: "" },
     PaletteCommand { id: PaletteCommandId::CycleLayout, label: "Cycle Layout", category: PaletteCategory::Tools, hotkey_hint: "" },
-    PaletteCommand { id: PaletteCommandId::ToggleTweaks, label: "Toggle Tweaks", category: PaletteCategory::Tools, hotkey_hint: "" },
     PaletteCommand { id: PaletteCommandId::SelectAll, label: "Select All", category: PaletteCategory::Tools, hotkey_hint: "" },
     // Settings
+    PaletteCommand { id: PaletteCommandId::OpenPreferences, label: "Preferences (Tweaks)", category: PaletteCategory::Settings, hotkey_hint: "," },
     PaletteCommand { id: PaletteCommandId::Quit, label: "Quit", category: PaletteCategory::Settings, hotkey_hint: "" },
 ];
 
@@ -174,7 +174,7 @@ pub fn resolved_hotkey(cmd: &PaletteCommand) -> SharedString {
     match cmd.id {
         PaletteCommandId::ToggleInspector => accel::format_shortcut(&["I"]),
         PaletteCommandId::CycleLayout => accel::format_shortcut(&["Shift", "L"]),
-        PaletteCommandId::ToggleTweaks => accel::format_shortcut(&["Shift", "T"]),
+        PaletteCommandId::OpenPreferences => accel::format_shortcut(&[","]),
         PaletteCommandId::SelectAll => accel::format_shortcut(&["A"]),
         _ => SharedString::from(cmd.hotkey_hint),
     }
@@ -189,7 +189,7 @@ pub enum DispatchAction {
     SetPredicate(crate::sidebar::SidebarPredicate),
     ToggleInspector,
     CycleLayout,
-    ToggleTweaks,
+    OpenPreferences,
     SelectAll,
     Quit,
 }
@@ -233,7 +233,7 @@ pub fn dispatch(id: PaletteCommandId, selected: &[String]) -> DispatchAction {
         PaletteCommandId::NavErrored => DispatchAction::SetPredicate(SidebarPredicate::Library(LibraryFilter::Errored)),
         PaletteCommandId::ToggleInspector => DispatchAction::ToggleInspector,
         PaletteCommandId::CycleLayout => DispatchAction::CycleLayout,
-        PaletteCommandId::ToggleTweaks => DispatchAction::ToggleTweaks,
+        PaletteCommandId::OpenPreferences => DispatchAction::OpenPreferences,
         PaletteCommandId::SelectAll => DispatchAction::SelectAll,
         PaletteCommandId::Quit => DispatchAction::Quit,
     }

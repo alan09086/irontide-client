@@ -7,6 +7,7 @@ mod error;
 mod format;
 mod palette;
 mod panic_hook;
+mod prefs;
 mod poll;
 mod sidebar;
 mod speed;
@@ -22,39 +23,6 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 use slint::Model as _;
 
-/// Wire a Tweaks-overlay axis callback that follows the
-/// "parse string → mutate field → apply tokens → update Slint
-/// property" template (M172b skin/theme/density/radius axes).
-///
-/// Usage:
-/// ```ignore
-/// wire_skin_axis!(main_window, state, on_tweaks_skin_changed,
-///                 skin, skin::Skin, set_current_skin);
-/// ```
-///
-/// For axes that don't fit this template — Layout (label↔token mapping)
-/// and the toggles (no string to parse) — use a hand-written block.
-macro_rules! wire_skin_axis {
-    ($window:ident, $state:ident, $callback:ident, $field:ident, $enum_ty:ty, $setter:ident) => {{
-        use std::str::FromStr as _;
-        let weak = $window.as_weak();
-        let cb_state = $state.clone();
-        $window.$callback(move |s| {
-            if let Ok(new_value) = <$enum_ty>::from_str(s.as_str()) {
-                let skin_settings = {
-                    let mut st = cb_state.lock();
-                    st.skin.$field = new_value;
-                    st.skin_dirty = true;
-                    st.skin
-                };
-                skin_settings.apply(&weak);
-                if let Some(win) = weak.upgrade() {
-                    win.$setter(s.clone());
-                }
-            }
-        });
-    }};
-}
 
 fn main() -> Result<(), error::GuiError> {
     // 1. Install panic hook.
@@ -100,14 +68,8 @@ fn main() -> Result<(), error::GuiError> {
     let main_window = MainWindow::new()?;
     {
         let weak = main_window.as_weak();
-        let st = state.lock();
+        let mut st = state.lock();
         st.skin.apply(&weak);
-        // Seed the Tweaks overlay's current-* pill state so the UI
-        // reflects the persisted config on first paint.
-        main_window.set_current_skin(st.skin.skin.to_string().into());
-        main_window.set_current_theme(st.skin.theme.to_string().into());
-        main_window.set_current_density(st.skin.density.to_string().into());
-        main_window.set_current_radius(st.skin.radius.to_string().into());
         // M176: layout / L3 sidebar mode / inspector visibility.
         main_window.set_current_layout_label(st.skin.layout.label().into());
         main_window.set_current_l3_sidebar_mode(st.skin.l3_sidebar_mode.to_string().into());
@@ -123,6 +85,12 @@ fn main() -> Result<(), error::GuiError> {
         main_window.set_sidebar_category_collapsed(st.sidebar_category_collapsed);
         main_window.set_sidebar_tag_collapsed(st.sidebar_tag_collapsed);
         main_window.set_sidebar_tracker_collapsed(st.sidebar_tracker_collapsed);
+        // M184: initialise PreferencesState from loaded config.
+        st.prefs = prefs::PreferencesState::from_app(
+            st.skin,
+            &gui_config,
+            main_window.get_default_download_dir().as_str(),
+        );
     }
 
     // 6. Wire menu callbacks.
@@ -799,10 +767,12 @@ fn main() -> Result<(), error::GuiError> {
                         win.invoke_layout_cycle();
                     });
                 }
-                palette::DispatchAction::ToggleTweaks => {
-                    let _ = weak2.upgrade_in_event_loop(|win| {
-                        let current = win.get_show_tweaks();
-                        win.set_show_tweaks(!current);
+                palette::DispatchAction::OpenPreferences => {
+                    let cb_state3 = cb_state2.clone();
+                    let _ = weak2.upgrade_in_event_loop(move |win| {
+                        let st = cb_state3.lock();
+                        st.prefs.populate_slint(&win);
+                        win.set_show_preferences_dialog(true);
                     });
                 }
                 palette::DispatchAction::SelectAll => {
@@ -829,49 +799,77 @@ fn main() -> Result<(), error::GuiError> {
         });
     }
 
-    // 6j. Wire Tweaks overlay callbacks (M172b Lane B + M176 D12).
-    // The four token-affecting axes use the `wire_skin_axis!` macro so
-    // every new axis is one line, not twelve.
-    wire_skin_axis!(
-        main_window,
-        state,
-        on_tweaks_skin_changed,
-        skin,
-        skin::Skin,
-        set_current_skin
-    );
-    wire_skin_axis!(
-        main_window,
-        state,
-        on_tweaks_theme_changed,
-        theme,
-        skin::Theme,
-        set_current_theme
-    );
-    wire_skin_axis!(
-        main_window,
-        state,
-        on_tweaks_density_changed,
-        density,
-        skin::Density,
-        set_current_density
-    );
-    wire_skin_axis!(
-        main_window,
-        state,
-        on_tweaks_radius_changed,
-        radius,
-        skin::RadiusPreset,
-        set_current_radius
-    );
+    // ── M184 Preferences dialog callbacks ────────────────────────────
+    //
+    // Apply: diff Slint properties → committed state, apply skin/layout
+    // changes, send engine-backed fields via GuiCommand, persist config.
+    {
+        let cb_state = state.clone();
+        let weak = main_window.as_weak();
+        main_window.on_preferences_apply_requested(move || {
+            let Some(win) = weak.upgrade() else { return };
+            let (result, cmd_tx) = {
+                let mut st = cb_state.lock();
+                let result = st.prefs.diff_and_apply(&win);
+                if result.skin_changed {
+                    st.skin.skin = st.prefs.skin;
+                    st.skin.theme = st.prefs.theme;
+                    st.skin.density = st.prefs.density;
+                    st.skin.radius = st.prefs.radius;
+                    st.skin_dirty = true;
+                    st.skin.apply(&weak);
+                }
+                if result.layout_changed {
+                    let new_layout = st.prefs.layout;
+                    st.skin.layout = new_layout;
+                    st.skin_dirty = true;
+                    let inspector_shown = st
+                        .skin
+                        .inspector_shown
+                        .unwrap_or_else(|| skin::default_inspector_shown(new_layout));
+                    win.set_current_layout_label(new_layout.label().into());
+                    win.set_inspector_shown(inspector_shown);
+                }
+                st.prefs_dirty = true;
+                (result, st.cmd_tx.clone())
+            };
+            if result.has_engine_changes()
+                && let Some(tx) = cmd_tx
+            {
+                let _ = tx.send(app::GuiCommand::ApplySettings {
+                    download_dir: result.download_dir,
+                    create_subfolder: result.create_subfolder,
+                });
+            }
+        });
+    }
+    {
+        let cb_state = state.clone();
+        let weak = main_window.as_weak();
+        main_window.on_preferences_cancel_requested(move || {
+            let Some(win) = weak.upgrade() else { return };
+            let st = cb_state.lock();
+            st.prefs.populate_slint(&win);
+            win.set_show_preferences_dialog(false);
+        });
+    }
+    {
+        let weak = main_window.as_weak();
+        main_window.on_preferences_ok_requested(move || {
+            let Some(win) = weak.upgrade() else { return };
+            win.invoke_preferences_apply_requested();
+            win.set_show_preferences_dialog(false);
+        });
+    }
+    {
+        let weak = main_window.as_weak();
+        let cb_state = state.clone();
+        main_window.on_preferences_browse_download_dir(move || {
+            bridge::handle_browse_pref_folder(&weak, &cb_state, "pref-download-dir");
+        });
+    }
 
-    // M176: Layout. Doesn't fit `wire_skin_axis!` because (1) the
-    // user-facing label ("3-pane" / "Drawer" / "Command") is mapped to
-    // an L1/L2/L3 token via `Layout::from_label`, not `FromStr`, and
-    // (2) Layout doesn't affect Tokens, so `apply()` is a no-op for
-    // this axis. We also refresh `inspector-shown` because its effective
-    // value depends on the active layout when the user hasn't set an
-    // override.
+    // M176: Layout change from Toolbar still uses tweaks_layout_changed.
     {
         let weak = main_window.as_weak();
         let cb_state = state.clone();
@@ -983,11 +981,13 @@ fn main() -> Result<(), error::GuiError> {
             st.sidebar_tracker_collapsed = win.get_sidebar_tracker_collapsed();
         }
         let st = state.lock();
-        if st.columns_dirty || st.skin_dirty || st.sidebar_dirty {
+        if st.columns_dirty || st.skin_dirty || st.sidebar_dirty || st.prefs_dirty {
             let mut gui = st.columns.to_gui_config();
             st.skin.populate_gui_config(&mut gui);
             // M173 Lane A task A9: persist [gui.sidebar].
             gui.sidebar = Some(st.to_sidebar_config());
+            // M184: persist preferences fields.
+            st.prefs.populate_gui_config(&mut gui);
             if let Err(e) = irontide_config::save_gui_config(None, &gui) {
                 tracing::warn!("failed to save GUI config: {e}");
             }

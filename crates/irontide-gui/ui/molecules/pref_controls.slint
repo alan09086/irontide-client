@@ -1,0 +1,148 @@
+// Preferences control molecules (M184).
+//
+// PrefGroup:     section header with uppercase title + divider.
+// PrefField:     label + control slot with optional hint text.
+// PrefToggle:    animated on/off switch (custom widget, no std-widgets).
+// PrefTextInput: styled text input with optional suffix label.
+
+import { Tokens } from "../tokens.slint";
+
+export component PrefGroup inherits VerticalLayout {
+    in property <string> title;
+
+    spacing: Tokens.sp-3;
+    padding-bottom: Tokens.sp-5;
+
+    Text {
+        text: root.title;
+        color: Tokens.fg-2;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+    }
+
+    Rectangle {
+        height: Tokens.border-width-thin;
+        background: Tokens.divider;
+    }
+}
+
+export component PrefField inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> hint: "";
+    in property <bool> not-yet-active: false;
+    in property <bool> field-enabled: true;
+
+    spacing: Tokens.sp-4;
+    min-height: 30px;
+    padding-top: Tokens.sp-2;
+    padding-bottom: Tokens.sp-2;
+
+    VerticalLayout {
+        width: 240px;
+        alignment: center;
+
+        HorizontalLayout {
+            spacing: Tokens.sp-3;
+
+            Text {
+                text: root.label;
+                color: root.field-enabled ? Tokens.fg-0 : Tokens.fg-3;
+                font-size: Tokens.fs-13;
+                vertical-alignment: center;
+            }
+
+            if root.not-yet-active: Text {
+                text: "(not yet active)";
+                color: Tokens.fg-3;
+                font-size: 11px;
+                vertical-alignment: center;
+            }
+        }
+
+        if root.hint != "": Text {
+            text: root.hint;
+            color: Tokens.fg-3;
+            font-size: 11px;
+        }
+    }
+
+    @children
+}
+
+export component PrefToggle inherits Rectangle {
+    in-out property <bool> checked: false;
+    in property <bool> toggle-enabled: true;
+    callback toggled(bool);
+
+    width: 40px;
+    height: 22px;
+    border-radius: 11px;
+    background: root.checked ? Tokens.accent : Tokens.bg-3;
+    opacity: root.toggle-enabled ? 1.0 : 0.4;
+
+    animate background { duration: 150ms; easing: ease-in-out; }
+
+    knob := Rectangle {
+        x: root.checked ? parent.width - self.width - 3px : 3px;
+        y: (parent.height - self.height) / 2;
+        width: 16px;
+        height: 16px;
+        border-radius: 8px;
+        background: root.checked ? Tokens.accent-fg : Tokens.fg-1;
+
+        animate x { duration: 150ms; easing: ease-in-out; }
+    }
+
+    touch := TouchArea {
+        enabled: root.toggle-enabled;
+        clicked => {
+            root.checked = !root.checked;
+            root.toggled(root.checked);
+        }
+    }
+}
+
+export component PrefTextInput inherits Rectangle {
+    in-out property <string> value: "";
+    in property <string> placeholder: "";
+    in property <bool> input-enabled: true;
+    in property <bool> monospace: false;
+    callback edited(string);
+
+    height: Tokens.chrome-h - Tokens.sp-2;
+    horizontal-stretch: 1;
+    background: root.input-enabled ? Tokens.bg-inset : Tokens.bg-3;
+    border-color: input-touch.has-hover && root.input-enabled ? Tokens.border-2 : Tokens.border-1;
+    border-width: Tokens.border-width-thin;
+    border-radius: Tokens.r-md;
+    opacity: root.input-enabled ? 1.0 : 0.5;
+
+    text-input := TextInput {
+        x: Tokens.sp-4;
+        y: 0;
+        width: parent.width - Tokens.sp-6;
+        height: parent.height;
+        color: Tokens.fg-0;
+        font-size: Tokens.fs-13;
+        text: root.value;
+        enabled: root.input-enabled;
+        edited => {
+            root.value = self.text;
+            root.edited(self.text);
+        }
+    }
+
+    if text-input.text == "" && root.placeholder != "": Text {
+        x: Tokens.sp-4;
+        color: Tokens.fg-3;
+        font-size: Tokens.fs-13;
+        text: root.placeholder;
+        vertical-alignment: center;
+    }
+
+    input-touch := TouchArea {
+        enabled: root.input-enabled;
+        clicked => { text-input.focus(); }
+    }
+}

@@ -217,6 +217,29 @@ pub fn handle_browse_download_dir(
     });
 }
 
+/// Handle a "Browse..." button for a Preferences dialog path field.
+///
+/// Spawns `rfd::FileDialog` on a separate thread (GTK blocks). On
+/// selection, writes the result back to the `pref-download-dir` property
+/// and marks the dialog dirty.
+pub fn handle_browse_pref_folder(
+    weak: &slint::Weak<crate::MainWindow>,
+    _state: &Arc<Mutex<AppState>>,
+    _field: &str,
+) {
+    let weak = weak.clone();
+    std::thread::spawn(move || {
+        let folder = rfd::FileDialog::new().pick_folder();
+        if let Some(path) = folder {
+            let path_str = path.to_string_lossy().into_owned();
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_pref_download_dir(path_str.into());
+                win.set_pref_dirty(true);
+            });
+        }
+    });
+}
+
 /// Handle a "Browse..." button click for selecting a `.torrent` file.
 ///
 /// Spawns `rfd::FileDialog` on a separate thread (GTK blocks). On
@@ -366,6 +389,14 @@ async fn handle_gui_command(
         } => {
             handle_set_torrent_rate_limit(&info_hash, download_limit, upload_limit, session, weak)
                 .await;
+        }
+        GuiCommand::ApplySettings {
+            download_dir,
+            create_subfolder: _,
+        } => {
+            if let Some(dir) = download_dir {
+                handle_set_default_download_dir(&dir, session, weak).await;
+            }
         }
         GuiCommand::ReannounceTracker { info_hash, url: _ } => {
             // M178: Per-tracker reannounce is not yet exposed via SessionHandle;

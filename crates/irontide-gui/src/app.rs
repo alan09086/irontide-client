@@ -104,6 +104,15 @@ pub enum GuiCommand {
         #[allow(dead_code, reason = "M178: per-URL dispatch deferred to M180 polish")]
         url: String,
     },
+    /// M184: apply changed session-level settings from the Preferences dialog.
+    ApplySettings {
+        /// New default download directory (if changed).
+        download_dir: Option<String>,
+        /// New create-subfolder setting (if changed). Wired to engine in a
+        /// future milestone when `SessionHandle::apply_settings` supports it.
+        #[allow(dead_code, reason = "M184: engine plumbing deferred")]
+        create_subfolder: Option<bool>,
+    },
     /// M180: set per-torrent DL/UL rate limits.
     SetTorrentRateLimit {
         /// Hex-encoded info-hash string.
@@ -270,6 +279,10 @@ pub struct AppState {
     pub speed_histories: HashMap<String, crate::speed::SpeedHistory>,
     /// M183: recently dispatched palette commands (most-recent-first, cap 5).
     pub palette_recent: Vec<crate::palette::PaletteCommandId>,
+    /// M184: committed preferences state (view model).
+    pub prefs: crate::prefs::PreferencesState,
+    /// M184: whether preferences have been applied this session (gates persist).
+    pub prefs_dirty: bool,
 }
 
 impl AppState {
@@ -305,6 +318,8 @@ impl AppState {
             detail_flat_files: Vec::new(),
             speed_histories: HashMap::new(),
             palette_recent: Vec::new(),
+            prefs: crate::prefs::PreferencesState::default(),
+            prefs_dirty: false,
         }
     }
 

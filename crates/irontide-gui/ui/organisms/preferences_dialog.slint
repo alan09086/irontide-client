@@ -1,0 +1,781 @@
+// Preferences dialog (M184).
+//
+// Modal overlay following the AddMagnetDialog pattern (backdrop + centered
+// card). 960×640 max, responsive. Left nav rail with 8 tabs (2 populated,
+// 6 placeholder). Footer with Cancel / Apply / OK.
+
+import { Tokens } from "../tokens.slint";
+import { PrefGroup, PrefField, PrefToggle, PrefTextInput } from "../molecules/pref_controls.slint";
+import { PrefSelect } from "../molecules/pref_select.slint";
+
+export component PreferencesDialog {
+    in property <bool> show;
+    in-out property <string> active-tab: "behavior";
+    in-out property <bool> dirty: false;
+
+    // ── Behaviour tab fields ──────────────────────────────────────────
+    in-out property <string> pref-skin: "tide";
+    in-out property <string> pref-theme: "dark";
+    in-out property <string> pref-density: "balanced";
+    in-out property <string> pref-radius: "balanced";
+    in-out property <string> pref-layout: "3-pane";
+    in-out property <bool> pref-confirm-delete: true;
+    in-out property <bool> pref-confirm-pause-all: false;
+    in-out property <bool> pref-show-torrent-added-toast: true;
+    in-out property <string> pref-double-click-action: "Show Details";
+    in-out property <bool> pref-start-minimized: false;
+    in-out property <bool> pref-minimize-to-tray: false;
+    in-out property <bool> pref-resume-previous-session: true;
+    in-out property <bool> pref-notify-on-complete: true;
+    in-out property <bool> pref-notify-on-error: true;
+    in-out property <bool> pref-notify-on-rss: false;
+    in-out property <bool> pref-play-sound-on-complete: false;
+    in-out property <string> pref-on-complete-program: "";
+
+    // ── Downloads tab fields ──────────────────────────────────────────
+    in-out property <string> pref-download-dir: "";
+    in-out property <bool> pref-use-incomplete-dir: false;
+    in-out property <string> pref-incomplete-dir: "";
+    in-out property <bool> pref-create-subfolder: true;
+    in-out property <bool> pref-pre-allocate: false;
+    in-out property <bool> pref-show-add-torrent-dialog: true;
+    in-out property <bool> pref-skip-hash-check: false;
+    in-out property <bool> pref-incomplete-extension: false;
+    in-out property <bool> pref-use-auto-categories: false;
+    in-out property <bool> pref-append-date-to-path: false;
+    in-out property <string> pref-watched-folder: "";
+    in-out property <string> pref-copy-torrent-to: "";
+    in-out property <bool> pref-delete-torrent-after-add: false;
+    in-out property <bool> pref-move-completed-enabled: false;
+    in-out property <string> pref-move-completed-to: "";
+    in-out property <string> pref-dl-on-complete-program: "";
+
+    // ── Callbacks ─────────────────────────────────────────────────────
+    callback apply-requested();
+    callback cancel-requested();
+    callback ok-requested();
+    callback browse-download-dir();
+    callback browse-incomplete-dir();
+    callback browse-watched-folder();
+    callback browse-copy-torrent-to();
+    callback browse-move-completed-to();
+
+    if root.show: Rectangle {
+        background: Tokens.bg-0.with-alpha(80%);
+
+        backdrop-touch := TouchArea {
+            clicked => { root.cancel-requested(); }
+        }
+
+        Rectangle {
+            x: max((parent.width - self.width) / 2, 0px);
+            y: max((parent.height - self.height) / 2, 0px);
+            width: min(960px, parent.width - Tokens.sp-6 * 2);
+            height: min(640px, parent.height - Tokens.sp-6 * 2);
+            background: Tokens.bg-2;
+            border-color: Tokens.border-1;
+            border-width: Tokens.border-width-thin;
+            border-radius: Tokens.r-lg;
+
+            TouchArea { }
+
+            VerticalLayout {
+                // ── Header ────────────────────────────────────────────
+                Rectangle {
+                    height: Tokens.chrome-h + Tokens.sp-2;
+                    background: Tokens.bg-1;
+                    border-radius: Tokens.r-lg;
+
+                    HorizontalLayout {
+                        padding-left: Tokens.sp-6;
+                        padding-right: Tokens.sp-4;
+
+                        Text {
+                            text: "Preferences";
+                            color: Tokens.fg-0;
+                            font-size: Tokens.fs-16;
+                            font-weight: 700;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+
+                        Rectangle {
+                            width: Tokens.chrome-h;
+                            height: Tokens.chrome-h;
+
+                            Text {
+                                text: "✕";
+                                color: close-touch.has-hover ? Tokens.fg-0 : Tokens.fg-2;
+                                font-size: Tokens.fs-16;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+
+                            close-touch := TouchArea {
+                                clicked => { root.cancel-requested(); }
+                            }
+                        }
+                    }
+                }
+
+                // ── Body: nav rail + content ──────────────────────────
+                HorizontalLayout {
+                    vertical-stretch: 1;
+                    spacing: 0;
+
+                    // Left nav rail
+                    Rectangle {
+                        width: 200px;
+                        background: Tokens.bg-1;
+
+                        VerticalLayout {
+                            padding: Tokens.sp-4;
+                            spacing: Tokens.sp-1;
+
+                            for tab-item in [
+                                { id: "behavior",   label: "Behaviour" },
+                                { id: "downloads",  label: "Downloads" },
+                                { id: "connection", label: "Connection" },
+                                { id: "speed",      label: "Speed" },
+                                { id: "bittorrent", label: "BitTorrent" },
+                                { id: "rss",        label: "RSS" },
+                                { id: "webui",      label: "Web UI" },
+                                { id: "advanced",   label: "Advanced" },
+                            ]: Rectangle {
+                                height: Tokens.chrome-h;
+                                background: root.active-tab == tab-item.id
+                                    ? Tokens.bg-selected
+                                    : (tab-touch.has-hover ? Tokens.bg-hover : transparent);
+                                border-radius: Tokens.r-sm;
+
+                                Text {
+                                    x: Tokens.sp-4;
+                                    text: tab-item.label;
+                                    color: root.active-tab == tab-item.id ? Tokens.fg-0 : Tokens.fg-1;
+                                    font-size: Tokens.fs-13;
+                                    font-weight: root.active-tab == tab-item.id ? 600 : 400;
+                                    vertical-alignment: center;
+                                }
+
+                                tab-touch := TouchArea {
+                                    clicked => {
+                                        root.active-tab = tab-item.id;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Right border
+                    Rectangle {
+                        width: Tokens.border-width-thin;
+                        background: Tokens.border-1;
+                    }
+
+                    // Content area
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        clip: true;
+
+                        Flickable {
+                            viewport-width: parent.width;
+
+                            VerticalLayout {
+                                padding: Tokens.sp-7;
+                                spacing: Tokens.sp-4;
+
+                                // ── Behaviour tab ─────────────────────
+                                if root.active-tab == "behavior": VerticalLayout {
+                                    spacing: Tokens.sp-4;
+
+                                    // Interface group
+                                    PrefGroup { title: "INTERFACE"; }
+
+                                    PrefField {
+                                        label: "Skin";
+                                        PrefSelect {
+                                            current-value: root.pref-skin;
+                                            options: ["tide", "forge", "abyss"];
+                                            value-changed(v) => {
+                                                root.pref-skin = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Theme";
+                                        PrefSelect {
+                                            current-value: root.pref-theme;
+                                            options: ["dark", "light"];
+                                            value-changed(v) => {
+                                                root.pref-theme = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Density";
+                                        PrefSelect {
+                                            current-value: root.pref-density;
+                                            options: ["compact", "balanced", "spacious"];
+                                            value-changed(v) => {
+                                                root.pref-density = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Radius";
+                                        PrefSelect {
+                                            current-value: root.pref-radius;
+                                            options: ["sharp", "balanced", "rounded"];
+                                            value-changed(v) => {
+                                                root.pref-radius = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Layout";
+                                        PrefSelect {
+                                            current-value: root.pref-layout;
+                                            options: ["3-pane", "Drawer", "Command"];
+                                            value-changed(v) => {
+                                                root.pref-layout = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Double-click action";
+                                        not-yet-active: true;
+                                        PrefSelect {
+                                            current-value: root.pref-double-click-action;
+                                            options: ["Show Details", "Open Folder", "Start/Stop"];
+                                            select-enabled: false;
+                                            value-changed(v) => {
+                                                root.pref-double-click-action = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    // Confirmations group
+                                    PrefGroup { title: "CONFIRMATIONS"; }
+
+                                    PrefField {
+                                        label: "Confirm when deleting torrents";
+                                        PrefToggle {
+                                            checked: root.pref-confirm-delete;
+                                            toggled(v) => {
+                                                root.pref-confirm-delete = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Confirm before pausing all";
+                                        not-yet-active: true;
+                                        PrefToggle {
+                                            checked: root.pref-confirm-pause-all;
+                                            toggle-enabled: false;
+                                            toggled(v) => {
+                                                root.pref-confirm-pause-all = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Show torrent-added toast";
+                                        not-yet-active: true;
+                                        PrefToggle {
+                                            checked: root.pref-show-torrent-added-toast;
+                                            toggle-enabled: false;
+                                            toggled(v) => {
+                                                root.pref-show-torrent-added-toast = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    // Startup group
+                                    PrefGroup { title: "STARTUP"; }
+
+                                    PrefField {
+                                        label: "Start minimised";
+                                        not-yet-active: true;
+                                        PrefToggle {
+                                            checked: root.pref-start-minimized;
+                                            toggle-enabled: false;
+                                            toggled(v) => {
+                                                root.pref-start-minimized = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Minimise to system tray";
+                                        not-yet-active: true;
+                                        PrefToggle {
+                                            checked: root.pref-minimize-to-tray;
+                                            toggle-enabled: false;
+                                            toggled(v) => {
+                                                root.pref-minimize-to-tray = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Resume previous session";
+                                        not-yet-active: true;
+                                        PrefToggle {
+                                            checked: root.pref-resume-previous-session;
+                                            toggle-enabled: false;
+                                            toggled(v) => {
+                                                root.pref-resume-previous-session = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    // Notifications group
+                                    PrefGroup { title: "NOTIFICATIONS"; }
+
+                                    PrefField {
+                                        label: "Notify on download complete";
+                                        not-yet-active: true;
+                                        PrefToggle {
+                                            checked: root.pref-notify-on-complete;
+                                            toggle-enabled: false;
+                                            toggled(v) => {
+                                                root.pref-notify-on-complete = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Notify on error";
+                                        not-yet-active: true;
+                                        PrefToggle {
+                                            checked: root.pref-notify-on-error;
+                                            toggle-enabled: false;
+                                            toggled(v) => {
+                                                root.pref-notify-on-error = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Run external program on completion";
+                                        not-yet-active: true;
+                                        PrefTextInput {
+                                            value: root.pref-on-complete-program;
+                                            placeholder: "/path/to/program";
+                                            input-enabled: false;
+                                            edited(v) => {
+                                                root.pref-on-complete-program = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // ── Downloads tab ─────────────────────
+                                if root.active-tab == "downloads": VerticalLayout {
+                                    spacing: Tokens.sp-4;
+
+                                    // Save Locations group
+                                    PrefGroup { title: "SAVE LOCATIONS"; }
+
+                                    PrefField {
+                                        label: "Default save path";
+                                        HorizontalLayout {
+                                            spacing: Tokens.sp-4;
+                                            horizontal-stretch: 1;
+
+                                            PrefTextInput {
+                                                value: root.pref-download-dir;
+                                                placeholder: "/path/to/downloads";
+                                                edited(v) => {
+                                                    root.pref-download-dir = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+
+                                            Rectangle {
+                                                width: Tokens.sp-10 * 2;
+                                                height: Tokens.chrome-h - Tokens.sp-2;
+                                                background: browse-dl-touch.has-hover ? Tokens.bg-hover : Tokens.accent;
+                                                border-radius: Tokens.r-md;
+
+                                                Text {
+                                                    text: "Browse\u{2026}";
+                                                    color: Tokens.accent-fg;
+                                                    font-size: Tokens.fs-13;
+                                                    horizontal-alignment: center;
+                                                    vertical-alignment: center;
+                                                }
+
+                                                browse-dl-touch := TouchArea {
+                                                    clicked => { root.browse-download-dir(); }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Keep incomplete in separate folder";
+                                        not-yet-active: true;
+                                        PrefToggle {
+                                            checked: root.pref-use-incomplete-dir;
+                                            toggle-enabled: false;
+                                            toggled(v) => {
+                                                root.pref-use-incomplete-dir = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Incomplete folder";
+                                        not-yet-active: true;
+                                        field-enabled: root.pref-use-incomplete-dir;
+                                        HorizontalLayout {
+                                            spacing: Tokens.sp-4;
+                                            horizontal-stretch: 1;
+
+                                            PrefTextInput {
+                                                value: root.pref-incomplete-dir;
+                                                placeholder: "/path/to/incomplete";
+                                                input-enabled: false;
+                                                edited(v) => {
+                                                    root.pref-incomplete-dir = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+
+                                            Rectangle {
+                                                width: Tokens.sp-10 * 2;
+                                                height: Tokens.chrome-h - Tokens.sp-2;
+                                                background: Tokens.accent;
+                                                border-radius: Tokens.r-md;
+                                                opacity: 0.5;
+
+                                                Text {
+                                                    text: "Browse\u{2026}";
+                                                    color: Tokens.accent-fg;
+                                                    font-size: Tokens.fs-13;
+                                                    horizontal-alignment: center;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // When Adding group
+                                    PrefGroup { title: "WHEN ADDING TORRENTS"; }
+
+                                    PrefField {
+                                        label: "Create subfolder for multi-file torrents";
+                                        PrefToggle {
+                                            checked: root.pref-create-subfolder;
+                                            toggled(v) => {
+                                                root.pref-create-subfolder = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Show add-torrent dialog";
+                                        not-yet-active: true;
+                                        PrefToggle {
+                                            checked: root.pref-show-add-torrent-dialog;
+                                            toggle-enabled: false;
+                                            toggled(v) => {
+                                                root.pref-show-add-torrent-dialog = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Skip hash check";
+                                        not-yet-active: true;
+                                        PrefToggle {
+                                            checked: root.pref-skip-hash-check;
+                                            toggle-enabled: false;
+                                            toggled(v) => {
+                                                root.pref-skip-hash-check = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Pre-allocate disk space";
+                                        not-yet-active: true;
+                                        PrefToggle {
+                                            checked: root.pref-pre-allocate;
+                                            toggle-enabled: false;
+                                            toggled(v) => {
+                                                root.pref-pre-allocate = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Append .!it extension to incomplete files";
+                                        not-yet-active: true;
+                                        PrefToggle {
+                                            checked: root.pref-incomplete-extension;
+                                            toggle-enabled: false;
+                                            toggled(v) => {
+                                                root.pref-incomplete-extension = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    // Torrent File Handling group
+                                    PrefGroup { title: "TORRENT FILE HANDLING"; }
+
+                                    PrefField {
+                                        label: "Watched folder";
+                                        not-yet-active: true;
+                                        HorizontalLayout {
+                                            spacing: Tokens.sp-4;
+                                            horizontal-stretch: 1;
+
+                                            PrefTextInput {
+                                                value: root.pref-watched-folder;
+                                                placeholder: "/path/to/watch";
+                                                input-enabled: false;
+                                                edited(v) => {
+                                                    root.pref-watched-folder = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+
+                                            Rectangle {
+                                                width: Tokens.sp-10 * 2;
+                                                height: Tokens.chrome-h - Tokens.sp-2;
+                                                background: Tokens.accent;
+                                                border-radius: Tokens.r-md;
+                                                opacity: 0.5;
+
+                                                Text {
+                                                    text: "Browse\u{2026}";
+                                                    color: Tokens.accent-fg;
+                                                    font-size: Tokens.fs-13;
+                                                    horizontal-alignment: center;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Delete .torrent file after adding";
+                                        not-yet-active: true;
+                                        PrefToggle {
+                                            checked: root.pref-delete-torrent-after-add;
+                                            toggle-enabled: false;
+                                            toggled(v) => {
+                                                root.pref-delete-torrent-after-add = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    // On Completion group
+                                    PrefGroup { title: "ON COMPLETION"; }
+
+                                    PrefField {
+                                        label: "Move completed downloads";
+                                        not-yet-active: true;
+                                        PrefToggle {
+                                            checked: root.pref-move-completed-enabled;
+                                            toggle-enabled: false;
+                                            toggled(v) => {
+                                                root.pref-move-completed-enabled = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Move to";
+                                        not-yet-active: true;
+                                        field-enabled: root.pref-move-completed-enabled;
+                                        HorizontalLayout {
+                                            spacing: Tokens.sp-4;
+                                            horizontal-stretch: 1;
+
+                                            PrefTextInput {
+                                                value: root.pref-move-completed-to;
+                                                placeholder: "/path/to/completed";
+                                                input-enabled: false;
+                                                edited(v) => {
+                                                    root.pref-move-completed-to = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+
+                                            Rectangle {
+                                                width: Tokens.sp-10 * 2;
+                                                height: Tokens.chrome-h - Tokens.sp-2;
+                                                background: Tokens.accent;
+                                                border-radius: Tokens.r-md;
+                                                opacity: 0.5;
+
+                                                Text {
+                                                    text: "Browse\u{2026}";
+                                                    color: Tokens.accent-fg;
+                                                    font-size: Tokens.fs-13;
+                                                    horizontal-alignment: center;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Run external program";
+                                        not-yet-active: true;
+                                        PrefTextInput {
+                                            value: root.pref-dl-on-complete-program;
+                                            placeholder: "/path/to/program";
+                                            input-enabled: false;
+                                            edited(v) => {
+                                                root.pref-dl-on-complete-program = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // ── Placeholder tabs ──────────────────
+                                if root.active-tab != "behavior" && root.active-tab != "downloads": VerticalLayout {
+                                    alignment: center;
+                                    vertical-stretch: 1;
+
+                                    Text {
+                                        text: "Coming soon";
+                                        color: Tokens.fg-3;
+                                        font-size: Tokens.fs-16;
+                                        horizontal-alignment: center;
+                                    }
+
+                                    Text {
+                                        text: "This tab will be available in a future update.";
+                                        color: Tokens.fg-3;
+                                        font-size: Tokens.fs-13;
+                                        horizontal-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── Footer ────────────────────────────────────────────
+                Rectangle {
+                    height: Tokens.chrome-h + Tokens.sp-6;
+                    background: Tokens.bg-1;
+
+                    Rectangle {
+                        y: 0;
+                        width: parent.width;
+                        height: Tokens.border-width-thin;
+                        background: Tokens.border-1;
+                    }
+
+                    HorizontalLayout {
+                        alignment: end;
+                        padding-right: Tokens.sp-6;
+                        spacing: Tokens.sp-4;
+
+                        // Cancel (ghost style)
+                        Rectangle {
+                            width: Tokens.sp-10 * 2;
+                            height: Tokens.chrome-h - Tokens.sp-2;
+                            background: cancel-btn-touch.has-hover ? Tokens.bg-hover : transparent;
+                            border-color: Tokens.border-1;
+                            border-width: Tokens.border-width-thin;
+                            border-radius: Tokens.r-md;
+
+                            Text {
+                                text: "Cancel";
+                                color: Tokens.fg-1;
+                                font-size: Tokens.fs-13;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+
+                            cancel-btn-touch := TouchArea {
+                                clicked => { root.cancel-requested(); }
+                            }
+                        }
+
+                        // Apply (disabled when not dirty)
+                        Rectangle {
+                            width: Tokens.sp-10 * 2;
+                            height: Tokens.chrome-h - Tokens.sp-2;
+                            background: root.dirty
+                                ? (apply-btn-touch.has-hover ? Tokens.bg-hover : Tokens.accent)
+                                : Tokens.bg-3;
+                            border-radius: Tokens.r-md;
+                            opacity: root.dirty ? 1.0 : 0.5;
+
+                            Text {
+                                text: "Apply";
+                                color: root.dirty ? Tokens.accent-fg : Tokens.fg-3;
+                                font-size: Tokens.fs-13;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+
+                            apply-btn-touch := TouchArea {
+                                enabled: root.dirty;
+                                clicked => { root.apply-requested(); }
+                            }
+                        }
+
+                        // OK (solid)
+                        Rectangle {
+                            width: Tokens.sp-10 * 2;
+                            height: Tokens.chrome-h - Tokens.sp-2;
+                            background: ok-btn-touch.has-hover ? Tokens.bg-hover : Tokens.status-seeding;
+                            border-radius: Tokens.r-md;
+
+                            Text {
+                                text: "OK";
+                                color: Tokens.accent-fg;
+                                font-size: Tokens.fs-13;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+
+                            ok-btn-touch := TouchArea {
+                                clicked => { root.ok-requested(); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

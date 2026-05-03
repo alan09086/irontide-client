@@ -11,7 +11,7 @@ import { AddMagnetDialog } from "widgets/add_magnet_dialog.slint";
 import { AddTorrentDialog } from "widgets/add_torrent_dialog.slint";
 import { ContextMenu } from "widgets/context_menu.slint";
 import { ConfirmDeleteDialog } from "widgets/confirm_delete_dialog.slint";
-import { TweaksOverlay } from "tweaks.slint";
+import { PreferencesDialog } from "organisms/preferences_dialog.slint";
 // M173 Lane A: sidebar IA. The `Sidebar` organism + the `SidebarRow`
 // data struct are imported here so slint_build picks them up. The
 // MainWindow body (below) wires the `Sidebar` into the layout in task
@@ -362,16 +362,50 @@ export component MainWindow inherits Window {
     callback sidebar-predicate-changed(/* token */ string);
     callback sidebar-section-toggled(/* kind: library|category|tag|tracker */ string, /* collapsed */ bool);
 
-    // ── Tweaks overlay (M172b Lane B) ──
-    in-out property <bool> show-tweaks: false;
-    in-out property <string> current-skin: "tide";
-    in-out property <string> current-theme: "dark";
-    in-out property <string> current-density: "balanced";
-    in-out property <string> current-radius: "balanced";
-    callback tweaks-skin-changed(string);
-    callback tweaks-theme-changed(string);
-    callback tweaks-density-changed(string);
-    callback tweaks-radius-changed(string);
+    // ── Preferences dialog (M184, replaces Tweaks overlay) ──
+    in-out property <bool> show-preferences-dialog: false;
+    in-out property <string> pref-skin: "tide";
+    in-out property <string> pref-theme: "dark";
+    in-out property <string> pref-density: "balanced";
+    in-out property <string> pref-radius: "balanced";
+    in-out property <string> pref-layout: "3-pane";
+    in-out property <bool> pref-confirm-delete: true;
+    in-out property <bool> pref-confirm-pause-all: false;
+    in-out property <bool> pref-show-torrent-added-toast: true;
+    in-out property <string> pref-double-click-action: "Show Details";
+    in-out property <bool> pref-start-minimized: false;
+    in-out property <bool> pref-minimize-to-tray: false;
+    in-out property <bool> pref-resume-previous-session: true;
+    in-out property <bool> pref-notify-on-complete: true;
+    in-out property <bool> pref-notify-on-error: true;
+    in-out property <bool> pref-notify-on-rss: false;
+    in-out property <bool> pref-play-sound-on-complete: false;
+    in-out property <string> pref-on-complete-program: "";
+    in-out property <string> pref-download-dir: "";
+    in-out property <bool> pref-use-incomplete-dir: false;
+    in-out property <string> pref-incomplete-dir: "";
+    in-out property <bool> pref-create-subfolder: true;
+    in-out property <bool> pref-pre-allocate: false;
+    in-out property <bool> pref-show-add-torrent-dialog: true;
+    in-out property <bool> pref-skip-hash-check: false;
+    in-out property <bool> pref-incomplete-extension: false;
+    in-out property <bool> pref-use-auto-categories: false;
+    in-out property <bool> pref-append-date-to-path: false;
+    in-out property <string> pref-watched-folder: "";
+    in-out property <string> pref-copy-torrent-to: "";
+    in-out property <bool> pref-delete-torrent-after-add: false;
+    in-out property <bool> pref-move-completed-enabled: false;
+    in-out property <string> pref-move-completed-to: "";
+    in-out property <string> pref-dl-on-complete-program: "";
+    in-out property <bool> pref-dirty: false;
+    callback preferences-apply-requested();
+    callback preferences-cancel-requested();
+    callback preferences-ok-requested();
+    callback preferences-browse-download-dir();
+    callback preferences-browse-incomplete-dir();
+    callback preferences-browse-watched-folder();
+    callback preferences-browse-copy-torrent-to();
+    callback preferences-browse-move-completed-to();
 
     // ── Layout variants (M176) ──
     // `current-layout-label` is the user-facing string ("3-pane" /
@@ -385,8 +419,8 @@ export component MainWindow inherits Window {
     callback inspector-toggle();
     callback l3-sidebar-toggle();
 
-    public function close-tweaks() {
-        root.show-tweaks = false;
+    public function close-preferences() {
+        root.show-preferences-dialog = false;
     }
 
     // ── Command Palette (M183) ──
@@ -407,13 +441,18 @@ export component MainWindow inherits Window {
     // ── FocusScope for keyboard shortcuts + modifier key tracking ──
     focus-scope := FocusScope {
         key-pressed(event) => {
-            // Ctrl+Shift+T (Cmd+Shift+T on macOS): toggle Tweaks overlay.
-            // Checked before other shortcuts so it works even while a
-            // dialog is open (the overlay closes dialogs first).
+            // Ctrl+, (Cmd+, on macOS): open Preferences dialog.
+            if !root.shift-held
+               && (root.ctrl-held || root.meta-held)
+               && event.text == "," {
+                root.show-preferences-dialog = true;
+                return accept;
+            }
+            // Ctrl+Shift+P (Cmd+Shift+P on macOS): open Preferences dialog.
             if root.shift-held
                && (root.ctrl-held || root.meta-held)
-               && (event.text == "t" || event.text == "T") {
-                root.show-tweaks = !root.show-tweaks;
+               && (event.text == "p" || event.text == "P") {
+                root.show-preferences-dialog = true;
                 return accept;
             }
             // Ctrl+K (Cmd+K on macOS): toggle command palette.
@@ -430,7 +469,7 @@ export component MainWindow inherits Window {
             // The Tweaks overlay is treated as modal too — it absorbs
             // its own keys above, so any leftover key event with
             // root.show-tweaks should not trigger sidebar shortcuts.
-            if !root.show-add-magnet-dialog && !root.show-add-torrent-dialog && !root.show-delete-dialog && !root.show-context-menu && !root.show-tweaks && !root.show-command-palette {
+            if !root.show-add-magnet-dialog && !root.show-add-torrent-dialog && !root.show-delete-dialog && !root.show-context-menu && !root.show-preferences-dialog && !root.show-command-palette {
                 if event.text == " " {
                     root.toggle-pause-resume();
                     return accept;
@@ -491,8 +530,8 @@ export component MainWindow inherits Window {
                     root.palette-dismissed();
                     return accept;
                 }
-                if root.show-tweaks {
-                    root.show-tweaks = false;
+                if root.show-preferences-dialog {
+                    root.preferences-cancel-requested();
                     return accept;
                 }
                 if root.show-context-menu {
@@ -933,11 +972,7 @@ export component MainWindow inherits Window {
     //   5. DetailPopover (L3-only, M176)
     //   6. FilePriorityPopup (M178)
     //   7. CommandPalette (M183)
-    //   8. TweaksOverlay  ◄── MUST be the very last child of MainWindow.
-    //
-    // Moving TweaksOverlay earlier breaks its readability when the L3
-    // detail popover is visible (the popover would float on top of
-    // Tweaks, hiding the controls the user is actively driving).
+    //   8. PreferencesDialog (M184)  ◄── MUST be the very last child.
     // ──────────────────────────────────────────────────────────
 
     // L3 detail popover overlay (M176 wrapper, M177 detail content).
@@ -1017,7 +1052,6 @@ export component MainWindow inherits Window {
     // M178: File-priority popup (custom-overlay pattern, M164 precedent).
     // Lives ABOVE the L3 detail popover so right-clicking a file in the
     // L3 popover surface still produces an in-bounds priority popup.
-    // Sits BELOW the TweaksOverlay so Ctrl+Shift+T can always interrupt.
     FilePriorityPopup {
         show: root.show-file-priority-popup;
         popup-x: root.file-priority-popup-x;
@@ -1050,21 +1084,54 @@ export component MainWindow inherits Window {
         }
     }
 
-    // Tweaks overlay (Ctrl+Shift+T / Cmd+Shift+T) — MUST stay LAST
-    // child of MainWindow per the z-order spec above.
-    TweaksOverlay {
-        show: root.show-tweaks;
-        x: root.width - self.width - Tokens.sp-4;
-        y: Tokens.sp-4;
-        current-skin: root.current-skin;
-        current-theme: root.current-theme;
-        current-density: root.current-density;
-        current-radius: root.current-radius;
-        current-layout-label: root.current-layout-label;
-        skin-changed(v)    => { root.tweaks-skin-changed(v); }
-        theme-changed(v)   => { root.tweaks-theme-changed(v); }
-        density-changed(v) => { root.tweaks-density-changed(v); }
-        radius-changed(v)  => { root.tweaks-radius-changed(v); }
-        layout-changed(v)  => { root.tweaks-layout-changed(v); }
+    // M184: Preferences dialog — MUST stay LAST child of MainWindow
+    // per the z-order spec (replaces TweaksOverlay slot 8).
+    PreferencesDialog {
+        show: root.show-preferences-dialog;
+        active-tab: "behavior";
+        dirty <=> root.pref-dirty;
+        width: root.width;
+        height: root.height;
+        pref-skin <=> root.pref-skin;
+        pref-theme <=> root.pref-theme;
+        pref-density <=> root.pref-density;
+        pref-radius <=> root.pref-radius;
+        pref-layout <=> root.pref-layout;
+        pref-confirm-delete <=> root.pref-confirm-delete;
+        pref-confirm-pause-all <=> root.pref-confirm-pause-all;
+        pref-show-torrent-added-toast <=> root.pref-show-torrent-added-toast;
+        pref-double-click-action <=> root.pref-double-click-action;
+        pref-start-minimized <=> root.pref-start-minimized;
+        pref-minimize-to-tray <=> root.pref-minimize-to-tray;
+        pref-resume-previous-session <=> root.pref-resume-previous-session;
+        pref-notify-on-complete <=> root.pref-notify-on-complete;
+        pref-notify-on-error <=> root.pref-notify-on-error;
+        pref-notify-on-rss <=> root.pref-notify-on-rss;
+        pref-play-sound-on-complete <=> root.pref-play-sound-on-complete;
+        pref-on-complete-program <=> root.pref-on-complete-program;
+        pref-download-dir <=> root.pref-download-dir;
+        pref-use-incomplete-dir <=> root.pref-use-incomplete-dir;
+        pref-incomplete-dir <=> root.pref-incomplete-dir;
+        pref-create-subfolder <=> root.pref-create-subfolder;
+        pref-pre-allocate <=> root.pref-pre-allocate;
+        pref-show-add-torrent-dialog <=> root.pref-show-add-torrent-dialog;
+        pref-skip-hash-check <=> root.pref-skip-hash-check;
+        pref-incomplete-extension <=> root.pref-incomplete-extension;
+        pref-use-auto-categories <=> root.pref-use-auto-categories;
+        pref-append-date-to-path <=> root.pref-append-date-to-path;
+        pref-watched-folder <=> root.pref-watched-folder;
+        pref-copy-torrent-to <=> root.pref-copy-torrent-to;
+        pref-delete-torrent-after-add <=> root.pref-delete-torrent-after-add;
+        pref-move-completed-enabled <=> root.pref-move-completed-enabled;
+        pref-move-completed-to <=> root.pref-move-completed-to;
+        pref-dl-on-complete-program <=> root.pref-dl-on-complete-program;
+        apply-requested => { root.preferences-apply-requested(); }
+        cancel-requested => { root.preferences-cancel-requested(); }
+        ok-requested => { root.preferences-ok-requested(); }
+        browse-download-dir => { root.preferences-browse-download-dir(); }
+        browse-incomplete-dir => { root.preferences-browse-incomplete-dir(); }
+        browse-watched-folder => { root.preferences-browse-watched-folder(); }
+        browse-copy-torrent-to => { root.preferences-browse-copy-torrent-to(); }
+        browse-move-completed-to => { root.preferences-browse-move-completed-to(); }
     }
 }
