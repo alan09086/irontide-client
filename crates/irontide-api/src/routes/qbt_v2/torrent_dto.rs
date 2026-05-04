@@ -169,7 +169,7 @@ impl From<&TorrentStats> for QbtTorrent {
             // matching qBt's untagged-torrent shape.
             tags: s.tags.join(","),
             auto_tmm: false,
-            priority: 0,
+            priority: i64::from(s.queue_position),
             added_on: s.added_time,
             completion_on: s.completed_time,
             last_activity,
@@ -423,5 +423,21 @@ mod tests {
         s.tags = vec!["only".to_string()];
         let t = QbtTorrent::from(&s);
         assert_eq!(t.tags, "only");
+    }
+
+    #[test]
+    fn qbt_torrent_priority_from_queue_position() {
+        let mut s = sample_stats();
+        s.queue_position = 5;
+        let t = QbtTorrent::from(&s);
+        assert_eq!(t.priority, 5);
+    }
+
+    #[test]
+    fn qbt_torrent_priority_minus_one_when_unqueued() {
+        let mut s = sample_stats();
+        s.queue_position = -1;
+        let t = QbtTorrent::from(&s);
+        assert_eq!(t.priority, -1);
     }
 }
