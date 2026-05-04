@@ -768,6 +768,92 @@ async fn transfer_info_dht_nodes_count_from_session() {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
+// ── Priority route tests ──────────────────────────────────────────────
+
+#[tokio::test]
+async fn top_prio_requires_auth() {
+    let (router, _sid) = enabled_router_with(|_| {}).await;
+    let (status, _) = post(
+        &router,
+        "/api/v2/torrents/topPrio",
+        None,
+        Some("application/x-www-form-urlencoded"),
+        b"hashes=all".to_vec(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn bottom_prio_requires_auth() {
+    let (router, _sid) = enabled_router_with(|_| {}).await;
+    let (status, _) = post(
+        &router,
+        "/api/v2/torrents/bottomPrio",
+        None,
+        Some("application/x-www-form-urlencoded"),
+        b"hashes=all".to_vec(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn increase_prio_requires_auth() {
+    let (router, _sid) = enabled_router_with(|_| {}).await;
+    let (status, _) = post(
+        &router,
+        "/api/v2/torrents/increasePrio",
+        None,
+        Some("application/x-www-form-urlencoded"),
+        b"hashes=all".to_vec(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn decrease_prio_requires_auth() {
+    let (router, _sid) = enabled_router_with(|_| {}).await;
+    let (status, _) = post(
+        &router,
+        "/api/v2/torrents/decreasePrio",
+        None,
+        Some("application/x-www-form-urlencoded"),
+        b"hashes=all".to_vec(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn top_prio_hashes_all_returns_ok() {
+    let (router, sid) = enabled_router_with(|_| {}).await;
+    let (status, _) = post(
+        &router,
+        "/api/v2/torrents/topPrio",
+        Some(&sid),
+        Some("application/x-www-form-urlencoded"),
+        b"hashes=all".to_vec(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn decrease_prio_hashes_all_returns_ok() {
+    let (router, sid) = enabled_router_with(|_| {}).await;
+    let (status, _) = post(
+        &router,
+        "/api/v2/torrents/decreasePrio",
+        Some(&sid),
+        Some("application/x-www-form-urlencoded"),
+        b"hashes=all".to_vec(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+}
+
 fn urlencode(s: &str) -> String {
     // Minimal RFC 3986 percent-encoding for testing purposes.
     let mut out = String::new();

@@ -173,6 +173,16 @@ fn build_router_inner(session: Arc<SessionHandle>) -> (Router, QbtState) {
         .route("/api/v2/torrents/delete", post(torrents::delete))
         .route("/api/v2/torrents/recheck", post(torrents::recheck))
         .route("/api/v2/torrents/reannounce", post(torrents::reannounce))
+        .route("/api/v2/torrents/topPrio", post(torrents::top_prio))
+        .route("/api/v2/torrents/bottomPrio", post(torrents::bottom_prio))
+        .route(
+            "/api/v2/torrents/increasePrio",
+            post(torrents::increase_prio),
+        )
+        .route(
+            "/api/v2/torrents/decreasePrio",
+            post(torrents::decrease_prio),
+        )
         .route("/api/v2/transferInfo", get(torrents::transfer_info));
 
     let category_routes = Router::new()

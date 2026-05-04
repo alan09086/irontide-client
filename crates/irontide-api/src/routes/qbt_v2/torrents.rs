@@ -663,6 +663,76 @@ pub async fn reannounce(
     Ok(QbtResponse::ok())
 }
 
+// ── POST /api/v2/torrents/{topPrio,bottomPrio,increasePrio,decreasePrio} ──
+
+/// # Errors
+///
+/// Returns an error if the request parameters are malformed.
+pub async fn top_prio(
+    State(state): State<QbtState>,
+    req: axum::extract::Request,
+) -> Result<QbtResponse, QbtError> {
+    let q = extract_hashes_params(req).await?;
+    let targets = resolve_hashes(&state, q.hashes.as_deref()).await?;
+    for id in targets {
+        if let Err(e) = state.session.queue_position_top(id).await {
+            tracing::warn!(%id, error = %e, "queue_position_top failed");
+        }
+    }
+    Ok(QbtResponse::ok())
+}
+
+/// # Errors
+///
+/// Returns an error if the request parameters are malformed.
+pub async fn bottom_prio(
+    State(state): State<QbtState>,
+    req: axum::extract::Request,
+) -> Result<QbtResponse, QbtError> {
+    let q = extract_hashes_params(req).await?;
+    let targets = resolve_hashes(&state, q.hashes.as_deref()).await?;
+    for id in targets {
+        if let Err(e) = state.session.queue_position_bottom(id).await {
+            tracing::warn!(%id, error = %e, "queue_position_bottom failed");
+        }
+    }
+    Ok(QbtResponse::ok())
+}
+
+/// # Errors
+///
+/// Returns an error if the request parameters are malformed.
+pub async fn increase_prio(
+    State(state): State<QbtState>,
+    req: axum::extract::Request,
+) -> Result<QbtResponse, QbtError> {
+    let q = extract_hashes_params(req).await?;
+    let targets = resolve_hashes(&state, q.hashes.as_deref()).await?;
+    for id in targets {
+        if let Err(e) = state.session.queue_position_up(id).await {
+            tracing::warn!(%id, error = %e, "queue_position_up failed");
+        }
+    }
+    Ok(QbtResponse::ok())
+}
+
+/// # Errors
+///
+/// Returns an error if the request parameters are malformed.
+pub async fn decrease_prio(
+    State(state): State<QbtState>,
+    req: axum::extract::Request,
+) -> Result<QbtResponse, QbtError> {
+    let q = extract_hashes_params(req).await?;
+    let targets = resolve_hashes(&state, q.hashes.as_deref()).await?;
+    for id in targets {
+        if let Err(e) = state.session.queue_position_down(id).await {
+            tracing::warn!(%id, error = %e, "queue_position_down failed");
+        }
+    }
+    Ok(QbtResponse::ok())
+}
+
 // ── GET /api/v2/transferInfo ──────────────────────────────────────────
 
 /// # Errors
