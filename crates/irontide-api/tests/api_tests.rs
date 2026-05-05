@@ -394,7 +394,7 @@ async fn test_session_counters() {
 
     let v = json(&body);
     let arr = v.as_array().expect("counters should be an array");
-    assert_eq!(arr.len(), 70, "should have exactly 70 metric entries");
+    assert_eq!(arr.len(), 76, "should have exactly 76 metric entries (70 + 6 sim-perf)");
 
     // Each entry should have name, kind, and value.
     let first = &arr[0];
@@ -786,7 +786,7 @@ async fn test_ws_get_stats_command() {
     let counters = v["counters"]
         .as_object()
         .expect("counters should be object");
-    assert_eq!(counters.len(), 70, "should have exactly 70 counters");
+    assert_eq!(counters.len(), 76, "should have exactly 76 counters (70 + 6 sim-perf)");
 }
 
 #[tokio::test]
