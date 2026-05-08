@@ -660,18 +660,18 @@ impl SkinSettings {
                 Layout::default()
             })
         });
-        let l3_sidebar_mode = gui
-            .l3_sidebar_mode
-            .as_deref()
-            .map_or(L3SidebarMode::default(), |s| {
-                s.parse::<L3SidebarMode>().unwrap_or_else(|_| {
-                    tracing::warn!(
-                        invalid = s,
-                        "unknown l3_sidebar_mode in config, using default"
-                    );
-                    L3SidebarMode::default()
-                })
-            });
+        let l3_sidebar_mode =
+            gui.l3_sidebar_mode
+                .as_deref()
+                .map_or(L3SidebarMode::default(), |s| {
+                    s.parse::<L3SidebarMode>().unwrap_or_else(|_| {
+                        tracing::warn!(
+                            invalid = s,
+                            "unknown l3_sidebar_mode in config, using default"
+                        );
+                        L3SidebarMode::default()
+                    })
+                });
         let inspector_shown = gui.inspector_shown;
 
         Self {

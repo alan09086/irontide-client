@@ -506,7 +506,12 @@ fn make_three_file_torrent_bytes() -> Vec<u8> {
     let piece_length: u64 = 65_536;
     let total: u64 = 100 + 50_000 + 80_000;
     let num_pieces = total.div_ceil(piece_length).max(1);
-    let pieces = vec![0u8; usize::try_from(num_pieces).unwrap_or(usize::MAX).saturating_mul(20)];
+    let pieces = vec![
+        0u8;
+        usize::try_from(num_pieces)
+            .unwrap_or(usize::MAX)
+            .saturating_mul(20)
+    ];
 
     let readme: Vec<String> = vec!["readme.txt".into()];
     let intro: Vec<String> = vec!["video".into(), "intro.mp4".into()];
@@ -595,9 +600,7 @@ async fn files_fragment_three_file_torrent_renders_all_rows_after_build_flat_ref
     // Three rows means three PATCH endpoints, one per file index.
     for idx in 0..3 {
         assert!(
-            text.contains(&format!(
-                r#"hx-patch="/webui/torrents/{hash}/files/{idx}""#
-            )),
+            text.contains(&format!(r#"hx-patch="/webui/torrents/{hash}/files/{idx}""#)),
             "row {idx} missing hx-patch URL, got {text}"
         );
     }

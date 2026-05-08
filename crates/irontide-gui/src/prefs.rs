@@ -218,7 +218,8 @@ impl PreferencesState {
             enable_upnp: settings.enable_upnp,
             enable_natpmp: settings.enable_natpmp,
             max_connections_global: settings.max_connections_global,
-            max_peers_per_torrent: i32::try_from(settings.max_peers_per_torrent).unwrap_or(i32::MAX),
+            max_peers_per_torrent: i32::try_from(settings.max_peers_per_torrent)
+                .unwrap_or(i32::MAX),
             max_upload_slots_global: settings.max_upload_slots_global,
             max_upload_slots_per_torrent: settings.max_upload_slots_per_torrent,
             active_downloads: settings.active_downloads,
@@ -230,12 +231,21 @@ impl PreferencesState {
             proxy_peer_connections: settings.proxy.proxy_peer_connections,
             proxy_hostnames: settings.proxy.proxy_hostnames,
             ip_filter_enabled: gui.ip_filter_enabled.unwrap_or(settings.ip_filter_enabled),
-            ip_filter_path: gui.ip_filter_path.clone().unwrap_or_else(|| settings.ip_filter_path.clone()),
-            ip_filter_auto_refresh: gui.ip_filter_auto_refresh.unwrap_or(settings.ip_filter_auto_refresh),
+            ip_filter_path: gui
+                .ip_filter_path
+                .clone()
+                .unwrap_or_else(|| settings.ip_filter_path.clone()),
+            ip_filter_auto_refresh: gui
+                .ip_filter_auto_refresh
+                .unwrap_or(settings.ip_filter_auto_refresh),
             // Speed — GUI-owned toggles + engine values
-            dl_limit_enabled: gui.dl_limit_enabled.unwrap_or(settings.download_rate_limit > 0),
+            dl_limit_enabled: gui
+                .dl_limit_enabled
+                .unwrap_or(settings.download_rate_limit > 0),
             dl_limit_value: gui.dl_limit_value.unwrap_or(settings.download_rate_limit),
-            ul_limit_enabled: gui.ul_limit_enabled.unwrap_or(settings.upload_rate_limit > 0),
+            ul_limit_enabled: gui
+                .ul_limit_enabled
+                .unwrap_or(settings.upload_rate_limit > 0),
             ul_limit_value: gui.ul_limit_value.unwrap_or(settings.upload_rate_limit),
             alt_dl_limit: gui.alt_dl_limit.unwrap_or(settings.alt_download_rate_limit),
             alt_ul_limit: gui.alt_ul_limit.unwrap_or(settings.alt_upload_rate_limit),
@@ -289,7 +299,9 @@ impl PreferencesState {
         win.set_pref_max_connections_global(self.max_connections_global.to_string().into());
         win.set_pref_max_peers_per_torrent(self.max_peers_per_torrent.to_string().into());
         win.set_pref_max_upload_slots_global(self.max_upload_slots_global.to_string().into());
-        win.set_pref_max_upload_slots_per_torrent(self.max_upload_slots_per_torrent.to_string().into());
+        win.set_pref_max_upload_slots_per_torrent(
+            self.max_upload_slots_per_torrent.to_string().into(),
+        );
         win.set_pref_active_downloads(self.active_downloads.to_string().into());
         win.set_pref_active_seeds(self.active_seeds.to_string().into());
         win.set_pref_active_limit(self.active_limit.to_string().into());
@@ -327,8 +339,7 @@ impl PreferencesState {
             Density::from_str(win.get_pref_density().as_str()).unwrap_or(self.density);
         let new_radius =
             RadiusPreset::from_str(win.get_pref_radius().as_str()).unwrap_or(self.radius);
-        let new_layout =
-            Layout::from_label(win.get_pref_layout().as_str()).unwrap_or(self.layout);
+        let new_layout = Layout::from_label(win.get_pref_layout().as_str()).unwrap_or(self.layout);
 
         if new_skin != self.skin
             || new_theme != self.theme
@@ -388,20 +399,56 @@ impl PreferencesState {
         self.dl_on_complete_program = win.get_pref_dl_on_complete_program().to_string();
 
         // Connection
-        let new_listen_port: u16 = win.get_pref_listen_port().as_str().parse().unwrap_or(self.listen_port);
+        let new_listen_port: u16 = win
+            .get_pref_listen_port()
+            .as_str()
+            .parse()
+            .unwrap_or(self.listen_port);
         let new_randomize_port = win.get_pref_randomize_port();
         let new_enable_upnp = win.get_pref_enable_upnp();
         let new_enable_natpmp = win.get_pref_enable_natpmp();
-        let new_max_conn_global: i32 = win.get_pref_max_connections_global().as_str().parse().unwrap_or(self.max_connections_global);
-        let new_max_peers: i32 = win.get_pref_max_peers_per_torrent().as_str().parse().unwrap_or(self.max_peers_per_torrent);
-        let new_max_ul_slots_global: i32 = win.get_pref_max_upload_slots_global().as_str().parse().unwrap_or(self.max_upload_slots_global);
-        let new_max_ul_slots_per: i32 = win.get_pref_max_upload_slots_per_torrent().as_str().parse().unwrap_or(self.max_upload_slots_per_torrent);
-        let new_active_dl: i32 = win.get_pref_active_downloads().as_str().parse().unwrap_or(self.active_downloads);
-        let new_active_seeds: i32 = win.get_pref_active_seeds().as_str().parse().unwrap_or(self.active_seeds);
-        let new_active_limit: i32 = win.get_pref_active_limit().as_str().parse().unwrap_or(self.active_limit);
+        let new_max_conn_global: i32 = win
+            .get_pref_max_connections_global()
+            .as_str()
+            .parse()
+            .unwrap_or(self.max_connections_global);
+        let new_max_peers: i32 = win
+            .get_pref_max_peers_per_torrent()
+            .as_str()
+            .parse()
+            .unwrap_or(self.max_peers_per_torrent);
+        let new_max_ul_slots_global: i32 = win
+            .get_pref_max_upload_slots_global()
+            .as_str()
+            .parse()
+            .unwrap_or(self.max_upload_slots_global);
+        let new_max_ul_slots_per: i32 = win
+            .get_pref_max_upload_slots_per_torrent()
+            .as_str()
+            .parse()
+            .unwrap_or(self.max_upload_slots_per_torrent);
+        let new_active_dl: i32 = win
+            .get_pref_active_downloads()
+            .as_str()
+            .parse()
+            .unwrap_or(self.active_downloads);
+        let new_active_seeds: i32 = win
+            .get_pref_active_seeds()
+            .as_str()
+            .parse()
+            .unwrap_or(self.active_seeds);
+        let new_active_limit: i32 = win
+            .get_pref_active_limit()
+            .as_str()
+            .parse()
+            .unwrap_or(self.active_limit);
         let new_proxy_type = win.get_pref_proxy_type().to_string();
         let new_proxy_host = win.get_pref_proxy_host().to_string();
-        let new_proxy_port: u16 = win.get_pref_proxy_port().as_str().parse().unwrap_or(self.proxy_port);
+        let new_proxy_port: u16 = win
+            .get_pref_proxy_port()
+            .as_str()
+            .parse()
+            .unwrap_or(self.proxy_port);
         let new_proxy_peer = win.get_pref_proxy_peer_connections();
         let new_proxy_hostnames = win.get_pref_proxy_hostnames();
         self.ip_filter_enabled = win.get_pref_ip_filter_enabled();
@@ -410,11 +457,27 @@ impl PreferencesState {
 
         // Speed
         let new_dl_limit_enabled = win.get_pref_dl_limit_enabled();
-        let new_dl_limit_value: u64 = win.get_pref_dl_limit_value().as_str().parse().unwrap_or(self.dl_limit_value);
+        let new_dl_limit_value: u64 = win
+            .get_pref_dl_limit_value()
+            .as_str()
+            .parse()
+            .unwrap_or(self.dl_limit_value);
         let new_ul_limit_enabled = win.get_pref_ul_limit_enabled();
-        let new_ul_limit_value: u64 = win.get_pref_ul_limit_value().as_str().parse().unwrap_or(self.ul_limit_value);
-        self.alt_dl_limit = win.get_pref_alt_dl_limit().as_str().parse().unwrap_or(self.alt_dl_limit);
-        self.alt_ul_limit = win.get_pref_alt_ul_limit().as_str().parse().unwrap_or(self.alt_ul_limit);
+        let new_ul_limit_value: u64 = win
+            .get_pref_ul_limit_value()
+            .as_str()
+            .parse()
+            .unwrap_or(self.ul_limit_value);
+        self.alt_dl_limit = win
+            .get_pref_alt_dl_limit()
+            .as_str()
+            .parse()
+            .unwrap_or(self.alt_dl_limit);
+        self.alt_ul_limit = win
+            .get_pref_alt_ul_limit()
+            .as_str()
+            .parse()
+            .unwrap_or(self.alt_ul_limit);
         self.alt_speed_enabled = win.get_pref_alt_speed_enabled();
         self.rate_limit_overhead = win.get_pref_rate_limit_overhead();
         self.rate_limit_utp = win.get_pref_rate_limit_utp();
@@ -466,7 +529,10 @@ impl PreferencesState {
             ep.active_limit = Some(new_active_limit);
             self.active_limit = new_active_limit;
         }
-        if new_proxy_type != self.proxy_type || new_proxy_host != self.proxy_host || new_proxy_port != self.proxy_port {
+        if new_proxy_type != self.proxy_type
+            || new_proxy_host != self.proxy_host
+            || new_proxy_port != self.proxy_port
+        {
             ep.proxy_type = Some(new_proxy_type.clone());
             ep.proxy_host = Some(new_proxy_host.clone());
             ep.proxy_port = Some(new_proxy_port);
@@ -487,8 +553,16 @@ impl PreferencesState {
         ep.ip_filter_auto_refresh = Some(self.ip_filter_auto_refresh);
 
         // Speed — GUI-owned toggle logic: toggle-off sends 0 to engine
-        let effective_dl = if new_dl_limit_enabled { new_dl_limit_value } else { 0 };
-        let effective_ul = if new_ul_limit_enabled { new_ul_limit_value } else { 0 };
+        let effective_dl = if new_dl_limit_enabled {
+            new_dl_limit_value
+        } else {
+            0
+        };
+        let effective_ul = if new_ul_limit_enabled {
+            new_ul_limit_value
+        } else {
+            0
+        };
         self.dl_limit_enabled = new_dl_limit_enabled;
         self.dl_limit_value = new_dl_limit_value;
         self.ul_limit_enabled = new_ul_limit_enabled;
@@ -566,10 +640,15 @@ pub struct ApplyResult {
 }
 
 impl ApplyResult {
-    #[allow(dead_code, reason = "M185: used in tests, future milestones may re-use in main.rs")]
+    #[allow(
+        dead_code,
+        reason = "M185: used in tests, future milestones may re-use in main.rs"
+    )]
     #[must_use]
     pub fn has_engine_changes(&self) -> bool {
-        self.download_dir.is_some() || self.create_subfolder.is_some() || self.engine_prefs.is_some()
+        self.download_dir.is_some()
+            || self.create_subfolder.is_some()
+            || self.engine_prefs.is_some()
     }
 }
 
@@ -603,7 +682,12 @@ mod tests {
             ..skin::SkinSettings::default()
         };
         let gui = irontide_config::GuiConfig::default();
-        let state = PreferencesState::from_app(skin, &gui, "/tmp/dl", &irontide::session::Settings::default());
+        let state = PreferencesState::from_app(
+            skin,
+            &gui,
+            "/tmp/dl",
+            &irontide::session::Settings::default(),
+        );
         assert_eq!(state.skin, Skin::Forge);
         assert_eq!(state.theme, Theme::Light);
         assert_eq!(state.density, Density::Compact);
@@ -621,7 +705,8 @@ mod tests {
             notify_on_complete: Some(false),
             ..Default::default()
         };
-        let state = PreferencesState::from_app(skin, &gui, "", &irontide::session::Settings::default());
+        let state =
+            PreferencesState::from_app(skin, &gui, "", &irontide::session::Settings::default());
         assert!(!state.confirm_delete);
         assert!(!state.create_subfolder);
         assert!(!state.notify_on_complete);
@@ -644,7 +729,12 @@ mod tests {
         assert_eq!(gui.on_complete_program.as_deref(), Some("/usr/bin/notify"));
 
         // Round-trip: from_app should recover the same values.
-        let recovered = PreferencesState::from_app(skin::SkinSettings::default(), &gui, "", &irontide::session::Settings::default());
+        let recovered = PreferencesState::from_app(
+            skin::SkinSettings::default(),
+            &gui,
+            "",
+            &irontide::session::Settings::default(),
+        );
         assert!(!recovered.confirm_delete);
         assert!(!recovered.create_subfolder);
         assert_eq!(recovered.on_complete_program, "/usr/bin/notify");

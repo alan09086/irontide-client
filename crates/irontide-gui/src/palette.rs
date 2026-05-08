@@ -69,31 +69,141 @@ pub struct PaletteCommand {
 
 pub static COMMANDS: &[PaletteCommand] = &[
     // Action
-    PaletteCommand { id: PaletteCommandId::AddMagnetLink, label: "Add Magnet Link", category: PaletteCategory::Action, hotkey_hint: "" },
-    PaletteCommand { id: PaletteCommandId::AddTorrentFile, label: "Add Torrent File", category: PaletteCategory::Action, hotkey_hint: "" },
-    PaletteCommand { id: PaletteCommandId::PauseSelected, label: "Pause Selected", category: PaletteCategory::Action, hotkey_hint: "Space" },
-    PaletteCommand { id: PaletteCommandId::ResumeSelected, label: "Resume Selected", category: PaletteCategory::Action, hotkey_hint: "Space" },
-    PaletteCommand { id: PaletteCommandId::RemoveSelected, label: "Remove Selected", category: PaletteCategory::Action, hotkey_hint: "Del" },
-    PaletteCommand { id: PaletteCommandId::ForceRecheck, label: "Force Recheck", category: PaletteCategory::Action, hotkey_hint: "" },
-    PaletteCommand { id: PaletteCommandId::ForceReannounce, label: "Force Reannounce", category: PaletteCategory::Action, hotkey_hint: "" },
-    PaletteCommand { id: PaletteCommandId::PauseAll, label: "Pause All", category: PaletteCategory::Action, hotkey_hint: "" },
-    PaletteCommand { id: PaletteCommandId::ResumeAll, label: "Resume All", category: PaletteCategory::Action, hotkey_hint: "" },
+    PaletteCommand {
+        id: PaletteCommandId::AddMagnetLink,
+        label: "Add Magnet Link",
+        category: PaletteCategory::Action,
+        hotkey_hint: "",
+    },
+    PaletteCommand {
+        id: PaletteCommandId::AddTorrentFile,
+        label: "Add Torrent File",
+        category: PaletteCategory::Action,
+        hotkey_hint: "",
+    },
+    PaletteCommand {
+        id: PaletteCommandId::PauseSelected,
+        label: "Pause Selected",
+        category: PaletteCategory::Action,
+        hotkey_hint: "Space",
+    },
+    PaletteCommand {
+        id: PaletteCommandId::ResumeSelected,
+        label: "Resume Selected",
+        category: PaletteCategory::Action,
+        hotkey_hint: "Space",
+    },
+    PaletteCommand {
+        id: PaletteCommandId::RemoveSelected,
+        label: "Remove Selected",
+        category: PaletteCategory::Action,
+        hotkey_hint: "Del",
+    },
+    PaletteCommand {
+        id: PaletteCommandId::ForceRecheck,
+        label: "Force Recheck",
+        category: PaletteCategory::Action,
+        hotkey_hint: "",
+    },
+    PaletteCommand {
+        id: PaletteCommandId::ForceReannounce,
+        label: "Force Reannounce",
+        category: PaletteCategory::Action,
+        hotkey_hint: "",
+    },
+    PaletteCommand {
+        id: PaletteCommandId::PauseAll,
+        label: "Pause All",
+        category: PaletteCategory::Action,
+        hotkey_hint: "",
+    },
+    PaletteCommand {
+        id: PaletteCommandId::ResumeAll,
+        label: "Resume All",
+        category: PaletteCategory::Action,
+        hotkey_hint: "",
+    },
     // Navigation
-    PaletteCommand { id: PaletteCommandId::NavAll, label: "All Torrents", category: PaletteCategory::Navigation, hotkey_hint: "" },
-    PaletteCommand { id: PaletteCommandId::NavDownloading, label: "Downloading", category: PaletteCategory::Navigation, hotkey_hint: "" },
-    PaletteCommand { id: PaletteCommandId::NavSeeding, label: "Seeding", category: PaletteCategory::Navigation, hotkey_hint: "" },
-    PaletteCommand { id: PaletteCommandId::NavCompleted, label: "Completed", category: PaletteCategory::Navigation, hotkey_hint: "" },
-    PaletteCommand { id: PaletteCommandId::NavPaused, label: "Paused", category: PaletteCategory::Navigation, hotkey_hint: "" },
-    PaletteCommand { id: PaletteCommandId::NavActive, label: "Active", category: PaletteCategory::Navigation, hotkey_hint: "" },
-    PaletteCommand { id: PaletteCommandId::NavInactive, label: "Inactive", category: PaletteCategory::Navigation, hotkey_hint: "" },
-    PaletteCommand { id: PaletteCommandId::NavErrored, label: "Errored", category: PaletteCategory::Navigation, hotkey_hint: "" },
+    PaletteCommand {
+        id: PaletteCommandId::NavAll,
+        label: "All Torrents",
+        category: PaletteCategory::Navigation,
+        hotkey_hint: "",
+    },
+    PaletteCommand {
+        id: PaletteCommandId::NavDownloading,
+        label: "Downloading",
+        category: PaletteCategory::Navigation,
+        hotkey_hint: "",
+    },
+    PaletteCommand {
+        id: PaletteCommandId::NavSeeding,
+        label: "Seeding",
+        category: PaletteCategory::Navigation,
+        hotkey_hint: "",
+    },
+    PaletteCommand {
+        id: PaletteCommandId::NavCompleted,
+        label: "Completed",
+        category: PaletteCategory::Navigation,
+        hotkey_hint: "",
+    },
+    PaletteCommand {
+        id: PaletteCommandId::NavPaused,
+        label: "Paused",
+        category: PaletteCategory::Navigation,
+        hotkey_hint: "",
+    },
+    PaletteCommand {
+        id: PaletteCommandId::NavActive,
+        label: "Active",
+        category: PaletteCategory::Navigation,
+        hotkey_hint: "",
+    },
+    PaletteCommand {
+        id: PaletteCommandId::NavInactive,
+        label: "Inactive",
+        category: PaletteCategory::Navigation,
+        hotkey_hint: "",
+    },
+    PaletteCommand {
+        id: PaletteCommandId::NavErrored,
+        label: "Errored",
+        category: PaletteCategory::Navigation,
+        hotkey_hint: "",
+    },
     // Tools
-    PaletteCommand { id: PaletteCommandId::ToggleInspector, label: "Toggle Inspector", category: PaletteCategory::Tools, hotkey_hint: "" },
-    PaletteCommand { id: PaletteCommandId::CycleLayout, label: "Cycle Layout", category: PaletteCategory::Tools, hotkey_hint: "" },
-    PaletteCommand { id: PaletteCommandId::SelectAll, label: "Select All", category: PaletteCategory::Tools, hotkey_hint: "" },
+    PaletteCommand {
+        id: PaletteCommandId::ToggleInspector,
+        label: "Toggle Inspector",
+        category: PaletteCategory::Tools,
+        hotkey_hint: "",
+    },
+    PaletteCommand {
+        id: PaletteCommandId::CycleLayout,
+        label: "Cycle Layout",
+        category: PaletteCategory::Tools,
+        hotkey_hint: "",
+    },
+    PaletteCommand {
+        id: PaletteCommandId::SelectAll,
+        label: "Select All",
+        category: PaletteCategory::Tools,
+        hotkey_hint: "",
+    },
     // Settings
-    PaletteCommand { id: PaletteCommandId::OpenPreferences, label: "Preferences (Tweaks)", category: PaletteCategory::Settings, hotkey_hint: "," },
-    PaletteCommand { id: PaletteCommandId::Quit, label: "Quit", category: PaletteCategory::Settings, hotkey_hint: "" },
+    PaletteCommand {
+        id: PaletteCommandId::OpenPreferences,
+        label: "Preferences (Tweaks)",
+        category: PaletteCategory::Settings,
+        hotkey_hint: ",",
+    },
+    PaletteCommand {
+        id: PaletteCommandId::Quit,
+        label: "Quit",
+        category: PaletteCategory::Settings,
+        hotkey_hint: "",
+    },
 ];
 
 // ── Fuzzy matching ───────────────────────────────────────────────────────────
@@ -204,33 +314,55 @@ pub fn dispatch(id: PaletteCommandId, selected: &[String]) -> DispatchAction {
         PaletteCommandId::PauseSelected => DispatchAction::SendCommand(GuiCommand::PauseTorrents {
             hashes: selected.to_vec(),
         }),
-        PaletteCommandId::ResumeSelected => DispatchAction::SendCommand(GuiCommand::ResumeTorrents {
-            hashes: selected.to_vec(),
-        }),
-        PaletteCommandId::RemoveSelected => DispatchAction::SendCommand(GuiCommand::RemoveTorrents {
-            hashes: selected.to_vec(),
-            delete_files: false,
-        }),
+        PaletteCommandId::ResumeSelected => {
+            DispatchAction::SendCommand(GuiCommand::ResumeTorrents {
+                hashes: selected.to_vec(),
+            })
+        }
+        PaletteCommandId::RemoveSelected => {
+            DispatchAction::SendCommand(GuiCommand::RemoveTorrents {
+                hashes: selected.to_vec(),
+                delete_files: false,
+            })
+        }
         PaletteCommandId::ForceRecheck => DispatchAction::SendCommand(GuiCommand::ForceRecheck {
             hashes: selected.to_vec(),
         }),
-        PaletteCommandId::ForceReannounce => DispatchAction::SendCommand(GuiCommand::ForceReannounce {
-            hashes: selected.to_vec(),
-        }),
-        PaletteCommandId::PauseAll => DispatchAction::SendCommand(GuiCommand::PauseTorrents {
-            hashes: Vec::new(),
-        }),
-        PaletteCommandId::ResumeAll => DispatchAction::SendCommand(GuiCommand::ResumeTorrents {
-            hashes: Vec::new(),
-        }),
-        PaletteCommandId::NavAll => DispatchAction::SetPredicate(SidebarPredicate::Library(LibraryFilter::All)),
-        PaletteCommandId::NavDownloading => DispatchAction::SetPredicate(SidebarPredicate::Library(LibraryFilter::Downloading)),
-        PaletteCommandId::NavSeeding => DispatchAction::SetPredicate(SidebarPredicate::Library(LibraryFilter::Seeding)),
-        PaletteCommandId::NavCompleted => DispatchAction::SetPredicate(SidebarPredicate::Library(LibraryFilter::Completed)),
-        PaletteCommandId::NavPaused => DispatchAction::SetPredicate(SidebarPredicate::Library(LibraryFilter::Paused)),
-        PaletteCommandId::NavActive => DispatchAction::SetPredicate(SidebarPredicate::Library(LibraryFilter::Active)),
-        PaletteCommandId::NavInactive => DispatchAction::SetPredicate(SidebarPredicate::Library(LibraryFilter::Inactive)),
-        PaletteCommandId::NavErrored => DispatchAction::SetPredicate(SidebarPredicate::Library(LibraryFilter::Errored)),
+        PaletteCommandId::ForceReannounce => {
+            DispatchAction::SendCommand(GuiCommand::ForceReannounce {
+                hashes: selected.to_vec(),
+            })
+        }
+        PaletteCommandId::PauseAll => {
+            DispatchAction::SendCommand(GuiCommand::PauseTorrents { hashes: Vec::new() })
+        }
+        PaletteCommandId::ResumeAll => {
+            DispatchAction::SendCommand(GuiCommand::ResumeTorrents { hashes: Vec::new() })
+        }
+        PaletteCommandId::NavAll => {
+            DispatchAction::SetPredicate(SidebarPredicate::Library(LibraryFilter::All))
+        }
+        PaletteCommandId::NavDownloading => {
+            DispatchAction::SetPredicate(SidebarPredicate::Library(LibraryFilter::Downloading))
+        }
+        PaletteCommandId::NavSeeding => {
+            DispatchAction::SetPredicate(SidebarPredicate::Library(LibraryFilter::Seeding))
+        }
+        PaletteCommandId::NavCompleted => {
+            DispatchAction::SetPredicate(SidebarPredicate::Library(LibraryFilter::Completed))
+        }
+        PaletteCommandId::NavPaused => {
+            DispatchAction::SetPredicate(SidebarPredicate::Library(LibraryFilter::Paused))
+        }
+        PaletteCommandId::NavActive => {
+            DispatchAction::SetPredicate(SidebarPredicate::Library(LibraryFilter::Active))
+        }
+        PaletteCommandId::NavInactive => {
+            DispatchAction::SetPredicate(SidebarPredicate::Library(LibraryFilter::Inactive))
+        }
+        PaletteCommandId::NavErrored => {
+            DispatchAction::SetPredicate(SidebarPredicate::Library(LibraryFilter::Errored))
+        }
         PaletteCommandId::ToggleInspector => DispatchAction::ToggleInspector,
         PaletteCommandId::CycleLayout => DispatchAction::CycleLayout,
         PaletteCommandId::OpenPreferences => DispatchAction::OpenPreferences,
@@ -268,14 +400,16 @@ pub fn build_slint_categories(
         let items: Vec<SlintPaletteItem> = recent
             .iter()
             .filter_map(|&id| {
-                COMMANDS.iter().enumerate().find(|(_, c)| c.id == id).map(|(idx, cmd)| {
-                    SlintPaletteItem {
+                COMMANDS
+                    .iter()
+                    .enumerate()
+                    .find(|(_, c)| c.id == id)
+                    .map(|(idx, cmd)| SlintPaletteItem {
                         label: SharedString::from(cmd.label),
                         hotkey: resolved_hotkey(cmd),
                         enabled: is_enabled(id, has_selection),
                         index: i32::try_from(idx).unwrap_or(0),
-                    }
-                })
+                    })
             })
             .collect();
         if !items.is_empty() {
@@ -409,10 +543,7 @@ mod tests {
 
     #[test]
     fn record_recent_deduplicates() {
-        let mut recent = vec![
-            PaletteCommandId::NavAll,
-            PaletteCommandId::Quit,
-        ];
+        let mut recent = vec![PaletteCommandId::NavAll, PaletteCommandId::Quit];
         record_recent(&mut recent, PaletteCommandId::Quit);
         assert_eq!(recent.len(), 2);
         assert_eq!(recent[0], PaletteCommandId::Quit);

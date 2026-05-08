@@ -98,7 +98,10 @@ fn make_pseudo_trackers(
 /// qBt enabled→status projection (working=2, disabled=0) and translating
 /// the `usize::MAX` sentinel tier back to qBt's `-1`.
 fn pseudo_to_qbt(t: TrackerInfo, enabled: bool) -> QbtTrackerInfo {
-    debug_assert!(is_pseudo_tracker(&t), "pseudo_to_qbt called on real tracker");
+    debug_assert!(
+        is_pseudo_tracker(&t),
+        "pseudo_to_qbt called on real tracker"
+    );
     QbtTrackerInfo {
         url: t.url,
         status: if enabled { 2 } else { 0 },

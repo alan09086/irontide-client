@@ -306,16 +306,14 @@ pub async fn poll_loop(
                 if let Ok(detail_stats) = session.torrent_stats(id).await {
                     // Piece states drive the General-tab heatmap — small,
                     // fetch every tick.
-                    let piece_states =
-                        session.get_piece_states(id).await.unwrap_or_default();
+                    let piece_states = session.get_piece_states(id).await.unwrap_or_default();
                     let buckets = crate::detail::bucket_piece_states(&piece_states, 512);
 
                     // Content-tab gated fetches (D-eng-2).
                     let files: Vec<crate::FileTreeRow> = if detail_active_tab == "Content"
                         && let Some(info) = cached_info.as_ref()
                     {
-                        let priorities =
-                            session.file_priorities(id).await.unwrap_or_default();
+                        let priorities = session.file_priorities(id).await.unwrap_or_default();
                         let progress = session.file_progress(id).await.unwrap_or_default();
                         let flat = irontide_format::build_flat(info, &progress, &priorities);
                         // F9: cache flat files for folder-level priority resolution.
@@ -335,16 +333,13 @@ pub async fn poll_loop(
                     // tab is the active one, keeping the hot path bounded for
                     // huge torrents.
                     let peers: Vec<crate::PeerRow> = if detail_active_tab == "Peers" {
-                        let peer_info =
-                            session.get_peer_info(id).await.unwrap_or_default();
+                        let peer_info = session.get_peer_info(id).await.unwrap_or_default();
                         crate::detail::flatten_peer_rows(&peer_info)
                     } else {
                         Vec::new()
                     };
 
-                    let trackers: Vec<crate::TrackerRow> = if detail_active_tab
-                        == "Trackers"
-                    {
+                    let trackers: Vec<crate::TrackerRow> = if detail_active_tab == "Trackers" {
                         let real = session.tracker_list(id).await.unwrap_or_default();
                         let (pex_count, lsd_count) = session
                             .pex_peer_count(id)
@@ -363,8 +358,7 @@ pub async fn poll_loop(
 
                     let http_sources: Vec<crate::WebSeedRow> =
                         if detail_active_tab == "HTTP Sources" {
-                            let stats =
-                                session.web_seed_stats(id).await.unwrap_or_default();
+                            let stats = session.web_seed_stats(id).await.unwrap_or_default();
                             crate::detail::flatten_web_seed_rows(&stats)
                         } else {
                             Vec::new()
@@ -390,11 +384,31 @@ pub async fn poll_loop(
                         SpeedProps {
                             dl_path,
                             ul_path,
-                            dl_limit: if dl_lim == 0 { "0".into() } else { crate::format::format_rate(dl_lim) },
-                            ul_limit: if ul_lim == 0 { "0".into() } else { crate::format::format_rate(ul_lim) },
-                            max_rate: if max_rate == 0 { "\u{2014}".into() } else { crate::format::format_rate(max_rate) },
-                            current_dl: if detail_stats.download_rate > 0 { crate::format::format_rate(detail_stats.download_rate) } else { "\u{2014}".into() },
-                            current_ul: if detail_stats.upload_rate > 0 { crate::format::format_rate(detail_stats.upload_rate) } else { "\u{2014}".into() },
+                            dl_limit: if dl_lim == 0 {
+                                "0".into()
+                            } else {
+                                crate::format::format_rate(dl_lim)
+                            },
+                            ul_limit: if ul_lim == 0 {
+                                "0".into()
+                            } else {
+                                crate::format::format_rate(ul_lim)
+                            },
+                            max_rate: if max_rate == 0 {
+                                "\u{2014}".into()
+                            } else {
+                                crate::format::format_rate(max_rate)
+                            },
+                            current_dl: if detail_stats.download_rate > 0 {
+                                crate::format::format_rate(detail_stats.download_rate)
+                            } else {
+                                "\u{2014}".into()
+                            },
+                            current_ul: if detail_stats.upload_rate > 0 {
+                                crate::format::format_rate(detail_stats.upload_rate)
+                            } else {
+                                "\u{2014}".into()
+                            },
                             elapsed,
                         }
                     } else {
@@ -621,11 +635,7 @@ fn build_detail_props(
     let remaining = stats.total_wanted.saturating_sub(stats.total_wanted_done);
     let eta = crate::format::format_eta_from_rates(remaining, stats.download_rate);
     let ratio = crate::format::format_ratio(stats.all_time_upload, stats.all_time_download);
-    let num_peers = format!(
-        "{} / {}",
-        stats.peers_connected,
-        stats.peers_available
-    );
+    let num_peers = format!("{} / {}", stats.peers_connected, stats.peers_available);
     let num_seeds = stats.num_seeds.to_string();
     let share_fraction = if stats.distributed_copies > 0.0 {
         format!("{:.3}", stats.distributed_copies)
@@ -759,10 +769,16 @@ fn clear_detail_props(win: &crate::MainWindow) {
     win.set_detail_piece_buckets(ModelRc::new(VecModel::from(Vec::<i32>::new())));
     win.set_detail_pieces_text(SharedString::from("0 / 0 pieces (0%)"));
     win.set_detail_sequential(false);
-    win.set_detail_files(ModelRc::new(VecModel::from(Vec::<crate::FileTreeRow>::new())));
+    win.set_detail_files(ModelRc::new(VecModel::from(
+        Vec::<crate::FileTreeRow>::new(),
+    )));
     win.set_detail_peers(ModelRc::new(VecModel::from(Vec::<crate::PeerRow>::new())));
-    win.set_detail_trackers(ModelRc::new(VecModel::from(Vec::<crate::TrackerRow>::new())));
-    win.set_detail_http_sources(ModelRc::new(VecModel::from(Vec::<crate::WebSeedRow>::new())));
+    win.set_detail_trackers(ModelRc::new(
+        VecModel::from(Vec::<crate::TrackerRow>::new()),
+    ));
+    win.set_detail_http_sources(ModelRc::new(
+        VecModel::from(Vec::<crate::WebSeedRow>::new()),
+    ));
     win.set_detail_speed_dl_path(SharedString::default());
     win.set_detail_speed_ul_path(SharedString::default());
     win.set_detail_speed_dl_limit(SharedString::from("0"));
@@ -947,8 +963,8 @@ pub fn state_color(state: TorrentState, user_seed_mode: bool) -> slint::Color {
         TorrentState::Checking | TorrentState::FetchingMetadata => {
             slint::Color::from_rgb_u8(0xff, 0x98, 0x00) // #ff9800
         }
-        TorrentState::Stopped => slint::Color::from_rgb_u8(0xf4, 0x43, 0x36),     // #f44336
-        TorrentState::Sharing => slint::Color::from_rgb_u8(0xab, 0x47, 0xbc),     // #ab47bc
+        TorrentState::Stopped => slint::Color::from_rgb_u8(0xf4, 0x43, 0x36), // #f44336
+        TorrentState::Sharing => slint::Color::from_rgb_u8(0xab, 0x47, 0xbc), // #ab47bc
     }
 }
 
@@ -958,7 +974,10 @@ pub fn state_color(state: TorrentState, user_seed_mode: bool) -> slint::Color {
 ///
 /// Used for incremental model updates — only calls `set_row_data` when
 /// the row has actually changed.
-#[allow(clippy::float_cmp, reason = "exact bitwise comparison for UI change detection")]
+#[allow(
+    clippy::float_cmp,
+    reason = "exact bitwise comparison for UI change detection"
+)]
 pub fn rows_differ(a: &crate::TorrentRow, b: &crate::TorrentRow) -> bool {
     a.progress != b.progress
         || a.down_rate != b.down_rate

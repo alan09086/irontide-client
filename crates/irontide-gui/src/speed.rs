@@ -236,7 +236,11 @@ fn format_duration_short(total_secs: u64) -> String {
 }
 
 #[must_use]
-#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "rate limit f64→u64 after multiplication by known power-of-2 constants")]
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "rate limit f64→u64 after multiplication by known power-of-2 constants"
+)]
 pub fn parse_rate_limit(input: &str) -> Option<u64> {
     let trimmed = input.trim();
     if trimmed.is_empty() || trimmed == "0" {

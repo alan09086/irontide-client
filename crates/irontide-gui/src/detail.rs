@@ -32,7 +32,9 @@ use std::path::{Component, Path, PathBuf};
 use slint::SharedString;
 
 use irontide::core::FilePriority;
-use irontide::session::{PeerInfo, TorrentInfo, TorrentStats, TrackerInfo, TrackerStatus, WebSeedStats};
+use irontide::session::{
+    PeerInfo, TorrentInfo, TorrentStats, TrackerInfo, TrackerStatus, WebSeedStats,
+};
 use irontide_format::{FlatFileEntry, is_pseudo_tracker};
 
 use crate::{FileTreeRow, PeerRow, TrackerRow, WebSeedRow};
@@ -337,12 +339,12 @@ pub fn flatten_tracker_rows(trackers: &[TrackerInfo]) -> Vec<TrackerRow> {
                 TrackerStatus::Working => "working",
                 TrackerStatus::Error => "error",
             };
-            let peers = t
-                .seeders.map_or_else(|| "—".to_owned(), |s| s.saturating_add(t.leechers.unwrap_or(0)).to_string());
-            let seeds = t
-                .seeders.map_or_else(|| "—".to_owned(), |s| s.to_string());
-            let leeches = t
-                .leechers.map_or_else(|| "—".to_owned(), |s| s.to_string());
+            let peers = t.seeders.map_or_else(
+                || "—".to_owned(),
+                |s| s.saturating_add(t.leechers.unwrap_or(0)).to_string(),
+            );
+            let seeds = t.seeders.map_or_else(|| "—".to_owned(), |s| s.to_string());
+            let leeches = t.leechers.map_or_else(|| "—".to_owned(), |s| s.to_string());
             let next_announce = if is_pseudo {
                 "—".to_owned()
             } else {
@@ -418,10 +420,7 @@ pub fn priority_label(p: FilePriority) -> &'static str {
 /// positional index == file index. Uses `starts_with` for recursive
 /// inclusion of all descendants.
 #[must_use]
-pub fn collect_folder_file_indices(
-    flat: &[FlatFileEntry],
-    folder_path: &Path,
-) -> Vec<usize> {
+pub fn collect_folder_file_indices(flat: &[FlatFileEntry], folder_path: &Path) -> Vec<usize> {
     flat.iter()
         .enumerate()
         .filter(|(_, e)| e.path.starts_with(folder_path))
@@ -579,7 +578,10 @@ mod tests {
         assert_eq!(out[0].name.as_str(), "readme.txt");
         assert_eq!(out[1].name.as_str(), "video");
         assert!(out[1].is_folder);
-        assert!(!out[1].expanded, "collapsed folder must report expanded=false");
+        assert!(
+            !out[1].expanded,
+            "collapsed folder must report expanded=false"
+        );
     }
 
     #[test]

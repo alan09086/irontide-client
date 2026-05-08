@@ -552,8 +552,12 @@ pub fn write_config_bytes_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     apply_owner_only_perms(tmp.path())
         .with_context(|| format!("failed to chmod 0600 temp config {}", tmp.path().display()))?;
 
-    tmp.persist(path)
-        .map_err(|e| anyhow::anyhow!("failed to atomically rename config to {}: {e}", path.display()))?;
+    tmp.persist(path).map_err(|e| {
+        anyhow::anyhow!(
+            "failed to atomically rename config to {}: {e}",
+            path.display()
+        )
+    })?;
 
     Ok(())
 }
@@ -742,11 +746,10 @@ pub fn save_session_download_dir(config_path: Option<&Path>, download_dir: &Path
 /// Worker thread count is taken from `settings.runtime_worker_threads`
 /// (0 = auto-detect, capped at 8). When `settings.pin_cores` is true,
 /// each worker thread is pinned to a CPU core via `core_affinity`.
-#[must_use] 
+#[must_use]
 pub fn build_runtime(settings: &Settings) -> tokio::runtime::Runtime {
     let worker_count = if settings.runtime_worker_threads == 0 {
-        std::thread::available_parallelism()
-            .map_or(4, |n| n.get().min(8))
+        std::thread::available_parallelism().map_or(4, |n| n.get().min(8))
     } else {
         settings.runtime_worker_threads
     };
@@ -1395,7 +1398,10 @@ theme = "dark"
         };
         let serialized = toml::to_string_pretty(&config).expect("serialize");
         // None layout fields must not appear in TOML.
-        assert!(!serialized.contains("layout"), "absent layout: {serialized}");
+        assert!(
+            !serialized.contains("layout"),
+            "absent layout: {serialized}"
+        );
         assert!(
             !serialized.contains("l3_sidebar_mode"),
             "absent l3_sidebar_mode: {serialized}"

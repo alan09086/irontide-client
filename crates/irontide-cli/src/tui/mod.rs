@@ -328,7 +328,9 @@ async fn dispatch_action(client: &ApiClient, state: &mut AppState, action: Actio
 /// long sleep (rather than `futures::future::pending`) so the
 /// compiler has a concrete future type to work with.
 async fn next_ws(stream: &mut Option<EventStreamBox<'_>>) -> Option<Result<String, CliError>> {
-    if let Some(s) = stream { s.next().await } else {
+    if let Some(s) = stream {
+        s.next().await
+    } else {
         tokio::time::sleep(Duration::from_hours(1)).await;
         None
     }

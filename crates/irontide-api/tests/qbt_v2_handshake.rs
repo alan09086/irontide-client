@@ -240,7 +240,10 @@ async fn test_arr_full_usage_flow() {
                 b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
                     b.push(c as char);
                 }
-                _ => { use std::fmt::Write; let _ = write!(b, "%{c:02X}"); }
+                _ => {
+                    use std::fmt::Write;
+                    let _ = write!(b, "%{c:02X}");
+                }
             }
         }
         b
@@ -413,7 +416,10 @@ async fn end_to_end_m170_arr_workflow() {
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
                 body.push(b as char);
             }
-            _ => { use std::fmt::Write; let _ = write!(body, "%{b:02X}"); }
+            _ => {
+                use std::fmt::Write;
+                let _ = write!(body, "%{b:02X}");
+            }
         }
     }
     body.push_str("&category=sonarr");

@@ -63,7 +63,7 @@ struct Inner {
 }
 
 impl SessionStore {
-    #[must_use] 
+    #[must_use]
     pub fn new(ttl: Duration, max_sessions: usize) -> Self {
         let cap = max_sessions.max(1);
         Self {

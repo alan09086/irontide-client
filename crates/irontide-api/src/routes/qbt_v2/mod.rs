@@ -93,10 +93,7 @@ fn build_router_inner(session: Arc<SessionHandle>) -> (Router, QbtState) {
     // (matches real qBt — restart to reconfigure). Runtime toggles of
     // qbt_compat.enabled take effect immediately because qbt_gate re-reads
     // settings per request.
-    let store = Arc::new(SessionStore::new(
-        std::time::Duration::from_hours(24),
-        1024,
-    ));
+    let store = Arc::new(SessionStore::new(std::time::Duration::from_hours(24), 1024));
     // M172a G2: default argon2 semaphore size — num_cpus*2 clamped [2,16].
     // Overrideable at runtime via `qbt_compat.max_concurrent_argon2_ops`,
     // but re-reading the setting would require piping the Settings snapshot

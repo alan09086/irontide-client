@@ -521,10 +521,8 @@ async fn username_mismatch_runs_timing_equalizing_argon2_verify() {
 // SocketAddr import kept for future Lane B/C tests that need to compare the
 // mock peer against a CIDR whitelist.
 #[allow(dead_code)]
-const _MOCK_PEER_TYPECHECK: SocketAddr = SocketAddr::new(
-    std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
-    0,
-);
+const _MOCK_PEER_TYPECHECK: SocketAddr =
+    SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0);
 
 // Suppress "unused import" when the above dead_code stub is disabled.
 #[allow(unused_imports)]

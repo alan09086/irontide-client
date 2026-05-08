@@ -150,9 +150,7 @@ pub enum GuiCommand {
         url: String,
     },
     /// M185: apply changed session-level settings from the Preferences dialog.
-    ApplySettings {
-        engine_prefs: Box<EnginePrefs>,
-    },
+    ApplySettings { engine_prefs: Box<EnginePrefs> },
     /// M180: set per-torrent DL/UL rate limits.
     SetTorrentRateLimit {
         /// Hex-encoded info-hash string.

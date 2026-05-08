@@ -29,10 +29,8 @@ static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 /// Any routable address works — the handler only checks that `ConnectInfo`
 /// extraction *succeeds*, not the specific value. Lanes B and C (trust-hop
 /// CIDR + brute-force ban) tests override this via their own helpers.
-const MOCK_PEER: SocketAddr = SocketAddr::new(
-    std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
-    12345,
-);
+const MOCK_PEER: SocketAddr =
+    SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 12345);
 
 /// Build an enabled-qbt_compat session with the given overrides applied.
 async fn test_session_with_qbt(

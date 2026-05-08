@@ -752,8 +752,14 @@ async fn transfer_info_speeds_reflect_session_stats() {
     let (_, body) = get(&router, "/api/v2/transferInfo", Some(&sid)).await;
     let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
     // With no torrents, both speeds must be 0.
-    assert_eq!(v.get("dl_info_speed").and_then(serde_json::Value::as_u64), Some(0));
-    assert_eq!(v.get("up_info_speed").and_then(serde_json::Value::as_u64), Some(0));
+    assert_eq!(
+        v.get("dl_info_speed").and_then(serde_json::Value::as_u64),
+        Some(0)
+    );
+    assert_eq!(
+        v.get("up_info_speed").and_then(serde_json::Value::as_u64),
+        Some(0)
+    );
 }
 
 #[tokio::test]
@@ -762,7 +768,10 @@ async fn transfer_info_dht_nodes_count_from_session() {
     let (_, body) = get(&router, "/api/v2/transferInfo", Some(&sid)).await;
     let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
     // DHT is disabled in test session; dht_nodes should be 0 (and a u64).
-    let n = v.get("dht_nodes").and_then(serde_json::Value::as_u64).unwrap();
+    let n = v
+        .get("dht_nodes")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap();
     assert_eq!(n, 0);
 }
 
@@ -862,7 +871,10 @@ fn urlencode(s: &str) -> String {
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
                 out.push(b as char);
             }
-            _ => { use std::fmt::Write; let _ = write!(out, "%{b:02X}"); }
+            _ => {
+                use std::fmt::Write;
+                let _ = write!(out, "%{b:02X}");
+            }
         }
     }
     out

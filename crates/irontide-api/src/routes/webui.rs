@@ -254,7 +254,10 @@ fn error_fragment(status: StatusCode, message: &str) -> Response {
 
 /// Translate an [`ApiError`] into the HTML fragment the Web UI expects,
 /// preserving the original HTTP status.
-#[allow(clippy::needless_pass_by_value, reason = "callers pass owned errors from match arms")]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "callers pass owned errors from match arms"
+)]
 fn api_error_fragment(e: ApiError) -> Response {
     error_fragment(e.status, &e.message)
 }
@@ -932,10 +935,8 @@ pub async fn trackers_fragment(
                 status_class,
                 status_label,
                 status_title,
-                seeders: t
-                    .seeders.map_or_else(|| "—".into(), |n| n.to_string()),
-                leechers: t
-                    .leechers.map_or_else(|| "—".into(), |n| n.to_string()),
+                seeders: t.seeders.map_or_else(|| "—".into(), |n| n.to_string()),
+                leechers: t.leechers.map_or_else(|| "—".into(), |n| n.to_string()),
                 next_announce_text: format_relative_secs(t.next_announce_secs),
             }
         })
@@ -1047,7 +1048,10 @@ pub async fn serve_static(req: Request) -> impl IntoResponse {
 mod tests {
     use super::*;
 
-    #[allow(clippy::fn_params_excessive_bools, reason = "mirrors PeerInfo wire protocol fields")]
+    #[allow(
+        clippy::fn_params_excessive_bools,
+        reason = "mirrors PeerInfo wire protocol fields"
+    )]
     fn make_peer(
         am_choking: bool,
         am_interested: bool,

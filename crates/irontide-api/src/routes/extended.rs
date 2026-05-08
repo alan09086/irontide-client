@@ -146,11 +146,7 @@ pub async fn add_peers(
         return Err(ApiError::bad_request("peers array must not be empty"));
     }
     session
-        .add_peers(
-            id,
-            addrs,
-            irontide::session::PeerSource::Api,
-        )
+        .add_peers(id, addrs, irontide::session::PeerSource::Api)
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }

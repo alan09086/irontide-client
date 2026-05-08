@@ -409,9 +409,7 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
                         emit_json_tick(&stats_dto, info_dto.as_ref())?;
                     }
                     PresentationMode::TtyLine => {
-                        let files_known = info_dto
-                            .as_ref()
-                            .is_some_and(|i| i.files.len() > 1);
+                        let files_known = info_dto.as_ref().is_some_and(|i| i.files.len() > 1);
                         if files_known {
                             last_block_lines = emit_tty_block(
                                 &stats_dto,
@@ -473,9 +471,7 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
                 let unique_attempted = stats_snapshot
                     .as_ref()
                     .map_or(0, |s| s.unique_peers_attempted);
-                let choke_rotations = stats_snapshot
-                    .as_ref()
-                    .map_or(0, |s| s.choke_rotations);
+                let choke_rotations = stats_snapshot.as_ref().map_or(0, |s| s.choke_rotations);
                 let pipeline = stats_snapshot.and_then(|s| s.pipeline);
                 print_final_summary(
                     &peers,
@@ -585,12 +581,8 @@ fn print_pipeline_diagnostics(
     );
     eprintln!("  Per-peer avg: {per_peer_avg:.2} MB/s ({unchoked} unchoked peers)");
     eprintln!("  Throughput buckets (unchoked peers):");
-    eprintln!(
-        "    0 MB/s:       {bucket_0:3}  |  0.1-0.5 MB/s: {bucket_mid:3}",
-    );
-    eprintln!(
-        "    0-0.1 MB/s:   {bucket_low:3}  |  0.5-1.0 MB/s: {bucket_high:3}",
-    );
+    eprintln!("    0 MB/s:       {bucket_0:3}  |  0.1-0.5 MB/s: {bucket_mid:3}",);
+    eprintln!("    0-0.1 MB/s:   {bucket_low:3}  |  0.5-1.0 MB/s: {bucket_high:3}",);
     eprintln!("    >=1.0 MB/s:   {bucket_top:3}");
 
     if !top10.is_empty() {

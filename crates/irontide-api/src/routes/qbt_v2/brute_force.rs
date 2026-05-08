@@ -734,9 +734,15 @@ mod tests {
         // the downstream handler's `Result<AdmitGuard, AdmissionDenied>`
         // would stop being `Copy`-friendly and the login path would need
         // to be audited.
-        #[allow(clippy::no_effect_underscore_binding, reason = "intentional Copy trait verification")]
+        #[allow(
+            clippy::no_effect_underscore_binding,
+            reason = "intentional Copy trait verification"
+        )]
         let _c: AdmissionDenied = a;
-        #[allow(clippy::no_effect_underscore_binding, reason = "intentional Copy trait verification")]
+        #[allow(
+            clippy::no_effect_underscore_binding,
+            reason = "intentional Copy trait verification"
+        )]
         let _d: AdmissionDenied = a;
     }
 

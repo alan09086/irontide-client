@@ -164,7 +164,10 @@ fn matches_filter(s: &TorrentStats, filter: &str) -> bool {
         // These are distinct from `_` because `_` is the permissive fallback
         // for unknown filter values (qBt parity), while these are explicit
         // no-op states.
-        #[allow(clippy::match_same_arms, reason = "explicit qBt filter values distinct from unknown fallback")]
+        #[allow(
+            clippy::match_same_arms,
+            reason = "explicit qBt filter values distinct from unknown fallback"
+        )]
         "" | "all" => true,
         "downloading" => matches!(
             qbt_state_string(s),
@@ -601,10 +604,7 @@ pub async fn delete(
 ) -> Result<QbtResponse, QbtError> {
     let q = extract_hashes_params(req).await?;
     // Missing flag → preserve files (qBt default + guards M168 behaviour).
-    let delete_files = q
-        .delete_files
-        .as_deref()
-        .is_some_and(parse_bool_flag);
+    let delete_files = q.delete_files.as_deref().is_some_and(parse_bool_flag);
     let targets = resolve_hashes(&state, q.hashes.as_deref()).await?;
     for id in targets {
         let result = if delete_files {

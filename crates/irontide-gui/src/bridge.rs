@@ -505,7 +505,8 @@ async fn handle_add_torrent_file(
         params = params.download_dir(dir);
     }
     let filename = std::path::Path::new(&path)
-        .file_name().map_or_else(|| path.clone(), |f| f.to_string_lossy().into_owned());
+        .file_name()
+        .map_or_else(|| path.clone(), |f| f.to_string_lossy().into_owned());
     match params.add_to(session).await {
         Ok(_id) => {
             // Clear file-selection state in the dialog.

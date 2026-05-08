@@ -22,7 +22,7 @@ struct Assets;
 /// let (mime, bytes) = irontide_webui_assets::get("index.html").unwrap();
 /// assert!(mime.starts_with("text/html"));
 /// ```
-#[must_use] 
+#[must_use]
 pub fn get(path: &str) -> Option<(String, Vec<u8>)> {
     let file = Assets::get(path)?;
     let mime = MimeGuess::from_path(path)

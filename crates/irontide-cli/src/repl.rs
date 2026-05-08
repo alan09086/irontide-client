@@ -268,7 +268,10 @@ pub(crate) fn run(opts: &ShellOpts) -> anyhow::Result<()> {
     if let Err(e) = editor.load_history(&history_path)
         && !matches!(e, ReadlineError::Io(ref io) if io.kind() == std::io::ErrorKind::NotFound)
     {
-        eprintln!("warning: failed to load history from {}: {e}", history_path.display());
+        eprintln!(
+            "warning: failed to load history from {}: {e}",
+            history_path.display()
+        );
     }
 
     let tty = std::io::stdout().is_terminal();
@@ -280,7 +283,8 @@ pub(crate) fn run(opts: &ShellOpts) -> anyhow::Result<()> {
         // Snapshot the cached state into a local copy so we release
         // the mutex before the blocking readline call.
         let snapshot = cached
-            .lock().map_or_else(|poisoned| *poisoned.into_inner(), |g| *g);
+            .lock()
+            .map_or_else(|poisoned| *poisoned.into_inner(), |g| *g);
         let prompt = render_prompt(&snapshot, tty);
         let line = match editor.readline(&prompt) {
             Ok(line) => line,
@@ -310,7 +314,7 @@ pub(crate) fn run(opts: &ShellOpts) -> anyhow::Result<()> {
         }
 
         match parse_shell_line(&line) {
-            Ok(ReplLine::Empty) => {},
+            Ok(ReplLine::Empty) => {}
             Ok(ReplLine::Help) => print_help(),
             Ok(ReplLine::Clear) => {
                 if tty {
@@ -336,7 +340,10 @@ pub(crate) fn run(opts: &ShellOpts) -> anyhow::Result<()> {
 
     // ── shutdown: save history, kill refresh task, drop runtime ───────
     if let Err(e) = editor.save_history(&history_path) {
-        eprintln!("warning: failed to save history to {}: {e}", history_path.display());
+        eprintln!(
+            "warning: failed to save history to {}: {e}",
+            history_path.display()
+        );
     }
     refresh_task.abort();
     // Allow the aborted task to unwind before dropping the runtime so

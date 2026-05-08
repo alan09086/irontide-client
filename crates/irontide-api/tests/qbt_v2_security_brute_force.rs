@@ -33,10 +33,8 @@ use irontide_api::routes::qbt_v2::BruteForceRegistry;
 
 static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-const PROXY_PEER: SocketAddr = SocketAddr::new(
-    std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
-    54321,
-);
+const PROXY_PEER: SocketAddr =
+    SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 54321);
 
 /// Build an enabled-qbt_compat session. `customize` lets the test tune
 /// brute-force settings, whitelists, etc.

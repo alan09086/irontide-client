@@ -113,5 +113,8 @@ async fn v1_patch_settings_unaffected_when_qbt_compat_disabled() {
     let (status, body) = send(&router, req).await;
     assert_eq!(status, StatusCode::OK);
     let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(v.get("enable_pex").and_then(serde_json::Value::as_bool), Some(false));
+    assert_eq!(
+        v.get("enable_pex").and_then(serde_json::Value::as_bool),
+        Some(false)
+    );
 }
