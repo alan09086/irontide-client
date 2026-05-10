@@ -581,8 +581,8 @@ fn print_pipeline_diagnostics(
     );
     eprintln!("  Per-peer avg: {per_peer_avg:.2} MB/s ({unchoked} unchoked peers)");
     eprintln!("  Throughput buckets (unchoked peers):");
-    eprintln!("    0 MB/s:       {bucket_0:3}  |  0.1-0.5 MB/s: {bucket_mid:3}",);
-    eprintln!("    0-0.1 MB/s:   {bucket_low:3}  |  0.5-1.0 MB/s: {bucket_high:3}",);
+    eprintln!("    0 MB/s:       {bucket_0:3}  |  0.1-0.5 MB/s: {bucket_mid:3}");
+    eprintln!("    0-0.1 MB/s:   {bucket_low:3}  |  0.5-1.0 MB/s: {bucket_high:3}");
     eprintln!("    >=1.0 MB/s:   {bucket_top:3}");
 
     if !top10.is_empty() {

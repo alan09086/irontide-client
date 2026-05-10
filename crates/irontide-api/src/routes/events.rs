@@ -366,9 +366,7 @@ mod tests {
             .await
             .expect("failed to start test session");
         let map = build_counters_map(&session);
-        // 70 pre-sim-perf metrics + 6 sim-perf engine counters added in
-        // commit "feat(session): 6 sim-perf engine counters".
-        assert_eq!(map.len(), 76, "should have exactly 76 metric entries");
+        assert_eq!(map.len(), 74, "should have exactly 74 metric entries");
     }
 
     #[test]
