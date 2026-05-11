@@ -60,6 +60,8 @@ pub fn build_router(session: SessionHandle) -> Router {
             get(session::get_settings).patch(session::patch_settings),
         )
         .route("/api/v1/session/shutdown", post(session::shutdown))
+        // -- Debug routes --
+        .route("/api/v1/debug/state", get(session::get_debug_state))
         // -- Extended torrent routes --
         .route(
             "/api/v1/torrents/{hash}/info",

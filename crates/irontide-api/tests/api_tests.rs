@@ -396,8 +396,8 @@ async fn test_session_counters() {
     let arr = v.as_array().expect("counters should be an array");
     assert_eq!(
         arr.len(),
-        74,
-        "should have exactly 74 metric entries"
+        irontide::session::NUM_METRICS,
+        "should have exactly NUM_METRICS metric entries"
     );
 
     // Each entry should have name, kind, and value.
@@ -792,8 +792,8 @@ async fn test_ws_get_stats_command() {
         .expect("counters should be object");
     assert_eq!(
         counters.len(),
-        74,
-        "should have exactly 74 counters"
+        irontide::session::NUM_METRICS,
+        "should have exactly NUM_METRICS counters"
     );
 }
 

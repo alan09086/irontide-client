@@ -128,6 +128,21 @@ pub async fn shutdown(State(session): State<AppState>) -> ApiResult<impl IntoRes
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Get per-torrent and per-peer debug state for diagnosing dispatch
+/// throughput issues (M187).
+///
+/// Returns a JSON object with per-torrent dispatch counters and per-peer
+/// pipeline state. Torrents whose actors do not respond within 500 ms
+/// are omitted so the endpoint always returns partial results.
+///
+/// # Errors
+///
+/// Returns an API error if the session is shut down.
+pub async fn get_debug_state(State(session): State<AppState>) -> ApiResult<impl IntoResponse> {
+    let state = session.debug_state().await?;
+    Ok(Json(state))
+}
+
 /// RFC 7396 JSON Merge Patch.
 ///
 /// Recursively merges `patch` into `target`:

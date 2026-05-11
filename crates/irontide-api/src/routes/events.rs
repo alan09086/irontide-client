@@ -366,7 +366,7 @@ mod tests {
             .await
             .expect("failed to start test session");
         let map = build_counters_map(&session);
-        assert_eq!(map.len(), 74, "should have exactly 74 metric entries");
+        assert_eq!(map.len(), 82, "should have exactly 82 metric entries");
     }
 
     #[test]

@@ -437,11 +437,13 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
                     let stats = session.torrent_stats(info_hash).await.ok();
                     let pipeline = stats.as_ref().and_then(|s| s.pipeline);
                     let choke_rotations = stats.map_or(0, |s| s.choke_rotations);
+                    let counters_snap = session.counters().snapshot();
                     print_pipeline_diagnostics(
                         &peers,
                         start_time.elapsed(),
                         pipeline,
                         choke_rotations,
+                        &counters_snap,
                     );
                 }
             }
@@ -515,6 +517,7 @@ fn print_pipeline_diagnostics(
     elapsed: Duration,
     pipeline: Option<irontide::session::PeerPipelineSnapshot>,
     choke_rotations: u64,
+    counters: &[i64],
 ) {
     let total = peers.len();
     let unchoked = peers.iter().filter(|p| !p.peer_choking).count();
@@ -594,13 +597,66 @@ fn print_pipeline_diagnostics(
                 "OK".to_owned()
             };
             eprintln!(
-                "    {:22} {:>7}/s | {:3} pending | {:5}s connected | {}",
+                "    {:22} {:>7}/s | {:3} pending | [{}/{}] | {:5}s connected | {}",
                 p.addr.to_string(),
                 format_rate(p.download_rate),
                 p.num_pending_requests,
+                p.in_flight_requests,
+                p.target_pipeline_depth,
                 p.connected_duration_secs,
                 choke_info,
             );
+        }
+    }
+
+    // Dispatch Health section
+    // Stat indices: DISPATCH_ACQUIRE_TOTAL=74, DISPATCH_ACQUIRE_NONE_TOTAL=75,
+    // DISPATCH_ACQUIRE_US=76, DISPATCH_NOTIFY_WAKEUP_TOTAL=77,
+    // DISPATCH_ACQUIRE_RTT_US=80, DISPATCH_NOTIFY_WAIT_US=81.
+    {
+        let acquire_total = counters.get(74).copied().unwrap_or(0);
+        let acquire_none = counters.get(75).copied().unwrap_or(0);
+        let acquire_us = counters.get(76).copied().unwrap_or(0);
+        let notify_wakeups = counters.get(77).copied().unwrap_or(0);
+        let acquire_rtt_us = counters.get(80).copied().unwrap_or(0);
+        let notify_wait_us = counters.get(81).copied().unwrap_or(0);
+
+        let elapsed_secs = elapsed.as_secs_f64().max(0.001);
+        let acquire_rate = acquire_total as f64 / elapsed_secs;
+        let none_pct = if acquire_total > 0 {
+            acquire_none as f64 / acquire_total as f64 * 100.0
+        } else {
+            0.0
+        };
+        let mean_us = if acquire_total > 0 {
+            acquire_us / acquire_total
+        } else {
+            0
+        };
+        let rtt_mean_us = if acquire_total > 0 {
+            acquire_rtt_us / acquire_total
+        } else {
+            0
+        };
+        let wait_mean_us = if acquire_total > 0 {
+            notify_wait_us / acquire_total
+        } else {
+            0
+        };
+
+        eprintln!(
+            "\n\x1b[1;36m\u{2500}\u{2500} Dispatch Health \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\x1b[0m"
+        );
+        eprintln!("  acquire rate:    {acquire_rate:.1}/s");
+        eprintln!("  acquire none:   {none_pct:.1}%");
+        eprintln!("  acquire mean:   {mean_us} \u{00b5}s");
+        eprintln!("  notify wakeups: {notify_wakeups}");
+        eprintln!("  acquire RTT:    {rtt_mean_us} \u{00b5}s (mean)");
+        if wait_mean_us >= 1000 {
+            let wait_ms = wait_mean_us as f64 / 1000.0;
+            eprintln!("  notify wait:    {wait_ms:.1} ms (mean)");
+        } else {
+            eprintln!("  notify wait:    {wait_mean_us} \u{00b5}s (mean)");
         }
     }
 

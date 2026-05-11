@@ -1082,6 +1082,8 @@ mod tests {
             is_encrypted: false,
             uses_utp: false,
             uses_holepunch: false,
+            in_flight_requests: 0,
+            target_pipeline_depth: 0,
         }
     }
 

@@ -112,6 +112,9 @@ pub(crate) enum Command {
         /// Maximum per-peer pipeline depth (default: 512)
         #[arg(long)]
         max_pipeline_depth: Option<u32>,
+        /// Use per-peer CAS dispatch instead of actor-centralised dispatch (A/B benchmarking)
+        #[arg(long)]
+        no_actor_dispatch: bool,
     },
     /// Run a long-running daemon that exposes the HTTP API
     Daemon {

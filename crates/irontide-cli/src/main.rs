@@ -25,13 +25,33 @@ use error::CliError;
 fn main() {
     let cli = Cli::parse();
 
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| cli.log_level.parse().unwrap_or_else(|_| "error".into())),
-        )
-        .with_target(false)
-        .init();
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| cli.log_level.parse().unwrap_or_else(|_| "error".into()));
+
+    #[cfg(feature = "tokio-console")]
+    {
+        use tracing_subscriber::layer::SubscriberExt as _;
+        use tracing_subscriber::util::SubscriberInitExt as _;
+        use tracing_subscriber::Layer as _;
+
+        let console_layer = console_subscriber::spawn();
+        tracing_subscriber::registry()
+            .with(console_layer)
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_target(false)
+                    .with_filter(env_filter),
+            )
+            .init();
+    }
+
+    #[cfg(not(feature = "tokio-console"))]
+    {
+        tracing_subscriber::fmt()
+            .with_env_filter(env_filter)
+            .with_target(false)
+            .init();
+    }
 
     // Capture global flags before moving cli.command — these are shared
     // by multiple dispatch arms.
@@ -66,6 +86,7 @@ fn main() {
             steal_threshold,
             min_pipeline_depth,
             max_pipeline_depth,
+            no_actor_dispatch,
         } => {
             // Build ConfigFile overrides from CLI flags that map to config
             // fields, then load through the full Figment pipeline:
@@ -119,6 +140,9 @@ fn main() {
             }
             if let Some(max_pd) = max_pipeline_depth {
                 settings.max_pipeline_depth = max_pd;
+            }
+            if no_actor_dispatch {
+                settings.use_actor_dispatch = false;
             }
             if io_uring || direct_io {
                 settings.storage_mode = irontide::core::StorageMode::IoUring;
