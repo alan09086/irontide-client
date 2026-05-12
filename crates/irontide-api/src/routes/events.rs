@@ -354,7 +354,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn build_counters_map_has_70_entries() {
+    async fn build_counters_map_has_all_metric_entries() {
         let session = irontide::ClientBuilder::new()
             .listen_port(0)
             .download_dir("/tmp")
@@ -366,7 +366,11 @@ mod tests {
             .await
             .expect("failed to start test session");
         let map = build_counters_map(&session);
-        assert_eq!(map.len(), 82, "should have exactly 82 metric entries");
+        assert_eq!(
+            map.len(),
+            irontide_session::stats::NUM_METRICS,
+            "build_counters_map must surface every session metric"
+        );
     }
 
     #[test]
