@@ -8,7 +8,7 @@
 use std::str::FromStr;
 
 use crate::app::EnginePrefs;
-use crate::skin::{self, Density, Layout, RadiusPreset, Skin, Theme};
+use crate::skin::{self, Density, RadiusPreset, Skin, Theme};
 
 /// Committed preferences state. Aggregated from `SkinSettings` + `GuiConfig`.
 #[derive(Debug, Clone)]
@@ -18,7 +18,6 @@ pub struct PreferencesState {
     pub theme: Theme,
     pub density: Density,
     pub radius: RadiusPreset,
-    pub layout: Layout,
     pub confirm_delete: bool,
     pub confirm_pause_all: bool,
     pub show_torrent_added_toast: bool,
@@ -81,6 +80,53 @@ pub struct PreferencesState {
     pub rate_limit_overhead: bool,
     pub rate_limit_utp: bool,
     pub rate_limit_lan: bool,
+    // BitTorrent
+    pub enable_dht: bool,
+    pub enable_pex: bool,
+    pub enable_lsd: bool,
+    pub encryption_mode: String,
+    pub anonymous_mode: bool,
+    pub seed_ratio_enabled: bool,
+    pub seed_ratio_value: f64,
+    pub max_ratio_action: String,
+    pub seed_time_enabled: bool,
+    pub seed_time_value: u64,
+    pub inactive_seed_time_enabled: bool,
+    pub inactive_seed_time_value: u64,
+    pub queueing_enabled: bool,
+    // RSS (not-yet-active, persisted to GuiConfig)
+    pub rss_enabled: bool,
+    pub rss_refresh_interval: u32,
+    pub rss_max_articles: u32,
+    pub rss_auto_download: bool,
+    pub rss_smart_filter: bool,
+    pub rss_download_repacks: bool,
+    // Web UI
+    pub webui_enabled: bool,
+    pub webui_bind: String,
+    pub webui_port: u16,
+    pub webui_https: bool,
+    pub webui_username: String,
+    pub webui_bypass_local_auth: bool,
+    pub webui_session_ttl: u64,
+    pub webui_max_failed_auth: u32,
+    pub webui_ban_duration: u64,
+    pub webui_csrf: bool,
+    pub webui_host_validation: bool,
+    pub webui_reverse_proxy: bool,
+    pub ddns_enabled: bool,
+    pub ddns_service: String,
+    pub ddns_domain: String,
+    // Advanced
+    pub hashing_threads: usize,
+    pub save_resume_interval: u64,
+    pub storage_mode: String,
+    pub disk_cache_size: i32,
+    pub enable_utp: bool,
+    pub enable_fast_extension: bool,
+    pub enable_holepunch: bool,
+    pub enable_bep40: bool,
+    pub config_path: String,
 }
 
 impl Default for PreferencesState {
@@ -90,7 +136,6 @@ impl Default for PreferencesState {
             theme: Theme::default(),
             density: Density::default(),
             radius: RadiusPreset::default(),
-            layout: Layout::default(),
             confirm_delete: true,
             confirm_pause_all: false,
             show_torrent_added_toast: true,
@@ -150,8 +195,96 @@ impl Default for PreferencesState {
             rate_limit_overhead: true,
             rate_limit_utp: true,
             rate_limit_lan: false,
+            // BitTorrent
+            enable_dht: true,
+            enable_pex: true,
+            enable_lsd: true,
+            encryption_mode: "Disable encryption".to_owned(),
+            anonymous_mode: false,
+            seed_ratio_enabled: false,
+            seed_ratio_value: 2.0,
+            max_ratio_action: "Pause torrent".to_owned(),
+            seed_time_enabled: false,
+            seed_time_value: 1440,
+            inactive_seed_time_enabled: false,
+            inactive_seed_time_value: 60,
+            queueing_enabled: false,
+            // RSS
+            rss_enabled: false,
+            rss_refresh_interval: 15,
+            rss_max_articles: 50,
+            rss_auto_download: false,
+            rss_smart_filter: false,
+            rss_download_repacks: false,
+            // Web UI
+            webui_enabled: true,
+            webui_bind: "127.0.0.1".to_owned(),
+            webui_port: 9080,
+            webui_https: false,
+            webui_username: "admin".to_owned(),
+            webui_bypass_local_auth: false,
+            webui_session_ttl: 86400,
+            webui_max_failed_auth: 5,
+            webui_ban_duration: 3600,
+            webui_csrf: true,
+            webui_host_validation: true,
+            webui_reverse_proxy: false,
+            ddns_enabled: false,
+            ddns_service: String::new(),
+            ddns_domain: String::new(),
+            // Advanced
+            hashing_threads: 4,
+            save_resume_interval: 5,
+            storage_mode: "Auto".to_owned(),
+            disk_cache_size: -1,
+            enable_utp: true,
+            enable_fast_extension: true,
+            enable_holepunch: true,
+            enable_bep40: true,
+            config_path: String::new(),
         }
     }
+}
+
+fn encryption_mode_to_label(em: irontide::wire::mse::EncryptionMode) -> String {
+    match em {
+        irontide::wire::mse::EncryptionMode::Disabled => "Disable encryption",
+        irontide::wire::mse::EncryptionMode::Forced => "Require encryption",
+        irontide::wire::mse::EncryptionMode::Enabled
+        | irontide::wire::mse::EncryptionMode::PreferPlaintext => "Prefer encryption",
+    }
+    .to_owned()
+}
+
+#[cfg(test)]
+fn label_to_encryption_mode(label: &str) -> irontide::wire::mse::EncryptionMode {
+    match label {
+        "Prefer encryption" => irontide::wire::mse::EncryptionMode::Enabled,
+        "Require encryption" => irontide::wire::mse::EncryptionMode::Forced,
+        _ => irontide::wire::mse::EncryptionMode::Disabled,
+    }
+}
+
+fn max_ratio_action_to_label(a: irontide::session::MaxRatioAction) -> String {
+    match a {
+        irontide::session::MaxRatioAction::Pause => "Pause torrent",
+        irontide::session::MaxRatioAction::Remove => "Remove torrent",
+        irontide::session::MaxRatioAction::EnableSuperSeeding => "Super-seeding mode",
+    }
+    .to_owned()
+}
+
+#[cfg(test)]
+fn label_to_max_ratio_action(label: &str) -> irontide::session::MaxRatioAction {
+    match label {
+        "Remove torrent" => irontide::session::MaxRatioAction::Remove,
+        "Super-seeding mode" => irontide::session::MaxRatioAction::EnableSuperSeeding,
+        _ => irontide::session::MaxRatioAction::Pause,
+    }
+}
+
+fn storage_mode_to_label(sm: irontide::core::StorageMode) -> String {
+    format!("{sm:?}")
 }
 
 fn proxy_type_to_label(pt: &irontide::session::ProxyType) -> String {
@@ -180,7 +313,6 @@ impl PreferencesState {
             theme: skin_settings.theme,
             density: skin_settings.density,
             radius: skin_settings.radius,
-            layout: skin_settings.layout,
             confirm_delete: gui.confirm_delete.unwrap_or(true),
             confirm_pause_all: gui.confirm_pause_all.unwrap_or(false),
             show_torrent_added_toast: gui.show_torrent_added_toast.unwrap_or(true),
@@ -253,6 +385,58 @@ impl PreferencesState {
             rate_limit_overhead: settings.rate_limit_includes_overhead,
             rate_limit_utp: settings.rate_limit_utp,
             rate_limit_lan: settings.rate_limit_lan,
+            // BitTorrent — from engine Settings
+            enable_dht: settings.enable_dht,
+            enable_pex: settings.enable_pex,
+            enable_lsd: settings.enable_lsd,
+            encryption_mode: encryption_mode_to_label(settings.encryption_mode),
+            anonymous_mode: settings.anonymous_mode,
+            seed_ratio_enabled: settings.seed_ratio_limit.is_some(),
+            seed_ratio_value: settings.seed_ratio_limit.unwrap_or(2.0),
+            max_ratio_action: max_ratio_action_to_label(settings.max_ratio_action),
+            seed_time_enabled: settings.seed_time_limit_secs.is_some(),
+            seed_time_value: settings.seed_time_limit_secs.unwrap_or(86400) / 60,
+            inactive_seed_time_enabled: settings.inactive_seed_time_limit_secs.is_some(),
+            inactive_seed_time_value: settings
+                .inactive_seed_time_limit_secs
+                .unwrap_or(3600)
+                / 60,
+            queueing_enabled: settings.queueing_enabled,
+            // RSS — from GuiConfig (not-yet-active)
+            rss_enabled: gui.rss_enabled.unwrap_or(false),
+            rss_refresh_interval: gui.rss_refresh_interval_min.unwrap_or(15),
+            rss_max_articles: gui.rss_max_articles.unwrap_or(50),
+            rss_auto_download: gui.rss_auto_download.unwrap_or(false),
+            rss_smart_filter: gui.rss_smart_filter.unwrap_or(false),
+            rss_download_repacks: gui.rss_download_repacks.unwrap_or(false),
+            // Web UI — from QbtCompatSettings
+            webui_enabled: settings.qbt_compat.enabled,
+            webui_bind: String::new(),
+            webui_port: 0,
+            webui_https: gui.webui_https.unwrap_or(false),
+            webui_username: settings.qbt_compat.username.clone(),
+            webui_bypass_local_auth: settings.qbt_compat.bypass_local_auth,
+            webui_session_ttl: settings.qbt_compat.session_ttl_secs,
+            webui_max_failed_auth: settings.qbt_compat.max_failed_auth_count,
+            webui_ban_duration: settings.qbt_compat.ban_duration_secs,
+            webui_csrf: settings.qbt_compat.csrf_protection_enabled,
+            webui_host_validation: settings.qbt_compat.host_header_validation_enabled,
+            webui_reverse_proxy: settings.qbt_compat.web_ui_reverse_proxy_enabled,
+            ddns_enabled: gui.ddns_enabled.unwrap_or(false),
+            ddns_service: gui.ddns_service.clone().unwrap_or_default(),
+            ddns_domain: gui.ddns_domain.clone().unwrap_or_default(),
+            // Advanced — from engine Settings
+            hashing_threads: settings.hashing_threads,
+            save_resume_interval: settings.save_resume_interval_secs / 60,
+            storage_mode: storage_mode_to_label(settings.storage_mode),
+            disk_cache_size: gui.disk_cache_size.unwrap_or(-1),
+            enable_utp: settings.enable_utp,
+            enable_fast_extension: settings.enable_fast_extension,
+            enable_holepunch: settings.enable_holepunch,
+            enable_bep40: settings.enable_bep40_eviction,
+            config_path: irontide_config::resolve_config_path(None)
+                .to_string_lossy()
+                .into_owned(),
         }
     }
 
@@ -262,7 +446,6 @@ impl PreferencesState {
         win.set_pref_theme(self.theme.to_string().into());
         win.set_pref_density(self.density.to_string().into());
         win.set_pref_radius(self.radius.to_string().into());
-        win.set_pref_layout(self.layout.label().into());
         win.set_pref_confirm_delete(self.confirm_delete);
         win.set_pref_confirm_pause_all(self.confirm_pause_all);
         win.set_pref_show_torrent_added_toast(self.show_torrent_added_toast);
@@ -324,6 +507,53 @@ impl PreferencesState {
         win.set_pref_rate_limit_overhead(self.rate_limit_overhead);
         win.set_pref_rate_limit_utp(self.rate_limit_utp);
         win.set_pref_rate_limit_lan(self.rate_limit_lan);
+        // BitTorrent
+        win.set_pref_enable_dht(self.enable_dht);
+        win.set_pref_enable_pex(self.enable_pex);
+        win.set_pref_enable_lsd(self.enable_lsd);
+        win.set_pref_encryption_mode(self.encryption_mode.as_str().into());
+        win.set_pref_anonymous_mode(self.anonymous_mode);
+        win.set_pref_seed_ratio_enabled(self.seed_ratio_enabled);
+        win.set_pref_seed_ratio_value(format!("{:.2}", self.seed_ratio_value).into());
+        win.set_pref_max_ratio_action(self.max_ratio_action.as_str().into());
+        win.set_pref_seed_time_enabled(self.seed_time_enabled);
+        win.set_pref_seed_time_value(self.seed_time_value.to_string().into());
+        win.set_pref_inactive_seed_time_enabled(self.inactive_seed_time_enabled);
+        win.set_pref_inactive_seed_time_value(self.inactive_seed_time_value.to_string().into());
+        win.set_pref_queueing_enabled(self.queueing_enabled);
+        // RSS
+        win.set_pref_rss_enabled(self.rss_enabled);
+        win.set_pref_rss_refresh_interval(self.rss_refresh_interval.to_string().into());
+        win.set_pref_rss_max_articles(self.rss_max_articles.to_string().into());
+        win.set_pref_rss_auto_download(self.rss_auto_download);
+        win.set_pref_rss_smart_filter(self.rss_smart_filter);
+        win.set_pref_rss_download_repacks(self.rss_download_repacks);
+        // Web UI
+        win.set_pref_webui_enabled(self.webui_enabled);
+        win.set_pref_webui_bind(self.webui_bind.as_str().into());
+        win.set_pref_webui_port(self.webui_port.to_string().into());
+        win.set_pref_webui_https(self.webui_https);
+        win.set_pref_webui_username(self.webui_username.as_str().into());
+        win.set_pref_webui_bypass_local_auth(self.webui_bypass_local_auth);
+        win.set_pref_webui_session_ttl(self.webui_session_ttl.to_string().into());
+        win.set_pref_webui_max_failed_auth(self.webui_max_failed_auth.to_string().into());
+        win.set_pref_webui_ban_duration(self.webui_ban_duration.to_string().into());
+        win.set_pref_webui_csrf(self.webui_csrf);
+        win.set_pref_webui_host_validation(self.webui_host_validation);
+        win.set_pref_webui_reverse_proxy(self.webui_reverse_proxy);
+        win.set_pref_ddns_enabled(self.ddns_enabled);
+        win.set_pref_ddns_service(self.ddns_service.as_str().into());
+        win.set_pref_ddns_domain(self.ddns_domain.as_str().into());
+        // Advanced
+        win.set_pref_hashing_threads(self.hashing_threads.to_string().into());
+        win.set_pref_save_resume_interval(self.save_resume_interval.to_string().into());
+        win.set_pref_storage_mode(self.storage_mode.as_str().into());
+        win.set_pref_disk_cache_size(self.disk_cache_size.to_string().into());
+        win.set_pref_enable_utp(self.enable_utp);
+        win.set_pref_enable_fast_ext(self.enable_fast_extension);
+        win.set_pref_enable_holepunch(self.enable_holepunch);
+        win.set_pref_enable_bep40(self.enable_bep40);
+        win.set_pref_config_path(self.config_path.as_str().into());
         win.set_pref_dirty(false);
     }
 
@@ -339,7 +569,6 @@ impl PreferencesState {
             Density::from_str(win.get_pref_density().as_str()).unwrap_or(self.density);
         let new_radius =
             RadiusPreset::from_str(win.get_pref_radius().as_str()).unwrap_or(self.radius);
-        let new_layout = Layout::from_label(win.get_pref_layout().as_str()).unwrap_or(self.layout);
 
         if new_skin != self.skin
             || new_theme != self.theme
@@ -351,10 +580,6 @@ impl PreferencesState {
             self.density = new_density;
             self.radius = new_radius;
             result.skin_changed = true;
-        }
-        if new_layout != self.layout {
-            self.layout = new_layout;
-            result.layout_changed = true;
         }
 
         // Behaviour bools
@@ -578,6 +803,207 @@ impl PreferencesState {
         ep.rate_limit_utp = Some(self.rate_limit_utp);
         ep.rate_limit_lan = Some(self.rate_limit_lan);
 
+        // BitTorrent
+        let new_enable_dht = win.get_pref_enable_dht();
+        let new_enable_pex = win.get_pref_enable_pex();
+        let new_enable_lsd = win.get_pref_enable_lsd();
+        let new_encryption = win.get_pref_encryption_mode().to_string();
+        let new_anonymous = win.get_pref_anonymous_mode();
+        let new_seed_ratio_enabled = win.get_pref_seed_ratio_enabled();
+        let new_seed_ratio_value: f64 = win
+            .get_pref_seed_ratio_value()
+            .as_str()
+            .parse()
+            .unwrap_or(self.seed_ratio_value);
+        let new_max_ratio_action = win.get_pref_max_ratio_action().to_string();
+        let new_seed_time_enabled = win.get_pref_seed_time_enabled();
+        let new_seed_time_value: u64 = win
+            .get_pref_seed_time_value()
+            .as_str()
+            .parse()
+            .unwrap_or(self.seed_time_value);
+        let new_inactive_seed_time_enabled = win.get_pref_inactive_seed_time_enabled();
+        let new_inactive_seed_time_value: u64 = win
+            .get_pref_inactive_seed_time_value()
+            .as_str()
+            .parse()
+            .unwrap_or(self.inactive_seed_time_value);
+        let new_queueing = win.get_pref_queueing_enabled();
+
+        if new_enable_dht != self.enable_dht {
+            ep.enable_dht = Some(new_enable_dht);
+            self.enable_dht = new_enable_dht;
+        }
+        if new_enable_pex != self.enable_pex {
+            ep.enable_pex = Some(new_enable_pex);
+            self.enable_pex = new_enable_pex;
+        }
+        if new_enable_lsd != self.enable_lsd {
+            ep.enable_lsd = Some(new_enable_lsd);
+            self.enable_lsd = new_enable_lsd;
+        }
+        if new_encryption != self.encryption_mode {
+            ep.encryption_mode = Some(new_encryption.clone());
+            self.encryption_mode = new_encryption;
+        }
+        if new_anonymous != self.anonymous_mode {
+            ep.anonymous_mode = Some(new_anonymous);
+            self.anonymous_mode = new_anonymous;
+        }
+        if new_queueing != self.queueing_enabled {
+            ep.queueing_enabled = Some(new_queueing);
+            self.queueing_enabled = new_queueing;
+        }
+        self.seed_ratio_enabled = new_seed_ratio_enabled;
+        self.seed_ratio_value = new_seed_ratio_value;
+        self.max_ratio_action.clone_from(&new_max_ratio_action);
+        self.seed_time_enabled = new_seed_time_enabled;
+        self.seed_time_value = new_seed_time_value;
+        self.inactive_seed_time_enabled = new_inactive_seed_time_enabled;
+        self.inactive_seed_time_value = new_inactive_seed_time_value;
+        ep.seed_ratio_limit = Some(if new_seed_ratio_enabled {
+            Some(new_seed_ratio_value)
+        } else {
+            None
+        });
+        ep.max_ratio_action = Some(new_max_ratio_action);
+        ep.seed_time_limit_secs = Some(if new_seed_time_enabled {
+            Some(new_seed_time_value * 60)
+        } else {
+            None
+        });
+        ep.inactive_seed_time_limit_secs = Some(if new_inactive_seed_time_enabled {
+            Some(new_inactive_seed_time_value * 60)
+        } else {
+            None
+        });
+
+        // RSS (not-yet-active — just persist to state)
+        self.rss_enabled = win.get_pref_rss_enabled();
+        self.rss_refresh_interval = win
+            .get_pref_rss_refresh_interval()
+            .as_str()
+            .parse()
+            .unwrap_or(self.rss_refresh_interval);
+        self.rss_max_articles = win
+            .get_pref_rss_max_articles()
+            .as_str()
+            .parse()
+            .unwrap_or(self.rss_max_articles);
+        self.rss_auto_download = win.get_pref_rss_auto_download();
+        self.rss_smart_filter = win.get_pref_rss_smart_filter();
+        self.rss_download_repacks = win.get_pref_rss_download_repacks();
+
+        // Web UI
+        let new_webui_enabled = win.get_pref_webui_enabled();
+        let new_webui_username = win.get_pref_webui_username().to_string();
+        let new_webui_bypass = win.get_pref_webui_bypass_local_auth();
+        let new_webui_ttl: u64 = win
+            .get_pref_webui_session_ttl()
+            .as_str()
+            .parse()
+            .unwrap_or(self.webui_session_ttl);
+        let new_webui_max_auth: u32 = win
+            .get_pref_webui_max_failed_auth()
+            .as_str()
+            .parse()
+            .unwrap_or(self.webui_max_failed_auth);
+        let new_webui_ban: u64 = win
+            .get_pref_webui_ban_duration()
+            .as_str()
+            .parse()
+            .unwrap_or(self.webui_ban_duration);
+        let new_webui_csrf = win.get_pref_webui_csrf();
+        let new_webui_host_val = win.get_pref_webui_host_validation();
+        let new_webui_rproxy = win.get_pref_webui_reverse_proxy();
+
+        if new_webui_enabled != self.webui_enabled {
+            ep.qbt_compat_enabled = Some(new_webui_enabled);
+            self.webui_enabled = new_webui_enabled;
+        }
+        if new_webui_username != self.webui_username {
+            ep.qbt_compat_username = Some(new_webui_username.clone());
+            self.webui_username = new_webui_username;
+        }
+        if new_webui_bypass != self.webui_bypass_local_auth {
+            ep.qbt_compat_bypass_local_auth = Some(new_webui_bypass);
+            self.webui_bypass_local_auth = new_webui_bypass;
+        }
+        if new_webui_ttl != self.webui_session_ttl {
+            ep.qbt_compat_session_ttl = Some(new_webui_ttl);
+            self.webui_session_ttl = new_webui_ttl;
+        }
+        if new_webui_max_auth != self.webui_max_failed_auth {
+            ep.qbt_compat_max_failed_auth = Some(new_webui_max_auth);
+            self.webui_max_failed_auth = new_webui_max_auth;
+        }
+        if new_webui_ban != self.webui_ban_duration {
+            ep.qbt_compat_ban_duration = Some(new_webui_ban);
+            self.webui_ban_duration = new_webui_ban;
+        }
+        if new_webui_csrf != self.webui_csrf {
+            ep.qbt_compat_csrf = Some(new_webui_csrf);
+            self.webui_csrf = new_webui_csrf;
+        }
+        if new_webui_host_val != self.webui_host_validation {
+            ep.qbt_compat_host_validation = Some(new_webui_host_val);
+            self.webui_host_validation = new_webui_host_val;
+        }
+        if new_webui_rproxy != self.webui_reverse_proxy {
+            ep.qbt_compat_reverse_proxy = Some(new_webui_rproxy);
+            self.webui_reverse_proxy = new_webui_rproxy;
+        }
+        self.webui_https = win.get_pref_webui_https();
+        self.ddns_enabled = win.get_pref_ddns_enabled();
+        self.ddns_service = win.get_pref_ddns_service().to_string();
+        self.ddns_domain = win.get_pref_ddns_domain().to_string();
+
+        // Advanced
+        let new_hashing: usize = win
+            .get_pref_hashing_threads()
+            .as_str()
+            .parse()
+            .unwrap_or(self.hashing_threads);
+        let new_resume_interval: u64 = win
+            .get_pref_save_resume_interval()
+            .as_str()
+            .parse()
+            .unwrap_or(self.save_resume_interval);
+        let new_enable_utp = win.get_pref_enable_utp();
+        let new_enable_fast = win.get_pref_enable_fast_ext();
+        let new_enable_hp = win.get_pref_enable_holepunch();
+        let new_enable_bep40 = win.get_pref_enable_bep40();
+
+        if new_hashing != self.hashing_threads {
+            ep.hashing_threads = Some(new_hashing);
+            self.hashing_threads = new_hashing;
+        }
+        if new_resume_interval != self.save_resume_interval {
+            ep.save_resume_interval_secs = Some(new_resume_interval * 60);
+            self.save_resume_interval = new_resume_interval;
+        }
+        if new_enable_utp != self.enable_utp {
+            ep.enable_utp = Some(new_enable_utp);
+            self.enable_utp = new_enable_utp;
+        }
+        if new_enable_fast != self.enable_fast_extension {
+            ep.enable_fast_extension = Some(new_enable_fast);
+            self.enable_fast_extension = new_enable_fast;
+        }
+        if new_enable_hp != self.enable_holepunch {
+            ep.enable_holepunch = Some(new_enable_hp);
+            self.enable_holepunch = new_enable_hp;
+        }
+        if new_enable_bep40 != self.enable_bep40 {
+            ep.enable_bep40_eviction = Some(new_enable_bep40);
+            self.enable_bep40 = new_enable_bep40;
+        }
+        self.disk_cache_size = win
+            .get_pref_disk_cache_size()
+            .as_str()
+            .parse()
+            .unwrap_or(self.disk_cache_size);
+
         result.engine_prefs = Some(Box::new(ep));
 
         result.gui_config_dirty = true;
@@ -625,6 +1051,20 @@ impl PreferencesState {
         gui.ip_filter_enabled = Some(self.ip_filter_enabled);
         gui.ip_filter_path = Some(self.ip_filter_path.clone());
         gui.ip_filter_auto_refresh = Some(self.ip_filter_auto_refresh);
+        // RSS (not-yet-active, persisted to GuiConfig)
+        gui.rss_enabled = Some(self.rss_enabled);
+        gui.rss_refresh_interval_min = Some(self.rss_refresh_interval);
+        gui.rss_max_articles = Some(self.rss_max_articles);
+        gui.rss_auto_download = Some(self.rss_auto_download);
+        gui.rss_smart_filter = Some(self.rss_smart_filter);
+        gui.rss_download_repacks = Some(self.rss_download_repacks);
+        // Web UI not-yet-active
+        gui.webui_https = Some(self.webui_https);
+        gui.ddns_enabled = Some(self.ddns_enabled);
+        gui.ddns_service = Some(self.ddns_service.clone());
+        gui.ddns_domain = Some(self.ddns_domain.clone());
+        // Advanced not-yet-active
+        gui.disk_cache_size = Some(self.disk_cache_size);
     }
 }
 
@@ -632,7 +1072,6 @@ impl PreferencesState {
 #[derive(Debug, Default)]
 pub struct ApplyResult {
     pub skin_changed: bool,
-    pub layout_changed: bool,
     pub download_dir: Option<String>,
     pub create_subfolder: Option<bool>,
     pub gui_config_dirty: bool,
@@ -663,7 +1102,6 @@ mod tests {
         assert_eq!(state.theme, Theme::Dark);
         assert_eq!(state.density, Density::Balanced);
         assert_eq!(state.radius, RadiusPreset::Balanced);
-        assert_eq!(state.layout, Layout::L1);
         assert!(state.confirm_delete);
         assert!(state.create_subfolder);
         assert!(state.resume_previous_session);
@@ -678,8 +1116,6 @@ mod tests {
             theme: Theme::Light,
             density: Density::Compact,
             radius: RadiusPreset::Sharp,
-            layout: Layout::L2,
-            ..skin::SkinSettings::default()
         };
         let gui = irontide_config::GuiConfig::default();
         let state = PreferencesState::from_app(
@@ -692,7 +1128,6 @@ mod tests {
         assert_eq!(state.theme, Theme::Light);
         assert_eq!(state.density, Density::Compact);
         assert_eq!(state.radius, RadiusPreset::Sharp);
-        assert_eq!(state.layout, Layout::L2);
         assert_eq!(state.download_dir, "/tmp/dl");
     }
 
@@ -753,5 +1188,174 @@ mod tests {
     fn apply_result_no_engine_changes_when_empty() {
         let result = ApplyResult::default();
         assert!(!result.has_engine_changes());
+    }
+
+    // ── M187: BitTorrent / RSS / Web UI / Advanced ──────────────────
+
+    #[test]
+    fn default_has_sensible_bittorrent_values() {
+        let state = PreferencesState::default();
+        assert!(state.enable_dht);
+        assert!(state.enable_pex);
+        assert!(state.enable_lsd);
+        assert_eq!(state.encryption_mode, "Disable encryption");
+        assert!(!state.anonymous_mode);
+        assert!(!state.seed_ratio_enabled);
+        assert!((state.seed_ratio_value - 2.0).abs() < f64::EPSILON);
+        assert_eq!(state.max_ratio_action, "Pause torrent");
+        assert!(!state.queueing_enabled);
+        assert!(!state.rss_enabled);
+        assert!(state.enable_utp);
+        assert!(state.enable_fast_extension);
+        assert!(state.enable_holepunch);
+        assert!(state.enable_bep40);
+    }
+
+    #[test]
+    fn from_app_reads_bittorrent_fields() {
+        let skin = skin::SkinSettings::default();
+        let gui = irontide_config::GuiConfig::default();
+        let settings = irontide::session::Settings {
+            enable_dht: false,
+            enable_pex: false,
+            encryption_mode: irontide::wire::mse::EncryptionMode::Forced,
+            anonymous_mode: true,
+            seed_ratio_limit: Some(1.5),
+            max_ratio_action: irontide::session::MaxRatioAction::Remove,
+            seed_time_limit_secs: Some(7200),
+            ..Default::default()
+        };
+        let state = PreferencesState::from_app(skin, &gui, "", &settings);
+        assert!(!state.enable_dht);
+        assert!(!state.enable_pex);
+        assert_eq!(state.encryption_mode, "Require encryption");
+        assert!(state.anonymous_mode);
+        assert!(state.seed_ratio_enabled);
+        assert!((state.seed_ratio_value - 1.5).abs() < f64::EPSILON);
+        assert_eq!(state.max_ratio_action, "Remove torrent");
+        assert!(state.seed_time_enabled);
+        assert_eq!(state.seed_time_value, 120);
+    }
+
+    #[test]
+    fn from_app_reads_qbt_compat_fields() {
+        let skin = skin::SkinSettings::default();
+        let gui = irontide_config::GuiConfig::default();
+        let settings = irontide::session::Settings {
+            qbt_compat: irontide::session::QbtCompatSettings {
+                enabled: false,
+                username: "testuser".to_owned(),
+                bypass_local_auth: true,
+                session_ttl_secs: 3600,
+                csrf_protection_enabled: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let state = PreferencesState::from_app(skin, &gui, "", &settings);
+        assert!(!state.webui_enabled);
+        assert_eq!(state.webui_username, "testuser");
+        assert!(state.webui_bypass_local_auth);
+        assert_eq!(state.webui_session_ttl, 3600);
+        assert!(!state.webui_csrf);
+    }
+
+    #[test]
+    fn populate_gui_config_round_trips_rss() {
+        let state = PreferencesState {
+            rss_enabled: true,
+            rss_refresh_interval: 30,
+            rss_max_articles: 100,
+            rss_auto_download: true,
+            rss_smart_filter: true,
+            rss_download_repacks: true,
+            ..Default::default()
+        };
+        let mut gui = irontide_config::GuiConfig::default();
+        state.populate_gui_config(&mut gui);
+        assert_eq!(gui.rss_enabled, Some(true));
+        assert_eq!(gui.rss_refresh_interval_min, Some(30));
+        assert_eq!(gui.rss_max_articles, Some(100));
+        assert_eq!(gui.rss_auto_download, Some(true));
+        assert_eq!(gui.rss_smart_filter, Some(true));
+        assert_eq!(gui.rss_download_repacks, Some(true));
+        let recovered = PreferencesState::from_app(
+            skin::SkinSettings::default(),
+            &gui,
+            "",
+            &irontide::session::Settings::default(),
+        );
+        assert!(recovered.rss_enabled);
+        assert_eq!(recovered.rss_refresh_interval, 30);
+        assert_eq!(recovered.rss_max_articles, 100);
+    }
+
+    #[test]
+    fn populate_gui_config_round_trips_webui() {
+        let state = PreferencesState {
+            webui_https: true,
+            ddns_enabled: true,
+            ddns_service: "duckdns.org".to_owned(),
+            ddns_domain: "test.duckdns.org".to_owned(),
+            ..Default::default()
+        };
+        let mut gui = irontide_config::GuiConfig::default();
+        state.populate_gui_config(&mut gui);
+        assert_eq!(gui.webui_https, Some(true));
+        assert_eq!(gui.ddns_enabled, Some(true));
+        assert_eq!(gui.ddns_service.as_deref(), Some("duckdns.org"));
+        assert_eq!(gui.ddns_domain.as_deref(), Some("test.duckdns.org"));
+    }
+
+    #[test]
+    fn populate_gui_config_round_trips_advanced() {
+        let state = PreferencesState {
+            disk_cache_size: 512,
+            ..Default::default()
+        };
+        let mut gui = irontide_config::GuiConfig::default();
+        state.populate_gui_config(&mut gui);
+        assert_eq!(gui.disk_cache_size, Some(512));
+    }
+
+    #[test]
+    fn encryption_mode_label_round_trip() {
+        use irontide::wire::mse::EncryptionMode;
+        let cases = [
+            (EncryptionMode::Disabled, "Disable encryption"),
+            (EncryptionMode::Enabled, "Prefer encryption"),
+            (EncryptionMode::Forced, "Require encryption"),
+        ];
+        for (mode, expected_label) in &cases {
+            let label = encryption_mode_to_label(*mode);
+            assert_eq!(&label, expected_label);
+            let recovered = label_to_encryption_mode(&label);
+            assert_eq!(
+                std::mem::discriminant(&recovered),
+                std::mem::discriminant(mode)
+            );
+        }
+    }
+
+    #[test]
+    fn max_ratio_action_label_round_trip() {
+        use irontide::session::MaxRatioAction;
+        let cases = [
+            (MaxRatioAction::Pause, "Pause torrent"),
+            (MaxRatioAction::Remove, "Remove torrent"),
+            (
+                MaxRatioAction::EnableSuperSeeding,
+                "Super-seeding mode",
+            ),
+        ];
+        for (action, expected_label) in &cases {
+            let label = max_ratio_action_to_label(*action);
+            assert_eq!(&label, expected_label);
+            let recovered = label_to_max_ratio_action(&label);
+            assert_eq!(
+                std::mem::discriminant(&recovered),
+                std::mem::discriminant(action)
+            );
+        }
     }
 }

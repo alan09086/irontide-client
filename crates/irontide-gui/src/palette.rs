@@ -30,8 +30,6 @@ pub enum PaletteCommandId {
     NavInactive,
     NavErrored,
     // Tools
-    ToggleInspector,
-    CycleLayout,
     OpenPreferences,
     SelectAll,
     // Settings
@@ -174,18 +172,6 @@ pub static COMMANDS: &[PaletteCommand] = &[
     },
     // Tools
     PaletteCommand {
-        id: PaletteCommandId::ToggleInspector,
-        label: "Toggle Inspector",
-        category: PaletteCategory::Tools,
-        hotkey_hint: "",
-    },
-    PaletteCommand {
-        id: PaletteCommandId::CycleLayout,
-        label: "Cycle Layout",
-        category: PaletteCategory::Tools,
-        hotkey_hint: "",
-    },
-    PaletteCommand {
         id: PaletteCommandId::SelectAll,
         label: "Select All",
         category: PaletteCategory::Tools,
@@ -282,8 +268,6 @@ pub fn is_enabled(id: PaletteCommandId, has_selection: bool) -> bool {
 #[must_use]
 pub fn resolved_hotkey(cmd: &PaletteCommand) -> SharedString {
     match cmd.id {
-        PaletteCommandId::ToggleInspector => accel::format_shortcut(&["I"]),
-        PaletteCommandId::CycleLayout => accel::format_shortcut(&["Shift", "L"]),
         PaletteCommandId::OpenPreferences => accel::format_shortcut(&[","]),
         PaletteCommandId::SelectAll => accel::format_shortcut(&["A"]),
         _ => SharedString::from(cmd.hotkey_hint),
@@ -297,8 +281,6 @@ pub enum DispatchAction {
     ShowAddTorrent,
     SendCommand(crate::app::GuiCommand),
     SetPredicate(crate::sidebar::SidebarPredicate),
-    ToggleInspector,
-    CycleLayout,
     OpenPreferences,
     SelectAll,
     Quit,
@@ -363,8 +345,6 @@ pub fn dispatch(id: PaletteCommandId, selected: &[String]) -> DispatchAction {
         PaletteCommandId::NavErrored => {
             DispatchAction::SetPredicate(SidebarPredicate::Library(LibraryFilter::Errored))
         }
-        PaletteCommandId::ToggleInspector => DispatchAction::ToggleInspector,
-        PaletteCommandId::CycleLayout => DispatchAction::CycleLayout,
         PaletteCommandId::OpenPreferences => DispatchAction::OpenPreferences,
         PaletteCommandId::SelectAll => DispatchAction::SelectAll,
         PaletteCommandId::Quit => DispatchAction::Quit,
@@ -529,7 +509,7 @@ mod tests {
         assert!(is_enabled(PaletteCommandId::AddMagnetLink, false));
         assert!(is_enabled(PaletteCommandId::NavAll, false));
         assert!(is_enabled(PaletteCommandId::Quit, false));
-        assert!(is_enabled(PaletteCommandId::CycleLayout, false));
+        assert!(is_enabled(PaletteCommandId::OpenPreferences, false));
     }
 
     #[test]

@@ -202,6 +202,7 @@ fn main() {
             workers,
             no_pin_cores,
             resume_dir,
+            diagnostics,
         } => match daemon::run(daemon::DaemonOpts {
             api_port,
             api_bind,
@@ -212,6 +213,7 @@ fn main() {
             no_pin_cores,
             global_config: global_config.clone(),
             resume_dir,
+            diagnostics,
         }) {
             Ok(()) => 0,
             Err(e) => {

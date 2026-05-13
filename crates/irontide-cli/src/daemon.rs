@@ -33,6 +33,8 @@ pub(crate) struct DaemonOpts {
     pub global_config: Option<PathBuf>,
     /// Optional resume directory override from CLI.
     pub resume_dir: Option<PathBuf>,
+    /// Enable diagnostic counters.
+    pub diagnostics: bool,
 }
 
 /// Build a tokio runtime, start a long-running `SessionHandle`, bind the HTTP
@@ -58,6 +60,7 @@ pub(crate) fn run(opts: DaemonOpts) -> anyhow::Result<()> {
         no_pin_cores,
         global_config,
         resume_dir,
+        diagnostics,
     } = opts;
 
     // Build CLI overrides from daemon flags, then merge through the full
@@ -78,7 +81,10 @@ pub(crate) fn run(opts: DaemonOpts) -> anyhow::Result<()> {
         cli_overrides.session.resume_dir = Some(dir.clone());
     }
 
-    let settings = irontide_config::load(global_config.as_deref(), &cli_overrides)?;
+    let mut settings = irontide_config::load(global_config.as_deref(), &cli_overrides)?;
+    if diagnostics {
+        settings.enable_diagnostic_counters = true;
+    }
 
     let rt = irontide_config::build_runtime(&settings);
 
@@ -184,6 +190,7 @@ mod tests {
             no_pin_cores: false,
             global_config: None,
             resume_dir: None,
+            diagnostics: false,
         };
         let err = run(opts).expect_err("api_port=0 must be rejected");
         assert!(

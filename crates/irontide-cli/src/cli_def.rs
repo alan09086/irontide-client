@@ -139,6 +139,9 @@ pub(crate) enum Command {
         /// Directory for per-torrent resume files (default: ~/.local/state/irontide)
         #[arg(long)]
         resume_dir: Option<std::path::PathBuf>,
+        /// Enable diagnostic counters (dispatch timing, backpressure, peer telemetry)
+        #[arg(long)]
+        diagnostics: bool,
     },
     /// Create a .torrent file
     Create {

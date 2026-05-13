@@ -155,6 +155,11 @@ pub fn handle_menu_action(
                 win.set_show_add_torrent_dialog(true);
             });
         }
+        crate::app::MenuAction::Preferences => {
+            let _ = weak.upgrade_in_event_loop(|win| {
+                win.set_show_preferences_dialog(true);
+            });
+        }
     }
 }
 
@@ -980,6 +985,121 @@ async fn handle_apply_engine_prefs(
     }
     if let Some(v) = ep.ip_filter_auto_refresh {
         settings.ip_filter_auto_refresh = v;
+        changed = true;
+    }
+
+    // BitTorrent
+    if let Some(v) = ep.enable_dht {
+        settings.enable_dht = v;
+        changed = true;
+    }
+    if let Some(v) = ep.enable_pex {
+        settings.enable_pex = v;
+        changed = true;
+    }
+    if let Some(v) = ep.enable_lsd {
+        settings.enable_lsd = v;
+        changed = true;
+    }
+    if let Some(ref label) = ep.encryption_mode {
+        settings.encryption_mode = match label.as_str() {
+            "Prefer encryption" => irontide::wire::mse::EncryptionMode::Enabled,
+            "Require encryption" => irontide::wire::mse::EncryptionMode::Forced,
+            _ => irontide::wire::mse::EncryptionMode::Disabled,
+        };
+        changed = true;
+    }
+    if let Some(v) = ep.anonymous_mode {
+        settings.anonymous_mode = v;
+        changed = true;
+    }
+    if let Some(v) = ep.queueing_enabled {
+        settings.queueing_enabled = v;
+        changed = true;
+    }
+    if let Some(ref v) = ep.seed_ratio_limit {
+        settings.seed_ratio_limit = *v;
+        changed = true;
+    }
+    if let Some(ref label) = ep.max_ratio_action {
+        use irontide::session::MaxRatioAction;
+        settings.max_ratio_action = match label.as_str() {
+            "Remove torrent" => MaxRatioAction::Remove,
+            "Super-seeding mode" => MaxRatioAction::EnableSuperSeeding,
+            _ => MaxRatioAction::Pause,
+        };
+        changed = true;
+    }
+    if let Some(ref v) = ep.seed_time_limit_secs {
+        settings.seed_time_limit_secs = *v;
+        changed = true;
+    }
+    if let Some(ref v) = ep.inactive_seed_time_limit_secs {
+        settings.inactive_seed_time_limit_secs = *v;
+        changed = true;
+    }
+
+    // Web UI (qbt_compat)
+    if let Some(v) = ep.qbt_compat_enabled {
+        settings.qbt_compat.enabled = v;
+        changed = true;
+    }
+    if let Some(ref v) = ep.qbt_compat_username {
+        settings.qbt_compat.username.clone_from(v);
+        changed = true;
+    }
+    if let Some(v) = ep.qbt_compat_bypass_local_auth {
+        settings.qbt_compat.bypass_local_auth = v;
+        changed = true;
+    }
+    if let Some(v) = ep.qbt_compat_session_ttl {
+        settings.qbt_compat.session_ttl_secs = v;
+        changed = true;
+    }
+    if let Some(v) = ep.qbt_compat_max_failed_auth {
+        settings.qbt_compat.max_failed_auth_count = v;
+        changed = true;
+    }
+    if let Some(v) = ep.qbt_compat_ban_duration {
+        settings.qbt_compat.ban_duration_secs = v;
+        changed = true;
+    }
+    if let Some(v) = ep.qbt_compat_csrf {
+        settings.qbt_compat.csrf_protection_enabled = v;
+        changed = true;
+    }
+    if let Some(v) = ep.qbt_compat_host_validation {
+        settings.qbt_compat.host_header_validation_enabled = v;
+        changed = true;
+    }
+    if let Some(v) = ep.qbt_compat_reverse_proxy {
+        settings.qbt_compat.web_ui_reverse_proxy_enabled = v;
+        changed = true;
+    }
+
+    // Advanced
+    if let Some(v) = ep.hashing_threads {
+        settings.hashing_threads = v;
+        changed = true;
+    }
+    if let Some(v) = ep.save_resume_interval_secs {
+        settings.save_resume_interval_secs = v;
+        changed = true;
+    }
+    if let Some(v) = ep.enable_utp {
+        settings.enable_utp = v;
+        changed = true;
+    }
+    if let Some(v) = ep.enable_fast_extension {
+        settings.enable_fast_extension = v;
+        changed = true;
+    }
+    if let Some(v) = ep.enable_holepunch {
+        settings.enable_holepunch = v;
+        changed = true;
+    }
+    if let Some(v) = ep.enable_bep40_eviction {
+        settings.enable_bep40_eviction = v;
         changed = true;
     }
 

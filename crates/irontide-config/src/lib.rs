@@ -206,6 +206,31 @@ pub struct GuiConfig {
     pub ip_filter_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ip_filter_auto_refresh: Option<bool>,
+    // ── M187: RSS preferences (all not-yet-active) ─────────────────
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rss_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rss_refresh_interval_min: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rss_max_articles: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rss_auto_download: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rss_smart_filter: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rss_download_repacks: Option<bool>,
+    // ── M187: Web UI not-yet-active ─────────────────────────────────
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub webui_https: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ddns_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ddns_service: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ddns_domain: Option<String>,
+    // ── M187: Advanced not-yet-active ───────────────────────────────
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disk_cache_size: Option<i32>,
 }
 
 /// `[gui.sidebar]` — per-user sidebar selection + collapsed state

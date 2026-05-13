@@ -69,14 +69,6 @@ fn main() -> Result<(), error::GuiError> {
         let weak = main_window.as_weak();
         let mut st = state.lock();
         st.skin.apply(&weak);
-        // M176: layout / L3 sidebar mode / inspector visibility.
-        main_window.set_current_layout_label(st.skin.layout.label().into());
-        main_window.set_current_l3_sidebar_mode(st.skin.l3_sidebar_mode.to_string().into());
-        let effective_inspector = st
-            .skin
-            .inspector_shown
-            .unwrap_or_else(|| skin::default_inspector_shown(st.skin.layout));
-        main_window.set_inspector_shown(effective_inspector);
         // M173 Lane A task A9: seed sidebar collapsed flags from
         // persisted state so the first-paint sidebar matches the
         // user's last session.
@@ -770,16 +762,6 @@ fn main() -> Result<(), error::GuiError> {
                 palette::DispatchAction::SetPredicate(pred) => {
                     cb_state2.lock().set_predicate(pred);
                 }
-                palette::DispatchAction::ToggleInspector => {
-                    let _ = weak2.upgrade_in_event_loop(|win| {
-                        win.invoke_inspector_toggle();
-                    });
-                }
-                palette::DispatchAction::CycleLayout => {
-                    let _ = weak2.upgrade_in_event_loop(|win| {
-                        win.invoke_layout_cycle();
-                    });
-                }
                 palette::DispatchAction::OpenPreferences => {
                     let cb_state3 = cb_state2.clone();
                     let _ = weak2.upgrade_in_event_loop(move |win| {
@@ -817,7 +799,7 @@ fn main() -> Result<(), error::GuiError> {
 
     // ── M184 Preferences dialog callbacks ────────────────────────────
     //
-    // Apply: diff Slint properties → committed state, apply skin/layout
+    // Apply: diff Slint properties → committed state, apply skin
     // changes, send engine-backed fields via GuiCommand, persist config.
     {
         let cb_state = state.clone();
@@ -834,17 +816,6 @@ fn main() -> Result<(), error::GuiError> {
                     st.skin.radius = st.prefs.radius;
                     st.skin_dirty = true;
                     st.skin.apply(&weak);
-                }
-                if result.layout_changed {
-                    let new_layout = st.prefs.layout;
-                    st.skin.layout = new_layout;
-                    st.skin_dirty = true;
-                    let inspector_shown = st
-                        .skin
-                        .inspector_shown
-                        .unwrap_or_else(|| skin::default_inspector_shown(new_layout));
-                    win.set_current_layout_label(new_layout.label().into());
-                    win.set_inspector_shown(inspector_shown);
                 }
                 st.prefs_dirty = true;
                 (result, st.cmd_tx.clone())
@@ -886,98 +857,6 @@ fn main() -> Result<(), error::GuiError> {
         let cb_state = state.clone();
         main_window.on_preferences_browse_download_dir(move || {
             bridge::handle_browse_pref_folder(&weak, &cb_state, "pref-download-dir");
-        });
-    }
-
-    // M176: Layout change from Toolbar still uses tweaks_layout_changed.
-    {
-        let weak = main_window.as_weak();
-        let cb_state = state.clone();
-        main_window.on_tweaks_layout_changed(move |label| {
-            let Some(new_layout) = skin::Layout::from_label(label.as_str()) else {
-                tracing::warn!(invalid = label.as_str(), "unknown layout label, ignored");
-                return;
-            };
-            let inspector_shown = {
-                let mut st = cb_state.lock();
-                st.skin.layout = new_layout;
-                st.skin_dirty = true;
-                st.skin
-                    .inspector_shown
-                    .unwrap_or_else(|| skin::default_inspector_shown(new_layout))
-            };
-            if let Some(win) = weak.upgrade() {
-                win.set_current_layout_label(label.clone());
-                win.set_inspector_shown(inspector_shown);
-            }
-        });
-    }
-
-    // F7: Ctrl+Shift+L — cycle layout L1→L2→L3→L1. Reuses the existing
-    // tweaks_layout_changed handler to avoid duplicating layout-change logic.
-    {
-        let weak = main_window.as_weak();
-        let cb_state = state.clone();
-        main_window.on_layout_cycle(move || {
-            let label = {
-                let st = cb_state.lock();
-                st.skin.layout.cycle().label().to_owned()
-            };
-            if let Some(win) = weak.upgrade() {
-                win.invoke_tweaks_layout_changed(label.into());
-            }
-        });
-    }
-
-    // M176: Inspector toggle (⌘I). Captures the user's explicit
-    // preference so layout switches don't clobber it. No-op in L1
-    // because the inline detail-pane is always visible there.
-    {
-        let weak = main_window.as_weak();
-        let cb_state = state.clone();
-        main_window.on_inspector_toggle(move || {
-            let new_value = {
-                let mut st = cb_state.lock();
-                if st.skin.layout == skin::Layout::L1 {
-                    return;
-                }
-                let current = st
-                    .skin
-                    .inspector_shown
-                    .unwrap_or_else(|| skin::default_inspector_shown(st.skin.layout));
-                let v = !current;
-                st.skin.inspector_shown = Some(v);
-                st.skin_dirty = true;
-                v
-            };
-            if let Some(win) = weak.upgrade() {
-                win.set_inspector_shown(new_value);
-            }
-        });
-    }
-
-    // M176: L3 sidebar toggle (Ctrl+Shift+S / Cmd+Shift+S). Cycles
-    // between icons-only and hidden. No-op outside L3.
-    {
-        let weak = main_window.as_weak();
-        let cb_state = state.clone();
-        main_window.on_l3_sidebar_toggle(move || {
-            let new_mode = {
-                let mut st = cb_state.lock();
-                if st.skin.layout != skin::Layout::L3 {
-                    return;
-                }
-                let next = match st.skin.l3_sidebar_mode {
-                    skin::L3SidebarMode::Icons => skin::L3SidebarMode::Hidden,
-                    skin::L3SidebarMode::Hidden => skin::L3SidebarMode::Icons,
-                };
-                st.skin.l3_sidebar_mode = next;
-                st.skin_dirty = true;
-                next
-            };
-            if let Some(win) = weak.upgrade() {
-                win.set_current_l3_sidebar_mode(new_mode.to_string().into());
-            }
         });
     }
 

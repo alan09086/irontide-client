@@ -13,6 +13,7 @@ pub enum AppPhase {
 pub enum MenuAction {
     AddMagnet,
     AddTorrentFile,
+    Preferences,
     Quit,
 }
 
@@ -53,12 +54,37 @@ pub struct EnginePrefs {
     pub rate_limit_includes_overhead: Option<bool>,
     pub rate_limit_utp: Option<bool>,
     pub rate_limit_lan: Option<bool>,
-    #[allow(dead_code, reason = "M187: BitTorrent tab will wire these")]
     pub encryption_mode: Option<String>,
-    #[allow(dead_code, reason = "M187: BitTorrent tab will wire these")]
     pub anonymous_mode: Option<bool>,
-    #[allow(dead_code, reason = "M187: BitTorrent tab will wire these")]
     pub queueing_enabled: Option<bool>,
+    // M187: BitTorrent tab — new fields
+    pub enable_dht: Option<bool>,
+    pub enable_pex: Option<bool>,
+    pub enable_lsd: Option<bool>,
+    #[allow(clippy::option_option)]
+    pub seed_ratio_limit: Option<Option<f64>>,
+    pub max_ratio_action: Option<String>,
+    #[allow(clippy::option_option)]
+    pub seed_time_limit_secs: Option<Option<u64>>,
+    #[allow(clippy::option_option)]
+    pub inactive_seed_time_limit_secs: Option<Option<u64>>,
+    // M187: Web UI tab
+    pub qbt_compat_enabled: Option<bool>,
+    pub qbt_compat_username: Option<String>,
+    pub qbt_compat_bypass_local_auth: Option<bool>,
+    pub qbt_compat_session_ttl: Option<u64>,
+    pub qbt_compat_max_failed_auth: Option<u32>,
+    pub qbt_compat_ban_duration: Option<u64>,
+    pub qbt_compat_csrf: Option<bool>,
+    pub qbt_compat_host_validation: Option<bool>,
+    pub qbt_compat_reverse_proxy: Option<bool>,
+    // M187: Advanced tab
+    pub hashing_threads: Option<usize>,
+    pub save_resume_interval_secs: Option<u64>,
+    pub enable_utp: Option<bool>,
+    pub enable_fast_extension: Option<bool>,
+    pub enable_holepunch: Option<bool>,
+    pub enable_bep40_eviction: Option<bool>,
 }
 
 /// Commands sent from the Slint UI thread to the async session thread.
@@ -211,7 +237,8 @@ impl MenuAction {
         match index {
             0 => Some(Self::AddMagnet),
             1 => Some(Self::AddTorrentFile),
-            2 => Some(Self::Quit),
+            2 => Some(Self::Preferences),
+            3 => Some(Self::Quit),
             _ => None,
         }
     }
@@ -715,13 +742,14 @@ mod tests {
     fn menu_action_from_index() {
         assert_eq!(MenuAction::from_index(0), Some(MenuAction::AddMagnet));
         assert_eq!(MenuAction::from_index(1), Some(MenuAction::AddTorrentFile));
-        assert_eq!(MenuAction::from_index(2), Some(MenuAction::Quit));
+        assert_eq!(MenuAction::from_index(2), Some(MenuAction::Preferences));
+        assert_eq!(MenuAction::from_index(3), Some(MenuAction::Quit));
     }
 
     #[test]
     fn menu_action_out_of_bounds() {
         assert_eq!(MenuAction::from_index(-1), None);
-        assert_eq!(MenuAction::from_index(3), None);
+        assert_eq!(MenuAction::from_index(4), None);
         assert_eq!(MenuAction::from_index(100), None);
     }
 
@@ -878,10 +906,10 @@ mod tests {
 
     #[test]
     fn menu_action_index_stability() {
-        // Regression: indices 0/1/2 must map to the same actions across releases.
         assert_eq!(MenuAction::from_index(0), Some(MenuAction::AddMagnet));
         assert_eq!(MenuAction::from_index(1), Some(MenuAction::AddTorrentFile));
-        assert_eq!(MenuAction::from_index(2), Some(MenuAction::Quit));
+        assert_eq!(MenuAction::from_index(2), Some(MenuAction::Preferences));
+        assert_eq!(MenuAction::from_index(3), Some(MenuAction::Quit));
     }
 
     // ── ContextMenuState tests ────────────────────────────────────────────

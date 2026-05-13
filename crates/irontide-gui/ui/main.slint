@@ -1,9 +1,8 @@
 // IronTide GUI — dark-theme Slint scaffold (M162) + torrent list (M163)
 // Custom widgets only — no std-widgets (hit-region issues on native backends).
 // Retrofitted to the Tokens design-system globals in M172b Lane B.
-// M176: layout-variant infrastructure — L1 (3-pane), L2 (drawer),
-// L3 (command workspace). The body dispatches on `current-layout-label`
-// with the M173 sidebar gate owned exactly once.
+// Single layout: L1 (3-pane) — sidebar | (torrent list / detail pane).
+// L2 (drawer) and L3 (command workspace) removed.
 
 import { Tokens, Shadow } from "tokens.slint";
 import { StatusBar } from "widgets/status_bar.slint";
@@ -20,8 +19,7 @@ import { Sidebar, SidebarRow } from "organisms/sidebar.slint";
 // M176: TorrentListView extracted into its own organism so M177–M178
 // can render it inside the detail-tabs container with `compact-mode`.
 import { TorrentListView, TorrentRow } from "organisms/torrent_list.slint";
-// M176 D13: Toolbar with layout-icon switcher.
-import { Toolbar } from "organisms/toolbar.slint";
+// Toolbar import removed — L2/L3 layout buttons no longer needed.
 // M177: DetailPane organism + FileTreeRow data struct. Replaces the
 // M176 placeholder text in all three layouts (L1 inline / L2 drawer /
 // L3 popover). Step 4 lights up the populated tab body.
@@ -132,13 +130,46 @@ component MenuBar {
                     }
                 }
 
+                // Item 2: Preferences...
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: prefs-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+
+                    HorizontalLayout {
+                        padding-left: Tokens.sp-4;
+                        padding-right: Tokens.sp-4;
+
+                        Text {
+                            text: "Preferences\u{2026}";
+                            color: Tokens.fg-0;
+                            font-size: Tokens.fs-13;
+                            vertical-alignment: center;
+                            horizontal-alignment: left;
+                            horizontal-stretch: 1;
+                        }
+
+                        Text {
+                            text: "Ctrl+,";
+                            color: Tokens.fg-3;
+                            font-size: Tokens.fs-13;
+                            vertical-alignment: center;
+                            horizontal-alignment: right;
+                        }
+                    }
+
+                    prefs-touch := TouchArea {
+                        clicked => { root.menu-file-action(2); }
+                    }
+                }
+
                 // Separator
                 Rectangle {
                     height: Tokens.border-width-thin;
                     background: Tokens.border-1;
                 }
 
-                // Item 2: Quit
+                // Item 3: Quit
                 Rectangle {
                     height: Tokens.row-h;
                     background: quit-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
@@ -154,7 +185,7 @@ component MenuBar {
                     }
 
                     quit-touch := TouchArea {
-                        clicked => { root.menu-file-action(2); }
+                        clicked => { root.menu-file-action(3); }
                     }
                 }
             }
@@ -368,7 +399,6 @@ export component MainWindow inherits Window {
     in-out property <string> pref-theme: "dark";
     in-out property <string> pref-density: "balanced";
     in-out property <string> pref-radius: "balanced";
-    in-out property <string> pref-layout: "3-pane";
     in-out property <bool> pref-confirm-delete: true;
     in-out property <bool> pref-confirm-pause-all: false;
     in-out property <bool> pref-show-torrent-added-toast: true;
@@ -428,6 +458,53 @@ export component MainWindow inherits Window {
     in-out property <bool> pref-rate-limit-overhead: true;
     in-out property <bool> pref-rate-limit-utp: true;
     in-out property <bool> pref-rate-limit-lan: false;
+    // ── M187: BitTorrent tab ──
+    in-out property <bool> pref-enable-dht: true;
+    in-out property <bool> pref-enable-pex: true;
+    in-out property <bool> pref-enable-lsd: true;
+    in-out property <string> pref-encryption-mode: "Disable encryption";
+    in-out property <bool> pref-anonymous-mode: false;
+    in-out property <bool> pref-seed-ratio-enabled: false;
+    in-out property <string> pref-seed-ratio-value: "2.00";
+    in-out property <string> pref-max-ratio-action: "Pause torrent";
+    in-out property <bool> pref-seed-time-enabled: false;
+    in-out property <string> pref-seed-time-value: "1440";
+    in-out property <bool> pref-inactive-seed-time-enabled: false;
+    in-out property <string> pref-inactive-seed-time-value: "60";
+    in-out property <bool> pref-queueing-enabled: false;
+    // ── M187: RSS tab ──
+    in-out property <bool> pref-rss-enabled: false;
+    in-out property <string> pref-rss-refresh-interval: "15";
+    in-out property <string> pref-rss-max-articles: "50";
+    in-out property <bool> pref-rss-auto-download: false;
+    in-out property <bool> pref-rss-smart-filter: false;
+    in-out property <bool> pref-rss-download-repacks: false;
+    // ── M187: Web UI tab ──
+    in-out property <bool> pref-webui-enabled: true;
+    in-out property <string> pref-webui-bind: "";
+    in-out property <string> pref-webui-port: "";
+    in-out property <bool> pref-webui-https: false;
+    in-out property <string> pref-webui-username: "admin";
+    in-out property <bool> pref-webui-bypass-local-auth: false;
+    in-out property <string> pref-webui-session-ttl: "86400";
+    in-out property <string> pref-webui-max-failed-auth: "5";
+    in-out property <string> pref-webui-ban-duration: "3600";
+    in-out property <bool> pref-webui-csrf: true;
+    in-out property <bool> pref-webui-host-validation: true;
+    in-out property <bool> pref-webui-reverse-proxy: false;
+    in-out property <bool> pref-ddns-enabled: false;
+    in-out property <string> pref-ddns-service: "";
+    in-out property <string> pref-ddns-domain: "";
+    // ── M187: Advanced tab ──
+    in-out property <string> pref-hashing-threads: "4";
+    in-out property <string> pref-save-resume-interval: "5";
+    in-out property <string> pref-storage-mode: "Auto";
+    in-out property <string> pref-disk-cache-size: "-1";
+    in-out property <bool> pref-enable-utp: true;
+    in-out property <bool> pref-enable-fast-ext: true;
+    in-out property <bool> pref-enable-holepunch: true;
+    in-out property <bool> pref-enable-bep40: true;
+    in-out property <string> pref-config-path: "";
     in-out property <bool> pref-dirty: false;
     callback preferences-apply-requested();
     callback preferences-cancel-requested();
@@ -438,17 +515,7 @@ export component MainWindow inherits Window {
     callback preferences-browse-copy-torrent-to();
     callback preferences-browse-move-completed-to();
 
-    // ── Layout variants (M176) ──
-    // `current-layout-label` is the user-facing string ("3-pane" /
-    // "Drawer" / "Command"). Rust persists L1/L2/L3 tokens via
-    // `Layout::from_label`/`Layout::label`.
-    in-out property <string> current-layout-label: "3-pane";
-    in-out property <string> current-l3-sidebar-mode: "icons";
-    in-out property <bool> inspector-shown: true;
-    callback tweaks-layout-changed(string);
-    callback layout-cycle();
-    callback inspector-toggle();
-    callback l3-sidebar-toggle();
+    // ── Layout (L1 / 3-pane only — L2/L3 removed) ──
 
     public function close-preferences() {
         root.show-preferences-dialog = false;
@@ -531,28 +598,6 @@ export component MainWindow inherits Window {
                     root.sidebar-shortcut(event.text);
                     return accept;
                 }
-                // M176: Ctrl+Shift+S (Cmd+Shift+S) — toggle the L3
-                // sidebar between icons-only and hidden. Rust no-ops
-                // outside L3.
-                if root.shift-held && (root.ctrl-held || root.meta-held)
-                   && (event.text == "s" || event.text == "S") {
-                    root.l3-sidebar-toggle();
-                    return accept;
-                }
-                // F7: Ctrl+Shift+L (Cmd+Shift+L) — cycle layout L1→L2→L3→L1.
-                if root.shift-held && (root.ctrl-held || root.meta-held)
-                   && (event.text == "l" || event.text == "L") {
-                    root.layout-cycle();
-                    return accept;
-                }
-                // M176: Ctrl+I (Cmd+I) — toggle the inspector pane.
-                // Rust no-ops in L1 (inline detail always visible);
-                // toggles drawer in L2 and popover in L3.
-                if (root.ctrl-held || root.meta-held)
-                   && (event.text == "i" || event.text == "I") {
-                    root.inspector-toggle();
-                    return accept;
-                }
             }
             // Escape: dismiss open dialogs/menus (priority order)
             if event.text == Key.Escape {
@@ -615,32 +660,16 @@ export component MainWindow inherits Window {
                 }
             }
 
-            // M176 D13: Toolbar with layout-icon switcher between
-            // MenuBar and the body. Shares its `tweaks-layout-changed`
-            // callback with the Tweaks pill — both surfaces fire the
-            // same Rust handler.
-            Toolbar {
-                current-layout-label: root.current-layout-label;
-                layout-changed(label) => { root.tweaks-layout-changed(label); }
-            }
-
-            // ── M176 layout dispatch ──────────────────────────────────
+            // ── L1 (3-pane) layout ─────────────────────────────────────
             //
+            // Sidebar | (torrent list / detail pane) — the only layout.
             // M173 sidebar gate (`session-ready && error-text == ""`)
-            // owned ONCE — the Sidebar instance below is the only one
-            // that consults the gate, with mode varying by layout.
-            //
-            // L3 + `current-l3-sidebar-mode == "hidden"` suppresses
-            // the Sidebar entirely. L1's detail-placeholder and L2's
-            // drawer carry their own gates so they also stay hidden
-            // during loading/error.
+            // owned ONCE.
             HorizontalLayout {
                 spacing: 0;
                 vertical-stretch: 1;
 
-                if root.session-ready && root.error-text == ""
-                   && !(root.current-layout-label == "Command"
-                        && root.current-l3-sidebar-mode == "hidden"):
+                if root.session-ready && root.error-text == "":
                 Sidebar {
                     library-rows: root.sidebar-library-rows;
                     category-rows: root.sidebar-category-rows;
@@ -650,7 +679,7 @@ export component MainWindow inherits Window {
                     category-collapsed <=> root.sidebar-category-collapsed;
                     tag-collapsed <=> root.sidebar-tag-collapsed;
                     tracker-collapsed <=> root.sidebar-tracker-collapsed;
-                    mode: root.current-layout-label == "Command" ? "icons" : "full";
+                    mode: "full";
                     predicate-changed(token) => {
                         root.sidebar-predicate-changed(token);
                     }
@@ -659,9 +688,8 @@ export component MainWindow inherits Window {
                     }
                 }
 
-                // ── L1: 3-pane (list above + detail-placeholder below) ──
-                // M177 fills the placeholder with General + Content tabs.
-                if root.current-layout-label == "3-pane": VerticalLayout {
+                // List above + detail pane below.
+                VerticalLayout {
                     spacing: 0;
                     horizontal-stretch: 1;
 
@@ -758,125 +786,6 @@ export component MainWindow inherits Window {
                     }
                 }
 
-                // ── L2: Drawer (list full-height + collapsible drawer) ──
-                if root.current-layout-label == "Drawer": TorrentListView {
-                    horizontal-stretch: 1;
-                    session-ready: root.session-ready;
-                    error-text: root.error-text;
-                    torrent-model: root.torrent-model;
-                    sort-column: root.sort-column;
-                    sort-ascending: root.sort-ascending;
-                    col-name-width: root.col-name-width;
-                    col-progress-width: root.col-progress-width;
-                    col-state-width: root.col-state-width;
-                    col-down-rate-width: root.col-down-rate-width;
-                    col-up-rate-width: root.col-up-rate-width;
-                    col-seeds-width: root.col-seeds-width;
-                    col-peers-width: root.col-peers-width;
-                    col-eta-width: root.col-eta-width;
-                    col-size-width: root.col-size-width;
-                    col-ratio-width: root.col-ratio-width;
-                    shift-held: root.shift-held;
-                    ctrl-held: root.ctrl-held;
-                    sort-requested(c) => { root.sort-requested(c); }
-                    row-clicked(h, s, c) => { root.row-clicked(h, s, c); }
-                    row-right-clicked(h, x, y) => { root.row-right-clicked(h, x, y); }
-                }
-
-                if root.current-layout-label == "Drawer"
-                   && root.session-ready && root.error-text == ""
-                   && root.inspector-shown: Rectangle {
-                    width: 460px;
-                    background: Tokens.bg-1;
-
-                    Rectangle {
-                        x: 0;
-                        width: Tokens.border-width-thin;
-                        height: parent.height;
-                        background: Tokens.border-1;
-                    }
-
-                    // M177: L2 drawer detail pane.
-                    DetailPane {
-                        x: Tokens.border-width-thin;
-                        width: parent.width - Tokens.border-width-thin;
-                        height: parent.height;
-                        info-hash: root.detail-info-hash;
-                        active-tab: root.detail-active-tab;
-                        name: root.detail-name;
-                        error: root.detail-error;
-                        state-label: root.detail-state-label;
-                        down-rate: root.detail-down-rate;
-                        up-rate: root.detail-up-rate;
-                        all-time-down: root.detail-all-time-down;
-                        all-time-up: root.detail-all-time-up;
-                        ratio: root.detail-ratio;
-                        eta: root.detail-eta;
-                        num-peers: root.detail-num-peers;
-                        num-seeds: root.detail-num-seeds;
-                        share-fraction: root.detail-share-fraction;
-                        save-path: root.detail-save-path;
-                        total-size: root.detail-total-size;
-                        piece-count-text: root.detail-piece-count-text;
-                        piece-size: root.detail-piece-size;
-                        added-time: root.detail-added-time;
-                        last-seen-complete: root.detail-last-seen-complete;
-                        active-duration: root.detail-active-duration;
-                        piece-buckets: root.detail-piece-buckets;
-                        pieces-text: root.detail-pieces-text;
-                        sequential: root.detail-sequential;
-                        files: root.detail-files;
-                        peers: root.detail-peers;
-                        trackers: root.detail-trackers;
-                        http-sources: root.detail-http-sources;
-                        tab-changed(t) => {
-                            root.detail-active-tab = t;
-                            root.detail-tab-changed(t);
-                        }
-                        folder-toggled(i) => { root.detail-folder-toggled(i); }
-                        sequential-toggled(b) => { root.detail-sequential-toggled(b); }
-                        file-clicked(i, c, s) => { root.detail-file-clicked(i, c, s); }
-                        file-right-clicked(i, x, y) => { root.detail-file-right-clicked(i, x, y); }
-                        folder-right-clicked(k, x, y) => { root.detail-folder-right-clicked(k, x, y); }
-                        reannounce-clicked(u) => { root.detail-reannounce(u); }
-                        speed-dl-path: root.detail-speed-dl-path;
-                        speed-ul-path: root.detail-speed-ul-path;
-                        speed-max-rate: root.detail-speed-max-rate;
-                        speed-current-dl: root.detail-speed-current-dl;
-                        speed-current-ul: root.detail-speed-current-ul;
-                        speed-dl-limit: root.detail-speed-dl-limit;
-                        speed-ul-limit: root.detail-speed-ul-limit;
-                        speed-elapsed: root.detail-speed-elapsed;
-                                                speed-dl-limit-applied(v) => { root.detail-speed-dl-limit-applied(v); }
-                        speed-ul-limit-applied(v) => { root.detail-speed-ul-limit-applied(v); }
-                    }
-                }
-
-                // ── L3: Command (full-bleed compact list) ──
-                if root.current-layout-label == "Command": TorrentListView {
-                    horizontal-stretch: 1;
-                    compact-mode: true;
-                    session-ready: root.session-ready;
-                    error-text: root.error-text;
-                    torrent-model: root.torrent-model;
-                    sort-column: root.sort-column;
-                    sort-ascending: root.sort-ascending;
-                    col-name-width: root.col-name-width;
-                    col-progress-width: root.col-progress-width;
-                    col-state-width: root.col-state-width;
-                    col-down-rate-width: root.col-down-rate-width;
-                    col-up-rate-width: root.col-up-rate-width;
-                    col-seeds-width: root.col-seeds-width;
-                    col-peers-width: root.col-peers-width;
-                    col-eta-width: root.col-eta-width;
-                    col-size-width: root.col-size-width;
-                    col-ratio-width: root.col-ratio-width;
-                    shift-held: root.shift-held;
-                    ctrl-held: root.ctrl-held;
-                    sort-requested(c) => { root.sort-requested(c); }
-                    row-clicked(h, s, c) => { root.row-clicked(h, s, c); }
-                    row-right-clicked(h, x, y) => { root.row-right-clicked(h, x, y); }
-                }
             }
 
             // Status bar at bottom (visible when session ready)
@@ -990,7 +899,7 @@ export component MainWindow inherits Window {
         }
     }
 
-    // ─────── M176 D3: overlay z-order (LOAD-BEARING) ──────────
+    // ─────── Overlay z-order (LOAD-BEARING) ──────────
     //
     // Slint renders later children on top, so the order at the root
     // level of MainWindow is itself the z-order from back to front.
@@ -1000,89 +909,12 @@ export component MainWindow inherits Window {
     //   2. AddTorrentDialog
     //   3. ContextMenu
     //   4. ConfirmDeleteDialog
-    //   5. DetailPopover (L3-only, M176)
-    //   6. FilePriorityPopup (M178)
-    //   7. CommandPalette (M183)
-    //   8. PreferencesDialog (M184)  ◄── MUST be the very last child.
+    //   5. FilePriorityPopup (M178)
+    //   6. CommandPalette (M183)
+    //   7. PreferencesDialog (M184)  <-- MUST be the very last child.
     // ──────────────────────────────────────────────────────────
 
-    // L3 detail popover overlay (M176 wrapper, M177 detail content).
-    // The wrapper Rectangle stays load-bearing for the popover sizing
-    // + drop-shadow; DetailPane fills the interior.
-    if root.current-layout-label == "Command"
-       && root.session-ready && root.error-text == ""
-       && root.inspector-shown: Rectangle {
-        x: root.width - self.width - Tokens.sp-5;
-        y: Tokens.chrome-h * 2 + Tokens.sp-4;
-        width: Tokens.sp-10 * 12;
-        height: Tokens.sp-10 * 8;
-        background: Tokens.bg-1;
-        border-color: Tokens.border-2;
-        border-width: Tokens.border-width-thin;
-        border-radius: Tokens.r-lg;
-        drop-shadow-color: Tokens.shadow-lg.color;
-        drop-shadow-blur: Tokens.shadow-lg.blur;
-        drop-shadow-offset-y: Tokens.shadow-lg.offset-y;
-
-        // M177: L3 popover detail pane.
-        DetailPane {
-            width: parent.width;
-            height: parent.height;
-            info-hash: root.detail-info-hash;
-            active-tab: root.detail-active-tab;
-            name: root.detail-name;
-            error: root.detail-error;
-            state-label: root.detail-state-label;
-            down-rate: root.detail-down-rate;
-            up-rate: root.detail-up-rate;
-            all-time-down: root.detail-all-time-down;
-            all-time-up: root.detail-all-time-up;
-            ratio: root.detail-ratio;
-            eta: root.detail-eta;
-            num-peers: root.detail-num-peers;
-            num-seeds: root.detail-num-seeds;
-            share-fraction: root.detail-share-fraction;
-            save-path: root.detail-save-path;
-            total-size: root.detail-total-size;
-            piece-count-text: root.detail-piece-count-text;
-            piece-size: root.detail-piece-size;
-            added-time: root.detail-added-time;
-            last-seen-complete: root.detail-last-seen-complete;
-            active-duration: root.detail-active-duration;
-            piece-buckets: root.detail-piece-buckets;
-            pieces-text: root.detail-pieces-text;
-            sequential: root.detail-sequential;
-            files: root.detail-files;
-            peers: root.detail-peers;
-            trackers: root.detail-trackers;
-            http-sources: root.detail-http-sources;
-            compact-tabs: true;
-            tab-changed(t) => {
-                root.detail-active-tab = t;
-                root.detail-tab-changed(t);
-            }
-            folder-toggled(i) => { root.detail-folder-toggled(i); }
-            sequential-toggled(b) => { root.detail-sequential-toggled(b); }
-            file-clicked(i, c, s) => { root.detail-file-clicked(i, c, s); }
-            file-right-clicked(i, x, y) => { root.detail-file-right-clicked(i, x, y); }
-            folder-right-clicked(k, x, y) => { root.detail-folder-right-clicked(k, x, y); }
-            reannounce-clicked(u) => { root.detail-reannounce(u); }
-            speed-dl-path: root.detail-speed-dl-path;
-            speed-ul-path: root.detail-speed-ul-path;
-            speed-max-rate: root.detail-speed-max-rate;
-            speed-current-dl: root.detail-speed-current-dl;
-            speed-current-ul: root.detail-speed-current-ul;
-            speed-dl-limit: root.detail-speed-dl-limit;
-            speed-ul-limit: root.detail-speed-ul-limit;
-            speed-elapsed: root.detail-speed-elapsed;
-                        speed-dl-limit-applied(v) => { root.detail-speed-dl-limit-applied(v); }
-            speed-ul-limit-applied(v) => { root.detail-speed-ul-limit-applied(v); }
-        }
-    }
-
     // M178: File-priority popup (custom-overlay pattern, M164 precedent).
-    // Lives ABOVE the L3 detail popover so right-clicking a file in the
-    // L3 popover surface still produces an in-bounds priority popup.
     FilePriorityPopup {
         show: root.show-file-priority-popup;
         popup-x: root.file-priority-popup-x;
@@ -1127,7 +959,6 @@ export component MainWindow inherits Window {
         pref-theme <=> root.pref-theme;
         pref-density <=> root.pref-density;
         pref-radius <=> root.pref-radius;
-        pref-layout <=> root.pref-layout;
         pref-confirm-delete <=> root.pref-confirm-delete;
         pref-confirm-pause-all <=> root.pref-confirm-pause-all;
         pref-show-torrent-added-toast <=> root.pref-show-torrent-added-toast;
@@ -1187,6 +1018,53 @@ export component MainWindow inherits Window {
         pref-rate-limit-overhead <=> root.pref-rate-limit-overhead;
         pref-rate-limit-utp <=> root.pref-rate-limit-utp;
         pref-rate-limit-lan <=> root.pref-rate-limit-lan;
+        // M187: BitTorrent
+        pref-enable-dht <=> root.pref-enable-dht;
+        pref-enable-pex <=> root.pref-enable-pex;
+        pref-enable-lsd <=> root.pref-enable-lsd;
+        pref-encryption-mode <=> root.pref-encryption-mode;
+        pref-anonymous-mode <=> root.pref-anonymous-mode;
+        pref-seed-ratio-enabled <=> root.pref-seed-ratio-enabled;
+        pref-seed-ratio-value <=> root.pref-seed-ratio-value;
+        pref-max-ratio-action <=> root.pref-max-ratio-action;
+        pref-seed-time-enabled <=> root.pref-seed-time-enabled;
+        pref-seed-time-value <=> root.pref-seed-time-value;
+        pref-inactive-seed-time-enabled <=> root.pref-inactive-seed-time-enabled;
+        pref-inactive-seed-time-value <=> root.pref-inactive-seed-time-value;
+        pref-queueing-enabled <=> root.pref-queueing-enabled;
+        // M187: RSS
+        pref-rss-enabled <=> root.pref-rss-enabled;
+        pref-rss-refresh-interval <=> root.pref-rss-refresh-interval;
+        pref-rss-max-articles <=> root.pref-rss-max-articles;
+        pref-rss-auto-download <=> root.pref-rss-auto-download;
+        pref-rss-smart-filter <=> root.pref-rss-smart-filter;
+        pref-rss-download-repacks <=> root.pref-rss-download-repacks;
+        // M187: Web UI
+        pref-webui-enabled <=> root.pref-webui-enabled;
+        pref-webui-bind <=> root.pref-webui-bind;
+        pref-webui-port <=> root.pref-webui-port;
+        pref-webui-https <=> root.pref-webui-https;
+        pref-webui-username <=> root.pref-webui-username;
+        pref-webui-bypass-local-auth <=> root.pref-webui-bypass-local-auth;
+        pref-webui-session-ttl <=> root.pref-webui-session-ttl;
+        pref-webui-max-failed-auth <=> root.pref-webui-max-failed-auth;
+        pref-webui-ban-duration <=> root.pref-webui-ban-duration;
+        pref-webui-csrf <=> root.pref-webui-csrf;
+        pref-webui-host-validation <=> root.pref-webui-host-validation;
+        pref-webui-reverse-proxy <=> root.pref-webui-reverse-proxy;
+        pref-ddns-enabled <=> root.pref-ddns-enabled;
+        pref-ddns-service <=> root.pref-ddns-service;
+        pref-ddns-domain <=> root.pref-ddns-domain;
+        // M187: Advanced
+        pref-hashing-threads <=> root.pref-hashing-threads;
+        pref-save-resume-interval <=> root.pref-save-resume-interval;
+        pref-storage-mode <=> root.pref-storage-mode;
+        pref-disk-cache-size <=> root.pref-disk-cache-size;
+        pref-enable-utp <=> root.pref-enable-utp;
+        pref-enable-fast-ext <=> root.pref-enable-fast-ext;
+        pref-enable-holepunch <=> root.pref-enable-holepunch;
+        pref-enable-bep40 <=> root.pref-enable-bep40;
+        pref-config-path <=> root.pref-config-path;
         apply-requested => { root.preferences-apply-requested(); }
         cancel-requested => { root.preferences-cancel-requested(); }
         ok-requested => { root.preferences-ok-requested(); }

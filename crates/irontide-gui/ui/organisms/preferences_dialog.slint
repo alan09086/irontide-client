@@ -18,7 +18,6 @@ export component PreferencesDialog {
     in-out property <string> pref-theme: "dark";
     in-out property <string> pref-density: "balanced";
     in-out property <string> pref-radius: "balanced";
-    in-out property <string> pref-layout: "3-pane";
     in-out property <bool> pref-confirm-delete: true;
     in-out property <bool> pref-confirm-pause-all: false;
     in-out property <bool> pref-show-torrent-added-toast: true;
@@ -82,6 +81,57 @@ export component PreferencesDialog {
     in-out property <bool> pref-rate-limit-overhead: true;
     in-out property <bool> pref-rate-limit-utp: true;
     in-out property <bool> pref-rate-limit-lan: false;
+
+    // ── BitTorrent tab fields ───────────────────────────────────────
+    in-out property <bool> pref-enable-dht: true;
+    in-out property <bool> pref-enable-pex: true;
+    in-out property <bool> pref-enable-lsd: true;
+    in-out property <string> pref-encryption-mode: "Disable encryption";
+    in-out property <bool> pref-anonymous-mode: false;
+    in-out property <bool> pref-seed-ratio-enabled: false;
+    in-out property <string> pref-seed-ratio-value: "2.00";
+    in-out property <string> pref-max-ratio-action: "Pause torrent";
+    in-out property <bool> pref-seed-time-enabled: false;
+    in-out property <string> pref-seed-time-value: "1440";
+    in-out property <bool> pref-inactive-seed-time-enabled: false;
+    in-out property <string> pref-inactive-seed-time-value: "60";
+    in-out property <bool> pref-queueing-enabled: false;
+
+    // ── RSS tab fields ──────────────────────────────────────────────
+    in-out property <bool> pref-rss-enabled: false;
+    in-out property <string> pref-rss-refresh-interval: "15";
+    in-out property <string> pref-rss-max-articles: "50";
+    in-out property <bool> pref-rss-auto-download: false;
+    in-out property <bool> pref-rss-smart-filter: false;
+    in-out property <bool> pref-rss-download-repacks: false;
+
+    // ── Web UI tab fields ───────────────────────────────────────────
+    in-out property <bool> pref-webui-enabled: true;
+    in-out property <string> pref-webui-bind: "";
+    in-out property <string> pref-webui-port: "";
+    in-out property <bool> pref-webui-https: false;
+    in-out property <string> pref-webui-username: "admin";
+    in-out property <bool> pref-webui-bypass-local-auth: false;
+    in-out property <string> pref-webui-session-ttl: "86400";
+    in-out property <string> pref-webui-max-failed-auth: "5";
+    in-out property <string> pref-webui-ban-duration: "3600";
+    in-out property <bool> pref-webui-csrf: true;
+    in-out property <bool> pref-webui-host-validation: true;
+    in-out property <bool> pref-webui-reverse-proxy: false;
+    in-out property <bool> pref-ddns-enabled: false;
+    in-out property <string> pref-ddns-service: "";
+    in-out property <string> pref-ddns-domain: "";
+
+    // ── Advanced tab fields ─────────────────────────────────────────
+    in-out property <string> pref-hashing-threads: "4";
+    in-out property <string> pref-save-resume-interval: "5";
+    in-out property <string> pref-storage-mode: "Auto";
+    in-out property <string> pref-disk-cache-size: "-1";
+    in-out property <bool> pref-enable-utp: true;
+    in-out property <bool> pref-enable-fast-ext: true;
+    in-out property <bool> pref-enable-holepunch: true;
+    in-out property <bool> pref-enable-bep40: true;
+    in-out property <string> pref-config-path: "";
 
     // ── Callbacks ─────────────────────────────────────────────────────
     callback apply-requested();
@@ -267,18 +317,6 @@ export component PreferencesDialog {
                                             options: ["sharp", "balanced", "rounded"];
                                             value-changed(v) => {
                                                 root.pref-radius = v;
-                                                root.dirty = true;
-                                            }
-                                        }
-                                    }
-
-                                    PrefField {
-                                        label: "Layout";
-                                        PrefSelect {
-                                            current-value: root.pref-layout;
-                                            options: ["3-pane", "Drawer", "Command"];
-                                            value-changed(v) => {
-                                                root.pref-layout = v;
                                                 root.dirty = true;
                                             }
                                         }
@@ -1111,23 +1149,681 @@ export component PreferencesDialog {
                                     }
                                 }
 
-                                // ── Placeholder tabs ──────────────────
-                                if root.active-tab != "behavior" && root.active-tab != "downloads" && root.active-tab != "connection" && root.active-tab != "speed": VerticalLayout {
-                                    alignment: center;
-                                    vertical-stretch: 1;
+                                // ── BitTorrent tab ───────────────────
+                                if root.active-tab == "bittorrent": VerticalLayout {
+                                    spacing: Tokens.sp-4;
 
-                                    Text {
-                                        text: "Coming soon";
-                                        color: Tokens.fg-3;
-                                        font-size: Tokens.fs-16;
-                                        horizontal-alignment: center;
+                                    PrefGroup { title: "PRIVACY"; }
+
+                                    PrefField {
+                                        label: "DHT (decentralised network)";
+                                        PrefToggle {
+                                            checked: root.pref-enable-dht;
+                                            toggled(v) => {
+                                                root.pref-enable-dht = v;
+                                                root.dirty = true;
+                                            }
+                                        }
                                     }
 
-                                    Text {
-                                        text: "This tab will be available in a future update.";
-                                        color: Tokens.fg-3;
-                                        font-size: Tokens.fs-13;
-                                        horizontal-alignment: center;
+                                    PrefField {
+                                        label: "Peer Exchange (PeX)";
+                                        PrefToggle {
+                                            checked: root.pref-enable-pex;
+                                            toggled(v) => {
+                                                root.pref-enable-pex = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Local Peer Discovery (LSD)";
+                                        PrefToggle {
+                                            checked: root.pref-enable-lsd;
+                                            toggled(v) => {
+                                                root.pref-enable-lsd = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Encryption";
+                                        PrefSelect {
+                                            current-value: root.pref-encryption-mode;
+                                            options: ["Prefer encryption", "Require encryption", "Disable encryption"];
+                                            value-changed(v) => {
+                                                root.pref-encryption-mode = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Anonymous mode";
+                                        PrefToggle {
+                                            checked: root.pref-anonymous-mode;
+                                            toggled(v) => {
+                                                root.pref-anonymous-mode = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefGroup { title: "SEEDING LIMITS"; }
+
+                                    PrefField {
+                                        label: "When ratio reaches";
+                                        HorizontalLayout {
+                                            spacing: Tokens.sp-4;
+                                            PrefToggle {
+                                                checked: root.pref-seed-ratio-enabled;
+                                                toggled(v) => {
+                                                    root.pref-seed-ratio-enabled = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+                                            PrefTextInput {
+                                                value: root.pref-seed-ratio-value;
+                                                placeholder: "2.00";
+                                                input-enabled: root.pref-seed-ratio-enabled;
+                                                edited(v) => {
+                                                    root.pref-seed-ratio-value = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Ratio action";
+                                        field-enabled: root.pref-seed-ratio-enabled;
+                                        PrefSelect {
+                                            current-value: root.pref-max-ratio-action;
+                                            options: ["Pause torrent", "Remove torrent", "Super-seeding mode"];
+                                            select-enabled: root.pref-seed-ratio-enabled;
+                                            value-changed(v) => {
+                                                root.pref-max-ratio-action = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "When seeding time reaches";
+                                        HorizontalLayout {
+                                            spacing: Tokens.sp-4;
+                                            PrefToggle {
+                                                checked: root.pref-seed-time-enabled;
+                                                toggled(v) => {
+                                                    root.pref-seed-time-enabled = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+                                            PrefTextInput {
+                                                value: root.pref-seed-time-value;
+                                                placeholder: "1440";
+                                                input-enabled: root.pref-seed-time-enabled;
+                                                edited(v) => {
+                                                    root.pref-seed-time-value = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+                                            Text {
+                                                text: "min";
+                                                color: Tokens.fg-3;
+                                                font-size: Tokens.fs-13;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "When inactive time reaches";
+                                        HorizontalLayout {
+                                            spacing: Tokens.sp-4;
+                                            PrefToggle {
+                                                checked: root.pref-inactive-seed-time-enabled;
+                                                toggled(v) => {
+                                                    root.pref-inactive-seed-time-enabled = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+                                            PrefTextInput {
+                                                value: root.pref-inactive-seed-time-value;
+                                                placeholder: "60";
+                                                input-enabled: root.pref-inactive-seed-time-enabled;
+                                                edited(v) => {
+                                                    root.pref-inactive-seed-time-value = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+                                            Text {
+                                                text: "min";
+                                                color: Tokens.fg-3;
+                                                font-size: Tokens.fs-13;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    PrefGroup { title: "QUEUEING"; }
+
+                                    PrefField {
+                                        label: "Enable torrent queueing";
+                                        PrefToggle {
+                                            checked: root.pref-queueing-enabled;
+                                            toggled(v) => {
+                                                root.pref-queueing-enabled = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Slow torrent DL threshold";
+                                        not-yet-active: true;
+                                        field-enabled: root.pref-queueing-enabled;
+                                        PrefTextInput {
+                                            value: "2";
+                                            placeholder: "2";
+                                            input-enabled: false;
+                                            edited(v) => { root.dirty = true; }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Slow torrent UL threshold";
+                                        not-yet-active: true;
+                                        field-enabled: root.pref-queueing-enabled;
+                                        PrefTextInput {
+                                            value: "2";
+                                            placeholder: "2";
+                                            input-enabled: false;
+                                            edited(v) => { root.dirty = true; }
+                                        }
+                                    }
+                                }
+
+                                // ── RSS tab ──────────────────────────
+                                if root.active-tab == "rss": VerticalLayout {
+                                    spacing: Tokens.sp-4;
+
+                                    PrefGroup { title: "RSS READER"; }
+
+                                    PrefField {
+                                        label: "Enable fetching";
+                                        not-yet-active: true;
+                                        PrefToggle {
+                                            checked: root.pref-rss-enabled;
+                                            toggle-enabled: false;
+                                            toggled(v) => {
+                                                root.pref-rss-enabled = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Feeds refresh interval";
+                                        not-yet-active: true;
+                                        field-enabled: root.pref-rss-enabled;
+                                        HorizontalLayout {
+                                            spacing: Tokens.sp-4;
+                                            PrefTextInput {
+                                                value: root.pref-rss-refresh-interval;
+                                                placeholder: "15";
+                                                input-enabled: false;
+                                                edited(v) => {
+                                                    root.pref-rss-refresh-interval = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+                                            Text {
+                                                text: "min";
+                                                color: Tokens.fg-3;
+                                                font-size: Tokens.fs-13;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Maximum articles per feed";
+                                        not-yet-active: true;
+                                        field-enabled: root.pref-rss-enabled;
+                                        PrefTextInput {
+                                            value: root.pref-rss-max-articles;
+                                            placeholder: "50";
+                                            input-enabled: false;
+                                            edited(v) => {
+                                                root.pref-rss-max-articles = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefGroup { title: "AUTO-DOWNLOAD"; }
+
+                                    PrefField {
+                                        label: "Enable auto-downloading";
+                                        not-yet-active: true;
+                                        PrefToggle {
+                                            checked: root.pref-rss-auto-download;
+                                            toggle-enabled: false;
+                                            toggled(v) => {
+                                                root.pref-rss-auto-download = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Smart episode filter";
+                                        not-yet-active: true;
+                                        PrefToggle {
+                                            checked: root.pref-rss-smart-filter;
+                                            toggle-enabled: false;
+                                            toggled(v) => {
+                                                root.pref-rss-smart-filter = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Download repacks/proper";
+                                        not-yet-active: true;
+                                        PrefToggle {
+                                            checked: root.pref-rss-download-repacks;
+                                            toggle-enabled: false;
+                                            toggled(v) => {
+                                                root.pref-rss-download-repacks = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // ── Web UI tab ───────────────────────
+                                if root.active-tab == "webui": VerticalLayout {
+                                    spacing: Tokens.sp-4;
+
+                                    PrefGroup { title: "WEB USER INTERFACE"; }
+
+                                    PrefField {
+                                        label: "Enable";
+                                        PrefToggle {
+                                            checked: root.pref-webui-enabled;
+                                            toggled(v) => {
+                                                root.pref-webui-enabled = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Bind address";
+                                        not-yet-active: true;
+                                        Text {
+                                            text: root.pref-webui-bind == "" ? "(set via config file)" : root.pref-webui-bind;
+                                            color: Tokens.fg-3;
+                                            font-size: Tokens.fs-13;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Port";
+                                        not-yet-active: true;
+                                        Text {
+                                            text: root.pref-webui-port == "" || root.pref-webui-port == "0" ? "(set via config file)" : root.pref-webui-port;
+                                            color: Tokens.fg-3;
+                                            font-size: Tokens.fs-13;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Use HTTPS";
+                                        not-yet-active: true;
+                                        PrefToggle {
+                                            checked: root.pref-webui-https;
+                                            toggle-enabled: false;
+                                            toggled(v) => {
+                                                root.pref-webui-https = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefGroup { title: "AUTHENTICATION"; }
+
+                                    PrefField {
+                                        label: "Username";
+                                        PrefTextInput {
+                                            value: root.pref-webui-username;
+                                            placeholder: "admin";
+                                            edited(v) => {
+                                                root.pref-webui-username = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Password";
+                                        not-yet-active: true;
+                                        Text {
+                                            text: "Change via config file (argon2 hashed)";
+                                            color: Tokens.fg-3;
+                                            font-size: Tokens.fs-13;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Bypass auth on localhost";
+                                        PrefToggle {
+                                            checked: root.pref-webui-bypass-local-auth;
+                                            toggled(v) => {
+                                                root.pref-webui-bypass-local-auth = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Session timeout";
+                                        HorizontalLayout {
+                                            spacing: Tokens.sp-4;
+                                            PrefTextInput {
+                                                value: root.pref-webui-session-ttl;
+                                                placeholder: "86400";
+                                                edited(v) => {
+                                                    root.pref-webui-session-ttl = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+                                            Text {
+                                                text: "sec";
+                                                color: Tokens.fg-3;
+                                                font-size: Tokens.fs-13;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Max login attempts";
+                                        PrefTextInput {
+                                            value: root.pref-webui-max-failed-auth;
+                                            placeholder: "5";
+                                            edited(v) => {
+                                                root.pref-webui-max-failed-auth = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Ban duration";
+                                        HorizontalLayout {
+                                            spacing: Tokens.sp-4;
+                                            PrefTextInput {
+                                                value: root.pref-webui-ban-duration;
+                                                placeholder: "3600";
+                                                edited(v) => {
+                                                    root.pref-webui-ban-duration = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+                                            Text {
+                                                text: "sec";
+                                                color: Tokens.fg-3;
+                                                font-size: Tokens.fs-13;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    PrefGroup { title: "SECURITY"; }
+
+                                    PrefField {
+                                        label: "CSRF protection";
+                                        PrefToggle {
+                                            checked: root.pref-webui-csrf;
+                                            toggled(v) => {
+                                                root.pref-webui-csrf = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Host header validation";
+                                        PrefToggle {
+                                            checked: root.pref-webui-host-validation;
+                                            toggled(v) => {
+                                                root.pref-webui-host-validation = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Reverse proxy support";
+                                        PrefToggle {
+                                            checked: root.pref-webui-reverse-proxy;
+                                            toggled(v) => {
+                                                root.pref-webui-reverse-proxy = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefGroup { title: "DYNAMIC DNS"; }
+
+                                    PrefField {
+                                        label: "Enable";
+                                        not-yet-active: true;
+                                        PrefToggle {
+                                            checked: root.pref-ddns-enabled;
+                                            toggle-enabled: false;
+                                            toggled(v) => {
+                                                root.pref-ddns-enabled = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Service";
+                                        not-yet-active: true;
+                                        field-enabled: root.pref-ddns-enabled;
+                                        PrefSelect {
+                                            current-value: root.pref-ddns-service == "" ? "dyndns.org" : root.pref-ddns-service;
+                                            options: ["dyndns.org", "no-ip.com", "duckdns.org", "cloudflare"];
+                                            select-enabled: false;
+                                            value-changed(v) => {
+                                                root.pref-ddns-service = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Domain";
+                                        not-yet-active: true;
+                                        field-enabled: root.pref-ddns-enabled;
+                                        PrefTextInput {
+                                            value: root.pref-ddns-domain;
+                                            placeholder: "my-seed.duckdns.org";
+                                            input-enabled: false;
+                                            edited(v) => {
+                                                root.pref-ddns-domain = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // ── Advanced tab ─────────────────────
+                                if root.active-tab == "advanced": VerticalLayout {
+                                    spacing: Tokens.sp-4;
+
+                                    PrefGroup { title: "TUNING"; }
+
+                                    PrefField {
+                                        label: "Hashing threads";
+                                        PrefTextInput {
+                                            value: root.pref-hashing-threads;
+                                            placeholder: "4";
+                                            edited(v) => {
+                                                root.pref-hashing-threads = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Save resume data interval";
+                                        HorizontalLayout {
+                                            spacing: Tokens.sp-4;
+                                            PrefTextInput {
+                                                value: root.pref-save-resume-interval;
+                                                placeholder: "5";
+                                                edited(v) => {
+                                                    root.pref-save-resume-interval = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+                                            Text {
+                                                text: "min";
+                                                color: Tokens.fg-3;
+                                                font-size: Tokens.fs-13;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Disk I/O backend";
+                                        not-yet-active: true;
+                                        Text {
+                                            text: root.pref-storage-mode;
+                                            color: Tokens.fg-3;
+                                            font-size: Tokens.fs-13;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Disk cache size";
+                                        not-yet-active: true;
+                                        HorizontalLayout {
+                                            spacing: Tokens.sp-4;
+                                            PrefTextInput {
+                                                value: root.pref-disk-cache-size;
+                                                placeholder: "-1";
+                                                input-enabled: false;
+                                                edited(v) => {
+                                                    root.pref-disk-cache-size = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+                                            Text {
+                                                text: "MiB (-1 = auto)";
+                                                color: Tokens.fg-3;
+                                                font-size: Tokens.fs-13;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    PrefGroup { title: "NETWORK"; }
+
+                                    PrefField {
+                                        label: "Network interface";
+                                        not-yet-active: true;
+                                        Text {
+                                            text: "Any (not yet configurable)";
+                                            color: Tokens.fg-3;
+                                            font-size: Tokens.fs-13;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+
+                                    PrefGroup { title: "BEHAVIOUR"; }
+
+                                    PrefField {
+                                        label: "\u{00b5}TP enabled";
+                                        PrefToggle {
+                                            checked: root.pref-enable-utp;
+                                            toggled(v) => {
+                                                root.pref-enable-utp = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "BEP 6 Fast Extension";
+                                        PrefToggle {
+                                            checked: root.pref-enable-fast-ext;
+                                            toggled(v) => {
+                                                root.pref-enable-fast-ext = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "BEP 55 Holepunch";
+                                        PrefToggle {
+                                            checked: root.pref-enable-holepunch;
+                                            toggled(v) => {
+                                                root.pref-enable-holepunch = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "BEP 40 Peer Priority";
+                                        PrefToggle {
+                                            checked: root.pref-enable-bep40;
+                                            toggled(v) => {
+                                                root.pref-enable-bep40 = v;
+                                                root.dirty = true;
+                                            }
+                                        }
+                                    }
+
+                                    PrefGroup { title: "CONFIGURATION"; }
+
+                                    PrefField {
+                                        label: "Config file";
+                                        not-yet-active: true;
+                                        Text {
+                                            text: root.pref-config-path;
+                                            color: Tokens.fg-2;
+                                            font-size: Tokens.fs-13;
+                                            vertical-alignment: center;
+                                            overflow: elide;
+                                        }
+                                    }
+
+                                    PrefField {
+                                        label: "Reset to defaults";
+                                        not-yet-active: true;
+                                        Text {
+                                            text: "Not yet available";
+                                            color: Tokens.fg-3;
+                                            font-size: Tokens.fs-13;
+                                            vertical-alignment: center;
+                                        }
                                     }
                                 }
                             }
