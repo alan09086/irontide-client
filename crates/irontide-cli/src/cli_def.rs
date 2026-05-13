@@ -106,12 +106,6 @@ pub(crate) enum Command {
         /// Piece steal threshold multiplier (default: 10.0)
         #[arg(long)]
         steal_threshold: Option<f64>,
-        /// Minimum per-peer pipeline depth (default: 16)
-        #[arg(long)]
-        min_pipeline_depth: Option<u32>,
-        /// Maximum per-peer pipeline depth (default: 512)
-        #[arg(long)]
-        max_pipeline_depth: Option<u32>,
         /// Use per-peer CAS dispatch instead of actor-centralised dispatch (A/B benchmarking)
         #[arg(long)]
         no_actor_dispatch: bool,

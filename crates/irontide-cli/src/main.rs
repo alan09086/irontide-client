@@ -84,8 +84,6 @@ fn main() {
             max_concurrent_connects,
             connect_soft_timeout,
             steal_threshold,
-            min_pipeline_depth,
-            max_pipeline_depth,
             no_actor_dispatch,
         } => {
             // Build ConfigFile overrides from CLI flags that map to config
@@ -134,12 +132,6 @@ fn main() {
             }
             if let Some(st) = steal_threshold {
                 settings.steal_threshold_ratio = st;
-            }
-            if let Some(min_pd) = min_pipeline_depth {
-                settings.min_pipeline_depth = min_pd;
-            }
-            if let Some(max_pd) = max_pipeline_depth {
-                settings.max_pipeline_depth = max_pd;
             }
             if no_actor_dispatch {
                 settings.use_actor_dispatch = false;
