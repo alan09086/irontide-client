@@ -85,6 +85,9 @@ pub(crate) enum Command {
         /// Enable pipeline diagnostics (detailed per-peer stats every 5s)
         #[arg(long)]
         diagnose: bool,
+        /// Enable diagnostic counters (dispatch timing, backpressure, peer telemetry)
+        #[arg(long)]
+        diagnostics: bool,
         /// Maximum peer connections per torrent (0 = use default)
         #[arg(long, default_value_t = 0)]
         max_peers: usize,

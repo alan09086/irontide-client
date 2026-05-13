@@ -77,6 +77,7 @@ fn main() {
             api_port,
             api_bind,
             diagnose,
+            diagnostics,
             max_peers,
             connect_timeout,
             data_timeout,
@@ -135,6 +136,9 @@ fn main() {
             }
             if no_actor_dispatch {
                 settings.use_actor_dispatch = false;
+            }
+            if diagnostics {
+                settings.enable_diagnostic_counters = true;
             }
             if io_uring || direct_io {
                 settings.storage_mode = irontide::core::StorageMode::IoUring;
