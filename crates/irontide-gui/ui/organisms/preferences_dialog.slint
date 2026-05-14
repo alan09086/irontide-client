@@ -13,6 +13,29 @@ export component PreferencesDialog {
     in-out property <string> active-tab: "behavior";
     in-out property <bool> dirty: false;
 
+    // ── Shared PrefSelect popup service ──
+    property <bool> popup-visible: false;
+    property <string> popup-id: "";
+    property <length> popup-x: 0px;
+    property <length> popup-y: 0px;
+    property <length> popup-width: 0px;
+    property <[string]> popup-items: [];
+    property <string> popup-current: "";
+
+    function show-select-popup(id: string, x: length, y: length, w: length, items: [string], current: string) {
+        if root.popup-visible && root.popup-id == id {
+            root.popup-visible = false;
+        } else {
+            root.popup-id = id;
+            root.popup-x = x;
+            root.popup-y = y;
+            root.popup-width = w;
+            root.popup-items = items;
+            root.popup-current = current;
+            root.popup-visible = true;
+        }
+    }
+
     // ── Behaviour tab fields ──────────────────────────────────────────
     in-out property <string> pref-skin: "tide";
     in-out property <string> pref-theme: "dark";
@@ -279,9 +302,14 @@ export component PreferencesDialog {
                                         PrefSelect {
                                             current-value: root.pref-skin;
                                             options: ["tide", "forge", "abyss"];
+                                            select-id: "skin";
+                                            popup-open: root.popup-visible && root.popup-id == "skin";
                                             value-changed(v) => {
                                                 root.pref-skin = v;
                                                 root.dirty = true;
+                                            }
+                                            request-popup(id, x, y, w) => {
+                                                root.show-select-popup(id, x, y, w, self.options, self.current-value);
                                             }
                                         }
                                     }
@@ -291,9 +319,14 @@ export component PreferencesDialog {
                                         PrefSelect {
                                             current-value: root.pref-theme;
                                             options: ["dark", "light"];
+                                            select-id: "theme";
+                                            popup-open: root.popup-visible && root.popup-id == "theme";
                                             value-changed(v) => {
                                                 root.pref-theme = v;
                                                 root.dirty = true;
+                                            }
+                                            request-popup(id, x, y, w) => {
+                                                root.show-select-popup(id, x, y, w, self.options, self.current-value);
                                             }
                                         }
                                     }
@@ -303,9 +336,14 @@ export component PreferencesDialog {
                                         PrefSelect {
                                             current-value: root.pref-density;
                                             options: ["compact", "balanced", "spacious"];
+                                            select-id: "density";
+                                            popup-open: root.popup-visible && root.popup-id == "density";
                                             value-changed(v) => {
                                                 root.pref-density = v;
                                                 root.dirty = true;
+                                            }
+                                            request-popup(id, x, y, w) => {
+                                                root.show-select-popup(id, x, y, w, self.options, self.current-value);
                                             }
                                         }
                                     }
@@ -315,9 +353,14 @@ export component PreferencesDialog {
                                         PrefSelect {
                                             current-value: root.pref-radius;
                                             options: ["sharp", "balanced", "rounded"];
+                                            select-id: "radius";
+                                            popup-open: root.popup-visible && root.popup-id == "radius";
                                             value-changed(v) => {
                                                 root.pref-radius = v;
                                                 root.dirty = true;
+                                            }
+                                            request-popup(id, x, y, w) => {
+                                                root.show-select-popup(id, x, y, w, self.options, self.current-value);
                                             }
                                         }
                                     }
@@ -328,10 +371,15 @@ export component PreferencesDialog {
                                         PrefSelect {
                                             current-value: root.pref-double-click-action;
                                             options: ["Show Details", "Open Folder", "Start/Stop"];
+                                            select-id: "dblclick";
+                                            popup-open: root.popup-visible && root.popup-id == "dblclick";
                                             select-enabled: false;
                                             value-changed(v) => {
                                                 root.pref-double-click-action = v;
                                                 root.dirty = true;
+                                            }
+                                            request-popup(id, x, y, w) => {
+                                                root.show-select-popup(id, x, y, w, self.options, self.current-value);
                                             }
                                         }
                                     }
@@ -885,9 +933,14 @@ export component PreferencesDialog {
                                         PrefSelect {
                                             current-value: root.pref-proxy-type;
                                             options: ["None", "SOCKS4", "SOCKS5", "SOCKS5 (password)", "HTTP", "HTTP (password)"];
+                                            select-id: "proxy-type";
+                                            popup-open: root.popup-visible && root.popup-id == "proxy-type";
                                             value-changed(v) => {
                                                 root.pref-proxy-type = v;
                                                 root.dirty = true;
+                                            }
+                                            request-popup(id, x, y, w) => {
+                                                root.show-select-popup(id, x, y, w, self.options, self.current-value);
                                             }
                                         }
                                     }
@@ -1193,9 +1246,28 @@ export component PreferencesDialog {
                                         PrefSelect {
                                             current-value: root.pref-encryption-mode;
                                             options: ["Prefer encryption", "Require encryption", "Disable encryption"];
+                                            select-id: "encryption";
+                                            popup-open: root.popup-visible && root.popup-id == "encryption";
                                             value-changed(v) => {
                                                 root.pref-encryption-mode = v;
                                                 root.dirty = true;
+                                            }
+                                            request-popup(id, x, y, w) => {
+                                                root.show-select-popup(id, x, y, w, self.options, self.current-value);
+                                            }
+                                        }
+                                    }
+
+                                    if root.pref-encryption-mode == "Require encryption": Rectangle {
+                                        height: Tokens.sp-7;
+                                        HorizontalLayout {
+                                            padding-left: Tokens.sp-4;
+                                            Text {
+                                                text: "⚠ Most public torrent peers don't support encryption. This may severely reduce available peers.";
+                                                color: Tokens.status-error;
+                                                font-size: Tokens.fs-11;
+                                                vertical-alignment: center;
+                                                wrap: word-wrap;
                                             }
                                         }
                                     }
@@ -1242,10 +1314,15 @@ export component PreferencesDialog {
                                         PrefSelect {
                                             current-value: root.pref-max-ratio-action;
                                             options: ["Pause torrent", "Remove torrent", "Super-seeding mode"];
+                                            select-id: "ratio-action";
+                                            popup-open: root.popup-visible && root.popup-id == "ratio-action";
                                             select-enabled: root.pref-seed-ratio-enabled;
                                             value-changed(v) => {
                                                 root.pref-max-ratio-action = v;
                                                 root.dirty = true;
+                                            }
+                                            request-popup(id, x, y, w) => {
+                                                root.show-select-popup(id, x, y, w, self.options, self.current-value);
                                             }
                                         }
                                     }
@@ -1465,23 +1542,29 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Bind address";
-                                        not-yet-active: true;
-                                        Text {
-                                            text: root.pref-webui-bind == "" ? "(set via config file)" : root.pref-webui-bind;
-                                            color: Tokens.fg-3;
-                                            font-size: Tokens.fs-13;
-                                            vertical-alignment: center;
+                                        hint: "Restart required for changes to take effect";
+                                        PrefTextInput {
+                                            value: root.pref-webui-bind;
+                                            placeholder: "127.0.0.1";
+                                            input-enabled: true;
+                                            edited(v) => {
+                                                root.pref-webui-bind = v;
+                                                root.dirty = true;
+                                            }
                                         }
                                     }
 
                                     PrefField {
                                         label: "Port";
-                                        not-yet-active: true;
-                                        Text {
-                                            text: root.pref-webui-port == "" || root.pref-webui-port == "0" ? "(set via config file)" : root.pref-webui-port;
-                                            color: Tokens.fg-3;
-                                            font-size: Tokens.fs-13;
-                                            vertical-alignment: center;
+                                        hint: "Restart required for changes to take effect";
+                                        PrefTextInput {
+                                            value: root.pref-webui-port;
+                                            placeholder: "9080";
+                                            input-enabled: true;
+                                            edited(v) => {
+                                                root.pref-webui-port = v;
+                                                root.dirty = true;
+                                            }
                                         }
                                     }
 
@@ -1645,10 +1728,15 @@ export component PreferencesDialog {
                                         PrefSelect {
                                             current-value: root.pref-ddns-service == "" ? "dyndns.org" : root.pref-ddns-service;
                                             options: ["dyndns.org", "no-ip.com", "duckdns.org", "cloudflare"];
+                                            select-id: "ddns";
+                                            popup-open: root.popup-visible && root.popup-id == "ddns";
                                             select-enabled: false;
                                             value-changed(v) => {
                                                 root.pref-ddns-service = v;
                                                 root.dirty = true;
+                                            }
+                                            request-popup(id, x, y, w) => {
+                                                root.show-select-popup(id, x, y, w, self.options, self.current-value);
                                             }
                                         }
                                     }
@@ -1916,6 +2004,75 @@ export component PreferencesDialog {
                     }
                 }
             }
+
+            // ── Shared PrefSelect popup overlay ──
+            // Renders on top of the dialog card, outside the clip:true
+            // content area, so dropdown menus are never clipped.
+            if root.popup-visible: Rectangle {
+                width: parent.width;
+                height: parent.height;
+
+                popup-dismiss := TouchArea {
+                    clicked => { root.popup-visible = false; }
+                }
+
+                Rectangle {
+                    x: root.popup-x;
+                    y: root.popup-y;
+                    width: root.popup-width;
+                    height: popup-option-layout.preferred-height + Tokens.sp-4;
+                    background: Tokens.bg-1;
+                    border-color: Tokens.border-1;
+                    border-width: Tokens.border-width-thin;
+                    border-radius: Tokens.r-md;
+                    drop-shadow-color: Tokens.shadow-lg.color;
+                    drop-shadow-blur: Tokens.shadow-lg.blur;
+                    drop-shadow-offset-y: Tokens.shadow-lg.offset-y;
+
+                    TouchArea { }
+
+                    popup-option-layout := VerticalLayout {
+                        padding: Tokens.sp-2;
+                        spacing: Tokens.sp-1;
+
+                        for option in root.popup-items: Rectangle {
+                            height: 30px;
+                            background: popup-opt-touch.has-hover
+                                ? Tokens.bg-hover
+                                : (option == root.popup-current ? Tokens.bg-selected : Tokens.bg-1);
+                            border-radius: Tokens.r-sm;
+
+                            Text {
+                                text: option;
+                                color: Tokens.fg-0;
+                                font-size: Tokens.fs-13;
+                                vertical-alignment: center;
+                                x: Tokens.sp-4;
+                            }
+
+                            popup-opt-touch := TouchArea {
+                                clicked => {
+                                    root.popup-visible = false;
+                                    root.select-popup-value(root.popup-id, option);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    function select-popup-value(id: string, value: string) {
+        root.dirty = true;
+        if id == "skin"         { root.pref-skin = value; }
+        if id == "theme"        { root.pref-theme = value; }
+        if id == "density"      { root.pref-density = value; }
+        if id == "radius"       { root.pref-radius = value; }
+        if id == "dblclick"     { root.pref-double-click-action = value; }
+        if id == "proxy-type"   { root.pref-proxy-type = value; }
+        if id == "encryption"   { root.pref-encryption-mode = value; }
+        if id == "ratio-action" { root.pref-max-ratio-action = value; }
+        if id == "ddns"         { root.pref-ddns-service = value; }
     }
 }

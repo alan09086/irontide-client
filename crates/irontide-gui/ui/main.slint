@@ -576,6 +576,10 @@ export component MainWindow inherits Window {
                     root.delete-selected();
                     return accept;
                 }
+                if event.text == Key.F4 {
+                    root.toggle-pause-resume();
+                    return accept;
+                }
                 if event.text == Key.Return {
                     root.show-details-stub();
                     return accept;

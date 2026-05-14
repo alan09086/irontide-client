@@ -8,7 +8,16 @@
 use std::str::FromStr;
 
 use crate::app::EnginePrefs;
+use crate::format::format_rate;
 use crate::skin::{self, Density, RadiusPreset, Skin, Theme};
+use crate::speed::parse_rate_limit;
+
+fn format_rate_limit_display(bytes_per_sec: u64) -> String {
+    if bytes_per_sec == 0 {
+        return "0".to_owned();
+    }
+    format_rate(bytes_per_sec)
+}
 
 /// Committed preferences state. Aggregated from `SkinSettings` + `GuiConfig`.
 #[derive(Debug, Clone)]
@@ -498,11 +507,11 @@ impl PreferencesState {
         win.set_pref_ip_filter_auto_refresh(self.ip_filter_auto_refresh);
         // Speed
         win.set_pref_dl_limit_enabled(self.dl_limit_enabled);
-        win.set_pref_dl_limit_value(self.dl_limit_value.to_string().into());
+        win.set_pref_dl_limit_value(format_rate_limit_display(self.dl_limit_value).into());
         win.set_pref_ul_limit_enabled(self.ul_limit_enabled);
-        win.set_pref_ul_limit_value(self.ul_limit_value.to_string().into());
-        win.set_pref_alt_dl_limit(self.alt_dl_limit.to_string().into());
-        win.set_pref_alt_ul_limit(self.alt_ul_limit.to_string().into());
+        win.set_pref_ul_limit_value(format_rate_limit_display(self.ul_limit_value).into());
+        win.set_pref_alt_dl_limit(format_rate_limit_display(self.alt_dl_limit).into());
+        win.set_pref_alt_ul_limit(format_rate_limit_display(self.alt_ul_limit).into());
         win.set_pref_alt_speed_enabled(self.alt_speed_enabled);
         win.set_pref_rate_limit_overhead(self.rate_limit_overhead);
         win.set_pref_rate_limit_utp(self.rate_limit_utp);
@@ -682,26 +691,14 @@ impl PreferencesState {
 
         // Speed
         let new_dl_limit_enabled = win.get_pref_dl_limit_enabled();
-        let new_dl_limit_value: u64 = win
-            .get_pref_dl_limit_value()
-            .as_str()
-            .parse()
+        let new_dl_limit_value: u64 = parse_rate_limit(win.get_pref_dl_limit_value().as_str())
             .unwrap_or(self.dl_limit_value);
         let new_ul_limit_enabled = win.get_pref_ul_limit_enabled();
-        let new_ul_limit_value: u64 = win
-            .get_pref_ul_limit_value()
-            .as_str()
-            .parse()
+        let new_ul_limit_value: u64 = parse_rate_limit(win.get_pref_ul_limit_value().as_str())
             .unwrap_or(self.ul_limit_value);
-        self.alt_dl_limit = win
-            .get_pref_alt_dl_limit()
-            .as_str()
-            .parse()
+        self.alt_dl_limit = parse_rate_limit(win.get_pref_alt_dl_limit().as_str())
             .unwrap_or(self.alt_dl_limit);
-        self.alt_ul_limit = win
-            .get_pref_alt_ul_limit()
-            .as_str()
-            .parse()
+        self.alt_ul_limit = parse_rate_limit(win.get_pref_alt_ul_limit().as_str())
             .unwrap_or(self.alt_ul_limit);
         self.alt_speed_enabled = win.get_pref_alt_speed_enabled();
         self.rate_limit_overhead = win.get_pref_rate_limit_overhead();
@@ -954,6 +951,12 @@ impl PreferencesState {
             self.webui_reverse_proxy = new_webui_rproxy;
         }
         self.webui_https = win.get_pref_webui_https();
+        self.webui_bind = win.get_pref_webui_bind().to_string();
+        self.webui_port = win
+            .get_pref_webui_port()
+            .as_str()
+            .parse()
+            .unwrap_or(self.webui_port);
         self.ddns_enabled = win.get_pref_ddns_enabled();
         self.ddns_service = win.get_pref_ddns_service().to_string();
         self.ddns_domain = win.get_pref_ddns_domain().to_string();

@@ -99,6 +99,8 @@ export component TorrentListView {
     in property <length> col-size-width;
     in property <length> col-ratio-width;
 
+    property <length> total-columns-width: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width + root.col-size-width + root.col-ratio-width;
+
     // ── Modifier tracking (forwarded from MainWindow) ────────────────
     in property <bool> shift-held: false;
     in property <bool> ctrl-held: false;
@@ -158,6 +160,13 @@ export component TorrentListView {
             if !root.compact-mode: Rectangle {
                 height: Tokens.chrome-h - Tokens.sp-5;
                 background: Tokens.bg-2;
+                clip: true;
+
+                // Inner container that scrolls horizontally in sync with the list
+                header-scroll := Rectangle {
+                    x: list-flick.viewport-x;
+                    width: root.total-columns-width;
+                    height: parent.height;
 
                 // Name
                 Rectangle {
@@ -393,12 +402,14 @@ export component TorrentListView {
                     height: Tokens.border-width-thin;
                     background: Tokens.border-1;
                 }
+                } // header-scroll
             }
 
             // ── Torrent List (scrollable) ──
-            Flickable {
+            list-flick := Flickable {
                 vertical-stretch: 1;
                 viewport-height: root.torrent-model.length * Tokens.row-h;
+                viewport-width: max(root.total-columns-width, self.width);
 
                 for item[index] in root.torrent-model: Rectangle {
                     y: index * Tokens.row-h;

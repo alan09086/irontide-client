@@ -307,6 +307,13 @@ pub async fn poll_loop(
                     // Piece states drive the General-tab heatmap — small,
                     // fetch every tick.
                     let piece_states = session.get_piece_states(id).await.unwrap_or_default();
+                    if !piece_states.is_empty() {
+                        tracing::trace!(
+                            len = piece_states.len(),
+                            non_zero = piece_states.iter().filter(|&&s| s != 0).count(),
+                            "piece_states for heatmap"
+                        );
+                    }
                     let buckets = crate::detail::bucket_piece_states(&piece_states, 512);
 
                     // Content-tab gated fetches (D-eng-2).
@@ -665,7 +672,7 @@ fn build_detail_props(
         "{} / {} pieces ({:.1}%)",
         stats.pieces_have, stats.pieces_total, pieces_pct
     );
-    let state_label = crate::format::format_state(stats.state, stats.user_seed_mode).to_owned();
+    let state_label = crate::format::format_state_full(stats.state, stats.user_seed_mode, stats.super_seeding).to_owned();
     let save_path = info.map_or_else(|| stats.save_path.clone(), |_| stats.save_path.clone());
 
     DetailProps {

@@ -70,17 +70,28 @@ export component CommandPalette {
                         vertical-alignment: center;
                     }
 
-                    search-input := TextInput {
+                    Rectangle {
                         horizontal-stretch: 1;
-                        font-size: Tokens.fs-14;
-                        color: Tokens.fg-0;
-                        selection-foreground-color: Tokens.fg-0;
-                        selection-background-color: Tokens.bg-selected;
-                        edited => {
-                            root.query-changed(self.text);
-                        }
-                        accepted => {
-                            root.item-selected(root.active-index);
+                        background: Tokens.bg-inset;
+                        border-color: Tokens.border-1;
+                        border-width: Tokens.border-width-thin;
+                        border-radius: Tokens.r-md;
+                        height: Tokens.row-h;
+
+                        search-input := TextInput {
+                            x: Tokens.sp-3;
+                            y: (parent.height - self.preferred-height) / 2;
+                            width: parent.width - Tokens.sp-3 * 2;
+                            font-size: Tokens.fs-14;
+                            color: Tokens.fg-0;
+                            selection-foreground-color: Tokens.fg-0;
+                            selection-background-color: Tokens.bg-selected;
+                            edited => {
+                                root.query-changed(self.text);
+                            }
+                            accepted => {
+                                root.item-selected(root.active-index);
+                            }
                         }
                     }
 

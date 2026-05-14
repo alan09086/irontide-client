@@ -1,8 +1,9 @@
-// Preferences dropdown select with popup overlay (M184).
+// Preferences dropdown select (M184, updated v0.187.1).
 //
-// Follows the FilePriorityPopup custom-overlay pattern: a button showing
-// the current value + chevron, and a popup option list rendered at
-// MainWindow level via conditional `if root.open`. Click-outside dismisses.
+// The trigger button lives inline; the popup menu is rendered by the
+// shared popup service on PreferencesDialog (outside the clip:true
+// content Flickable). PrefSelect emits `request-popup` with its
+// absolute position; the host renders one overlay for all dropdowns.
 
 import { Tokens } from "../tokens.slint";
 
@@ -10,15 +11,18 @@ export component PrefSelect inherits Rectangle {
     in-out property <string> current-value: "";
     in property <[string]> options: [];
     in property <bool> select-enabled: true;
+    in property <string> select-id: "";
     callback value-changed(string);
+    callback request-popup(/* id */ string, /* abs-x */ length, /* abs-y */ length, /* width */ length);
 
-    in-out property <bool> open: false;
+    // Set by the shared popup host when this dropdown's popup is open.
+    in property <bool> popup-open: false;
 
     height: Tokens.chrome-h - Tokens.sp-2;
     horizontal-stretch: 1;
     background: select-touch.has-hover && root.select-enabled
         ? Tokens.bg-hover : Tokens.bg-inset;
-    border-color: root.open ? Tokens.accent : Tokens.border-1;
+    border-color: root.popup-open ? Tokens.accent : Tokens.border-1;
     border-width: Tokens.border-width-thin;
     border-radius: Tokens.r-md;
     opacity: root.select-enabled ? 1.0 : 0.5;
@@ -37,7 +41,7 @@ export component PrefSelect inherits Rectangle {
         }
 
         Text {
-            text: root.open ? "▲" : "▼";
+            text: root.popup-open ? "▲" : "▼";
             color: Tokens.fg-2;
             font-size: 10px;
             vertical-alignment: center;
@@ -47,50 +51,7 @@ export component PrefSelect inherits Rectangle {
     select-touch := TouchArea {
         enabled: root.select-enabled;
         clicked => {
-            root.open = !root.open;
-        }
-    }
-
-    if root.open: Rectangle {
-        x: 0;
-        y: parent.height + Tokens.sp-1;
-        width: parent.width;
-        height: option-layout.preferred-height + Tokens.sp-4;
-        background: Tokens.bg-1;
-        border-color: Tokens.border-1;
-        border-width: Tokens.border-width-thin;
-        border-radius: Tokens.r-md;
-
-        // Block click-through
-        TouchArea { }
-
-        option-layout := VerticalLayout {
-            padding: Tokens.sp-2;
-            spacing: Tokens.sp-1;
-
-            for option in root.options: Rectangle {
-                height: 30px;
-                background: opt-touch.has-hover
-                    ? Tokens.bg-hover
-                    : (option == root.current-value ? Tokens.bg-selected : Tokens.bg-1);
-                border-radius: Tokens.r-sm;
-
-                Text {
-                    text: option;
-                    color: Tokens.fg-0;
-                    font-size: Tokens.fs-13;
-                    vertical-alignment: center;
-                    x: Tokens.sp-4;
-                }
-
-                opt-touch := TouchArea {
-                    clicked => {
-                        root.current-value = option;
-                        root.open = false;
-                        root.value-changed(option);
-                    }
-                }
-            }
+            root.request-popup(root.select-id, self.absolute-position.x, self.absolute-position.y + root.height + Tokens.sp-1, root.width);
         }
     }
 }

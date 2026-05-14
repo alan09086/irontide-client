@@ -83,6 +83,8 @@ fn main() -> Result<(), error::GuiError> {
             main_window.get_default_download_dir().as_str(),
             &settings,
         );
+        st.prefs.webui_bind = api_config.bind.clone().unwrap_or_default();
+        st.prefs.webui_port = api_config.port.unwrap_or(9080);
     }
 
     // 6. Wire menu callbacks.

@@ -40,6 +40,14 @@ pub(crate) fn format_state(state: TorrentState, user_seed_mode: bool) -> &'stati
     irontide_format::format_state(&state, user_seed_mode)
 }
 
+pub(crate) fn format_state_full(
+    state: TorrentState,
+    user_seed_mode: bool,
+    super_seeding: bool,
+) -> &'static str {
+    irontide_format::format_state_with_super_seeding(&state, user_seed_mode, super_seeding)
+}
+
 /// Format a UNIX timestamp (seconds) as a relative time string.
 ///
 /// `0` (sentinel for "Never") returns `"Never"`. Future timestamps

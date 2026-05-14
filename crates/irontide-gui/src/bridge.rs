@@ -1166,8 +1166,55 @@ async fn handle_apply_engine_prefs(
             show_toast(weak, &format!("Settings apply failed: {e}"), true);
         } else {
             show_toast(weak, "Settings applied", false);
+            confirm_settings_to_gui(session, weak).await;
         }
     }
+}
+
+async fn confirm_settings_to_gui(
+    session: &irontide::session::SessionHandle,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    let Ok(live) = session.settings().await else {
+        return;
+    };
+    let dl_limit = crate::format::format_rate(live.download_rate_limit);
+    let ul_limit = crate::format::format_rate(live.upload_rate_limit);
+    let alt_dl = crate::format::format_rate(live.alt_download_rate_limit);
+    let alt_ul = crate::format::format_rate(live.alt_upload_rate_limit);
+    let dl_limit_raw = live.download_rate_limit;
+    let ul_limit_raw = live.upload_rate_limit;
+    let alt_dl_raw = live.alt_download_rate_limit;
+    let alt_ul_raw = live.alt_upload_rate_limit;
+    let enable_dht = live.enable_dht;
+    let enable_pex = live.enable_pex;
+    let enable_lsd = live.enable_lsd;
+    let anonymous = live.anonymous_mode;
+    let max_peers = live.max_peers_per_torrent;
+    let max_conn = live.max_connections_global;
+    let _ = weak.upgrade_in_event_loop(move |win| {
+        win.set_pref_dl_limit_value(
+            if dl_limit_raw == 0 { "0".into() } else { dl_limit.into() }
+        );
+        win.set_pref_ul_limit_value(
+            if ul_limit_raw == 0 { "0".into() } else { ul_limit.into() }
+        );
+        win.set_pref_alt_dl_limit(
+            if alt_dl_raw == 0 { "0".into() } else { alt_dl.into() }
+        );
+        win.set_pref_alt_ul_limit(
+            if alt_ul_raw == 0 { "0".into() } else { alt_ul.into() }
+        );
+        win.set_pref_enable_dht(enable_dht);
+        win.set_pref_enable_pex(enable_pex);
+        win.set_pref_enable_lsd(enable_lsd);
+        win.set_pref_anonymous_mode(anonymous);
+        #[allow(clippy::cast_possible_truncation, reason = "peer count fits i32")]
+        {
+            win.set_pref_max_peers_per_torrent(max_peers.to_string().into());
+            win.set_pref_max_connections_global(max_conn.to_string().into());
+        }
+    });
 }
 
 #[cfg(test)]

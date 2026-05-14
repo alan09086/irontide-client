@@ -113,7 +113,7 @@ export component PrefTextInput inherits Rectangle {
     height: Tokens.chrome-h - Tokens.sp-2;
     horizontal-stretch: 1;
     background: root.input-enabled ? Tokens.bg-inset : Tokens.bg-3;
-    border-color: input-touch.has-hover && root.input-enabled ? Tokens.border-2 : Tokens.border-1;
+    border-color: text-input.has-focus && root.input-enabled ? Tokens.border-2 : Tokens.border-1;
     border-width: Tokens.border-width-thin;
     border-radius: Tokens.r-md;
     opacity: root.input-enabled ? 1.0 : 0.5;
@@ -139,10 +139,5 @@ export component PrefTextInput inherits Rectangle {
         font-size: Tokens.fs-13;
         text: root.placeholder;
         vertical-alignment: center;
-    }
-
-    input-touch := TouchArea {
-        enabled: root.input-enabled;
-        clicked => { text-input.focus(); }
     }
 }
