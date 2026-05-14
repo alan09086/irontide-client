@@ -18,6 +18,7 @@ use crate::app::{AppPhase, AppState, GuiCommand};
 /// saving state and shutting down.
 pub fn spawn_session_thread(
     settings: irontide::session::Settings,
+    api_config: irontide_config::ApiConfig,
     weak: slint::Weak<crate::MainWindow>,
     shutdown_rx: tokio::sync::oneshot::Receiver<()>,
     state: Arc<Mutex<AppState>>,
@@ -27,7 +28,7 @@ pub fn spawn_session_thread(
         .spawn(move || {
             let rt = irontide_config::build_runtime(&settings);
             rt.block_on(async {
-                run_session(settings, weak, shutdown_rx, state).await;
+                run_session(settings, api_config, weak, shutdown_rx, state).await;
             });
             rt.shutdown_timeout(std::time::Duration::from_secs(1));
         })
@@ -36,6 +37,7 @@ pub fn spawn_session_thread(
 
 async fn run_session(
     settings: irontide::session::Settings,
+    api_config: irontide_config::ApiConfig,
     weak: slint::Weak<crate::MainWindow>,
     shutdown_rx: tokio::sync::oneshot::Receiver<()>,
     state: Arc<Mutex<AppState>>,
@@ -55,6 +57,31 @@ async fn run_session(
             });
             return;
         }
+    };
+
+    // Start embedded API server (default port 9080, disable with port = 0).
+    let api_port = api_config.port.unwrap_or(9080);
+    let _api_task = if api_port > 0 {
+        let bind = api_config.bind.as_deref().unwrap_or("127.0.0.1");
+        let addr: std::net::SocketAddr = match format!("{bind}:{api_port}").parse() {
+            Ok(a) => a,
+            Err(e) => {
+                tracing::warn!("invalid API bind address: {e}");
+                return;
+            }
+        };
+        match irontide_api::ApiServer::bind(addr, session.clone()).await {
+            Ok(server) => {
+                tracing::info!("API server listening on {}", server.local_addr());
+                Some(tokio::spawn(async move { let _ = server.run().await; }))
+            }
+            Err(e) => {
+                tracing::warn!("API server failed to bind on {addr}: {e}");
+                None
+            }
+        }
+    } else {
+        None
     };
 
     // Load resume state.

@@ -38,14 +38,14 @@ fn main() -> Result<(), error::GuiError> {
     // 3. Load settings + column config.
     let config = irontide_config::load(None, &irontide_config::ConfigFile::default())
         .map_err(|e| error::GuiError::Config(e.to_string()))?;
-    let gui_config = {
+    let (gui_config, api_config) = {
         let path = irontide_config::resolve_config_path(None);
         if path.exists() {
             let text = std::fs::read_to_string(&path).unwrap_or_default();
             let cf: irontide_config::ConfigFile = toml::from_str(&text).unwrap_or_default();
-            cf.gui
+            (cf.gui, cf.api)
         } else {
-            irontide_config::GuiConfig::default()
+            (irontide_config::GuiConfig::default(), irontide_config::ApiConfig::default())
         }
     };
     let col_config = columns::ColumnConfig::from_gui_config(&gui_config);
@@ -862,7 +862,7 @@ fn main() -> Result<(), error::GuiError> {
 
     // 7. Spawn session thread.
     let session_handle =
-        bridge::spawn_session_thread(settings, main_window.as_weak(), shutdown_rx, state.clone());
+        bridge::spawn_session_thread(settings, api_config, main_window.as_weak(), shutdown_rx, state.clone());
 
     // 8. Run Slint event loop (blocks until window is closed).
     main_window.run()?;
