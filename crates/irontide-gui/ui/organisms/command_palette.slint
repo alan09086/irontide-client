@@ -93,6 +93,17 @@ export component CommandPalette {
                                 root.item-selected(root.active-index);
                             }
                         }
+
+                        Text {
+                            x: Tokens.sp-3;
+                            y: (parent.height - self.preferred-height) / 2;
+                            width: parent.width - Tokens.sp-3 * 2;
+                            text: "Search commands\u{2026}";
+                            color: Tokens.fg-3;
+                            font-size: Tokens.fs-14;
+                            vertical-alignment: center;
+                            visible: search-input.text == "";
+                        }
                     }
 
                     Text {

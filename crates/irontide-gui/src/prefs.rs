@@ -14,7 +14,7 @@ use crate::speed::parse_rate_limit;
 
 fn format_rate_limit_display(bytes_per_sec: u64) -> String {
     if bytes_per_sec == 0 {
-        return "0".to_owned();
+        return "Unlimited".to_owned();
     }
     format_rate(bytes_per_sec)
 }

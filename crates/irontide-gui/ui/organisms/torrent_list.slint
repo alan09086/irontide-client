@@ -99,7 +99,14 @@ export component TorrentListView {
     in property <length> col-size-width;
     in property <length> col-ratio-width;
 
-    property <length> total-columns-width: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width + root.col-size-width + root.col-ratio-width;
+    property <length> non-name-total: root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width + root.col-size-width + root.col-ratio-width;
+
+    property <length> effective-name-width:
+        root.width > root.non-name-total + Tokens.col-default-name
+            ? root.width - root.non-name-total
+            : Tokens.col-default-name;
+
+    property <length> total-columns-width: root.effective-name-width + root.non-name-total;
 
     // ── Modifier tracking (forwarded from MainWindow) ────────────────
     in property <bool> shift-held: false;
@@ -171,7 +178,7 @@ export component TorrentListView {
                 // Name
                 Rectangle {
                     x: 0;
-                    width: root.col-name-width;
+                    width: root.effective-name-width;
                     height: parent.height;
 
                     hdr-name-touch := TouchArea {
@@ -191,7 +198,7 @@ export component TorrentListView {
 
                 // Progress
                 Rectangle {
-                    x: root.col-name-width;
+                    x: root.effective-name-width;
                     width: root.col-progress-width;
                     height: parent.height;
 
@@ -212,7 +219,7 @@ export component TorrentListView {
 
                 // State
                 Rectangle {
-                    x: root.col-name-width + root.col-progress-width;
+                    x: root.effective-name-width + root.col-progress-width;
                     width: root.col-state-width;
                     height: parent.height;
 
@@ -233,7 +240,7 @@ export component TorrentListView {
 
                 // Down Rate
                 Rectangle {
-                    x: root.col-name-width + root.col-progress-width + root.col-state-width;
+                    x: root.effective-name-width + root.col-progress-width + root.col-state-width;
                     width: root.col-down-rate-width;
                     height: parent.height;
 
@@ -255,7 +262,7 @@ export component TorrentListView {
 
                 // Up Rate
                 Rectangle {
-                    x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width;
+                    x: root.effective-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width;
                     width: root.col-up-rate-width;
                     height: parent.height;
 
@@ -277,7 +284,7 @@ export component TorrentListView {
 
                 // Seeds
                 Rectangle {
-                    x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width;
+                    x: root.effective-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width;
                     width: root.col-seeds-width;
                     height: parent.height;
 
@@ -299,7 +306,7 @@ export component TorrentListView {
 
                 // Peers
                 Rectangle {
-                    x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width;
+                    x: root.effective-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width;
                     width: root.col-peers-width;
                     height: parent.height;
 
@@ -321,7 +328,7 @@ export component TorrentListView {
 
                 // ETA
                 Rectangle {
-                    x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width;
+                    x: root.effective-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width;
                     width: root.col-eta-width;
                     height: parent.height;
 
@@ -343,7 +350,7 @@ export component TorrentListView {
 
                 // Size
                 Rectangle {
-                    x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width;
+                    x: root.effective-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width;
                     width: root.col-size-width;
                     height: parent.height;
 
@@ -365,7 +372,7 @@ export component TorrentListView {
 
                 // Ratio
                 Rectangle {
-                    x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width + root.col-size-width;
+                    x: root.effective-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width + root.col-size-width;
                     width: root.col-ratio-width;
                     height: parent.height;
 
@@ -386,15 +393,15 @@ export component TorrentListView {
                 }
 
                 // Column separator lines (vertical)
-                Rectangle { x: root.col-name-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
-                Rectangle { x: root.col-name-width + root.col-progress-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
-                Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
-                Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
-                Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
-                Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
-                Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
-                Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
-                Rectangle { x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width + root.col-size-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
+                Rectangle { x: root.effective-name-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
+                Rectangle { x: root.effective-name-width + root.col-progress-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
+                Rectangle { x: root.effective-name-width + root.col-progress-width + root.col-state-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
+                Rectangle { x: root.effective-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
+                Rectangle { x: root.effective-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
+                Rectangle { x: root.effective-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
+                Rectangle { x: root.effective-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
+                Rectangle { x: root.effective-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
+                Rectangle { x: root.effective-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width + root.col-size-width - Tokens.border-width-thin; y: Tokens.sp-1; width: Tokens.border-width-thin; height: parent.height - Tokens.sp-2; background: Tokens.divider; }
 
                 // Header bottom border
                 Rectangle {
@@ -414,7 +421,7 @@ export component TorrentListView {
                 for item[index] in root.torrent-model: Rectangle {
                     y: index * Tokens.row-h;
                     height: Tokens.row-h;
-                    width: parent.width;
+                    width: root.total-columns-width;
                     background: item.selected
                         ? Tokens.accent
                         : (row-touch.has-hover
@@ -442,12 +449,12 @@ export component TorrentListView {
                         horizontal-alignment: left;
                         overflow: elide;
                         x: Tokens.sp-3;
-                        width: root.col-name-width - Tokens.sp-5;
+                        width: root.effective-name-width - Tokens.sp-5;
                     }
 
                     // Progress bar
                     TorrentProgressBar {
-                        x: root.col-name-width + Tokens.sp-2;
+                        x: root.effective-name-width + Tokens.sp-2;
                         y: (parent.height - Tokens.sp-6) / 2;
                         width: root.col-progress-width - Tokens.sp-4;
                         progress: item.progress;
@@ -463,7 +470,7 @@ export component TorrentListView {
                         vertical-alignment: center;
                         horizontal-alignment: left;
                         overflow: elide;
-                        x: root.col-name-width + root.col-progress-width + Tokens.sp-2;
+                        x: root.effective-name-width + root.col-progress-width + Tokens.sp-2;
                         width: root.col-state-width - Tokens.sp-4;
                     }
 
@@ -474,7 +481,7 @@ export component TorrentListView {
                         font-size: Tokens.fs-13;
                         vertical-alignment: center;
                         horizontal-alignment: right;
-                        x: root.col-name-width + root.col-progress-width + root.col-state-width;
+                        x: root.effective-name-width + root.col-progress-width + root.col-state-width;
                         width: root.col-down-rate-width - Tokens.sp-3;
                     }
 
@@ -485,7 +492,7 @@ export component TorrentListView {
                         font-size: Tokens.fs-13;
                         vertical-alignment: center;
                         horizontal-alignment: right;
-                        x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width;
+                        x: root.effective-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width;
                         width: root.col-up-rate-width - Tokens.sp-3;
                     }
 
@@ -496,7 +503,7 @@ export component TorrentListView {
                         font-size: Tokens.fs-13;
                         vertical-alignment: center;
                         horizontal-alignment: right;
-                        x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width;
+                        x: root.effective-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width;
                         width: root.col-seeds-width - Tokens.sp-3;
                     }
 
@@ -507,7 +514,7 @@ export component TorrentListView {
                         font-size: Tokens.fs-13;
                         vertical-alignment: center;
                         horizontal-alignment: right;
-                        x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width;
+                        x: root.effective-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width;
                         width: root.col-peers-width - Tokens.sp-3;
                     }
 
@@ -518,7 +525,7 @@ export component TorrentListView {
                         font-size: Tokens.fs-13;
                         vertical-alignment: center;
                         horizontal-alignment: right;
-                        x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width;
+                        x: root.effective-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width;
                         width: root.col-eta-width - Tokens.sp-3;
                     }
 
@@ -529,7 +536,7 @@ export component TorrentListView {
                         font-size: Tokens.fs-13;
                         vertical-alignment: center;
                         horizontal-alignment: right;
-                        x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width;
+                        x: root.effective-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width;
                         width: root.col-size-width - Tokens.sp-3;
                     }
 
@@ -540,7 +547,7 @@ export component TorrentListView {
                         font-size: Tokens.fs-13;
                         vertical-alignment: center;
                         horizontal-alignment: right;
-                        x: root.col-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width + root.col-size-width;
+                        x: root.effective-name-width + root.col-progress-width + root.col-state-width + root.col-down-rate-width + root.col-up-rate-width + root.col-seeds-width + root.col-peers-width + root.col-eta-width + root.col-size-width;
                         width: root.col-ratio-width - Tokens.sp-3;
                     }
 

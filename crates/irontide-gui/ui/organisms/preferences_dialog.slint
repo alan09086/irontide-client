@@ -1065,18 +1065,12 @@ export component PreferencesDialog {
                                             }
                                             PrefTextInput {
                                                 value: root.pref-dl-limit-value;
-                                                placeholder: "0";
+                                                placeholder: "Unlimited";
                                                 input-enabled: root.pref-dl-limit-enabled;
                                                 edited(v) => {
                                                     root.pref-dl-limit-value = v;
                                                     root.dirty = true;
                                                 }
-                                            }
-                                            Text {
-                                                text: "B/s";
-                                                color: Tokens.fg-3;
-                                                font-size: Tokens.fs-13;
-                                                vertical-alignment: center;
                                             }
                                         }
                                     }
@@ -1094,18 +1088,12 @@ export component PreferencesDialog {
                                             }
                                             PrefTextInput {
                                                 value: root.pref-ul-limit-value;
-                                                placeholder: "0";
+                                                placeholder: "Unlimited";
                                                 input-enabled: root.pref-ul-limit-enabled;
                                                 edited(v) => {
                                                     root.pref-ul-limit-value = v;
                                                     root.dirty = true;
                                                 }
-                                            }
-                                            Text {
-                                                text: "B/s";
-                                                color: Tokens.fg-3;
-                                                font-size: Tokens.fs-13;
-                                                vertical-alignment: center;
                                             }
                                         }
                                     }
@@ -1259,9 +1247,10 @@ export component PreferencesDialog {
                                     }
 
                                     if root.pref-encryption-mode == "Require encryption": Rectangle {
-                                        height: Tokens.sp-7;
                                         HorizontalLayout {
                                             padding-left: Tokens.sp-4;
+                                            padding-top: Tokens.sp-2;
+                                            padding-bottom: Tokens.sp-2;
                                             Text {
                                                 text: "⚠ Most public torrent peers don't support encryption. This may severely reduce available peers.";
                                                 color: Tokens.status-error;
@@ -2005,56 +1994,57 @@ export component PreferencesDialog {
                 }
             }
 
-            // ── Shared PrefSelect popup overlay ──
-            // Renders on top of the dialog card, outside the clip:true
-            // content area, so dropdown menus are never clipped.
-            if root.popup-visible: Rectangle {
-                width: parent.width;
-                height: parent.height;
+        }
 
-                popup-dismiss := TouchArea {
-                    clicked => { root.popup-visible = false; }
-                }
+        // ── Shared PrefSelect popup overlay ──
+        // Lives at scrim level (sibling of centered card) so absolute
+        // coordinates from PrefSelect map directly to window space.
+        if root.popup-visible: Rectangle {
+            width: parent.width;
+            height: parent.height;
 
-                Rectangle {
-                    x: root.popup-x;
-                    y: root.popup-y;
-                    width: root.popup-width;
-                    height: popup-option-layout.preferred-height + Tokens.sp-4;
-                    background: Tokens.bg-1;
-                    border-color: Tokens.border-1;
-                    border-width: Tokens.border-width-thin;
-                    border-radius: Tokens.r-md;
-                    drop-shadow-color: Tokens.shadow-lg.color;
-                    drop-shadow-blur: Tokens.shadow-lg.blur;
-                    drop-shadow-offset-y: Tokens.shadow-lg.offset-y;
+            popup-dismiss := TouchArea {
+                clicked => { root.popup-visible = false; }
+            }
 
-                    TouchArea { }
+            Rectangle {
+                x: root.popup-x;
+                y: root.popup-y;
+                width: root.popup-width;
+                height: popup-option-layout.preferred-height + Tokens.sp-4;
+                background: Tokens.bg-1;
+                border-color: Tokens.border-1;
+                border-width: Tokens.border-width-thin;
+                border-radius: Tokens.r-md;
+                drop-shadow-color: Tokens.shadow-lg.color;
+                drop-shadow-blur: Tokens.shadow-lg.blur;
+                drop-shadow-offset-y: Tokens.shadow-lg.offset-y;
 
-                    popup-option-layout := VerticalLayout {
-                        padding: Tokens.sp-2;
-                        spacing: Tokens.sp-1;
+                TouchArea { }
 
-                        for option in root.popup-items: Rectangle {
-                            height: 30px;
-                            background: popup-opt-touch.has-hover
-                                ? Tokens.bg-hover
-                                : (option == root.popup-current ? Tokens.bg-selected : Tokens.bg-1);
-                            border-radius: Tokens.r-sm;
+                popup-option-layout := VerticalLayout {
+                    padding: Tokens.sp-2;
+                    spacing: Tokens.sp-1;
 
-                            Text {
-                                text: option;
-                                color: Tokens.fg-0;
-                                font-size: Tokens.fs-13;
-                                vertical-alignment: center;
-                                x: Tokens.sp-4;
-                            }
+                    for option in root.popup-items: Rectangle {
+                        height: 30px;
+                        background: popup-opt-touch.has-hover
+                            ? Tokens.bg-hover
+                            : (option == root.popup-current ? Tokens.bg-selected : Tokens.bg-1);
+                        border-radius: Tokens.r-sm;
 
-                            popup-opt-touch := TouchArea {
-                                clicked => {
-                                    root.popup-visible = false;
-                                    root.select-popup-value(root.popup-id, option);
-                                }
+                        Text {
+                            text: option;
+                            color: Tokens.fg-0;
+                            font-size: Tokens.fs-13;
+                            vertical-alignment: center;
+                            x: Tokens.sp-4;
+                        }
+
+                        popup-opt-touch := TouchArea {
+                            clicked => {
+                                root.popup-visible = false;
+                                root.select-popup-value(root.popup-id, option);
                             }
                         }
                     }

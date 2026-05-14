@@ -243,7 +243,7 @@ fn format_duration_short(total_secs: u64) -> String {
 )]
 pub fn parse_rate_limit(input: &str) -> Option<u64> {
     let trimmed = input.trim();
-    if trimmed.is_empty() || trimmed == "0" {
+    if trimmed.is_empty() || trimmed == "0" || trimmed.eq_ignore_ascii_case("unlimited") {
         return Some(0);
     }
     let upper = trimmed.to_uppercase();
@@ -421,6 +421,9 @@ mod tests {
     fn parse_rate_limit_zero_unlimited() {
         assert_eq!(parse_rate_limit("0"), Some(0));
         assert_eq!(parse_rate_limit(""), Some(0));
+        assert_eq!(parse_rate_limit("Unlimited"), Some(0));
+        assert_eq!(parse_rate_limit("unlimited"), Some(0));
+        assert_eq!(parse_rate_limit("UNLIMITED"), Some(0));
     }
 
     #[test]
