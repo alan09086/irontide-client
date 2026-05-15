@@ -86,14 +86,14 @@ export component ContextMenu {
                     }
                 }
 
-                // Item 2: Seed Only
+                // Item 2: Super Seeding (BEP 16, was labelled "Seed Only" pre-v0.187.3)
                 Rectangle {
                     height: Tokens.row-h;
                     background: root.can-seed-only ? (seed-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1) : Tokens.bg-1;
                     border-radius: Tokens.r-sm;
 
                     Text {
-                        text: "Seed Only";
+                        text: "Super Seeding";
                         color: root.can-seed-only ? Tokens.fg-0 : Tokens.fg-3;
                         font-size: Tokens.fs-13;
                         vertical-alignment: center;

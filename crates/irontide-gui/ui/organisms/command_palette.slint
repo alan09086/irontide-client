@@ -30,6 +30,13 @@ export component CommandPalette {
     if root.show: Rectangle {
         background: Tokens.bg-0.with-alpha(0.55);
 
+        // v0.187.3 / Bug 4 / 13A: single-mechanism focus. `if root.show:` causes
+        // the entire Rectangle subtree to be (re-)instantiated on the show
+        // toggle; `init` fires after layout, at which point `search-input` is
+        // realized and ready to accept focus. Drops the previous forward-focus
+        // / focus-search callback chain in favour of one deterministic call.
+        init => { search-input.focus(); }
+
         // Click-outside dismiss
         dismiss-touch := TouchArea {
             clicked => { root.dismiss(); }

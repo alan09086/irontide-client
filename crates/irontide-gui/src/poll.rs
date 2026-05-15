@@ -224,9 +224,25 @@ pub async fn poll_loop(
             sorted.iter().map(|s| to_slint_row(s, &selected)).collect();
 
         // Update current_order in state (for shift-click range).
+        //
+        // v0.187.3 / Bug 14A / multi-select anchor sync: if `last_clicked`
+        // points at a torrent that's no longer in `current_order` (e.g. the
+        // anchor torrent was removed), clear it. This avoids the "two-item
+        // multi-select doesn't work" path where a stale anchor caused
+        // `selection_shift_click` to fall back to single-click semantics
+        // even when the user clearly Shift-clicked a valid pair.
+        //
+        // Intentionally we do NOT touch `selected` — the user's selection
+        // intent is preserved; only the anchor (a transient interaction
+        // breadcrumb) is reconciled with the current visible set.
         {
             let mut st = state.lock();
             st.current_order = sorted.iter().map(|s| s.info_hash.clone()).collect();
+            if let Some(anchor) = st.last_clicked.clone()
+                && !st.current_order.contains(&anchor)
+            {
+                st.last_clicked = None;
+            }
         }
 
         // Compute status bar values.
@@ -939,7 +955,15 @@ fn to_slint_row(s: &TorrentSummary, selected: &HashSet<String>) -> crate::Torren
         state: if s.state == TorrentState::Checking {
             SharedString::from(format!("checking ({:.1}%)", s.checking_progress * 100.0))
         } else {
-            SharedString::from(crate::format::format_state(s.state, s.user_seed_mode))
+            // v0.187.3 / Bug 17: surface "Super Seeding" in the state column
+            // when the BEP 16 super_seeding flag is set on the engine. Use
+            // `format_state_full` (it accepts both seed_mode + super_seeding)
+            // so the column matches what the detail-pane header shows.
+            SharedString::from(crate::format::format_state_full(
+                s.state,
+                s.user_seed_mode,
+                s.super_seeding,
+            ))
         },
         state_color: state_color(s.state, s.user_seed_mode),
         ratio: SharedString::from(crate::format::format_ratio(
@@ -1029,6 +1053,7 @@ mod tests {
             all_time_upload: 0,
             all_time_download: 0,
             user_seed_mode: false,
+            super_seeding: false,
             checking_progress: 0.0,
         }
     }

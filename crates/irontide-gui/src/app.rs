@@ -78,6 +78,12 @@ pub struct EnginePrefs {
     pub qbt_compat_csrf: Option<bool>,
     pub qbt_compat_host_validation: Option<bool>,
     pub qbt_compat_reverse_proxy: Option<bool>,
+    // v0.187.3 / 2A: Web UI port + bind under [qbt_compat]. Wired through
+    // apply_engine_prefs_to_settings in bridge.rs; the runtime
+    // apply_settings_classified call marks both as restart-required so the
+    // bridge can post a toast.
+    pub qbt_compat_port: Option<u16>,
+    pub qbt_compat_bind_address: Option<String>,
     // M187: Advanced tab
     pub hashing_threads: Option<usize>,
     pub save_resume_interval_secs: Option<u64>,

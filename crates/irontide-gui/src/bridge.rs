@@ -1103,6 +1103,18 @@ async fn handle_apply_engine_prefs(
         settings.qbt_compat.web_ui_reverse_proxy_enabled = v;
         changed = true;
     }
+    // v0.187.3 / 2A: Web UI port + bind, single source of truth under
+    // `qbt_compat`. Both are restart-required; the runtime apply will
+    // classify them via `apply_settings_classified` and the bridge will
+    // post a toast (Step 4.2).
+    if let Some(v) = ep.qbt_compat_port {
+        settings.qbt_compat.port = v;
+        changed = true;
+    }
+    if let Some(ref v) = ep.qbt_compat_bind_address {
+        settings.qbt_compat.bind_address.clone_from(v);
+        changed = true;
+    }
 
     // Advanced
     if let Some(v) = ep.hashing_threads {
@@ -1161,12 +1173,30 @@ async fn handle_apply_engine_prefs(
     }
 
     if changed {
-        if let Err(e) = session.apply_settings(settings).await {
-            tracing::warn!(error = %e, "failed to apply engine prefs");
-            show_toast(weak, &format!("Settings apply failed: {e}"), true);
-        } else {
-            show_toast(weak, "Settings applied", false);
-            confirm_settings_to_gui(session, weak).await;
+        // v0.187.3 / Step 4.2: switch to apply_settings_classified so the
+        // bridge can drive a "restart required to apply: <fields>" toast
+        // when listen_port, dht, lsd, pex, encryption, anonymous_mode, save_path,
+        // qbt_compat.port, or qbt_compat.bind_address change.
+        match session.apply_settings_classified(settings).await {
+            Ok(applied) => {
+                if applied.restart_required.is_empty() {
+                    show_toast(weak, "Settings applied", false);
+                } else {
+                    // v0.187.3 / 2A: Web UI port/bind changes are
+                    // restart-required; flag them in the same channel.
+                    let fields = applied.restart_required.join(", ");
+                    show_toast(
+                        weak,
+                        &format!("Restart required to apply: {fields}"),
+                        false,
+                    );
+                }
+                confirm_settings_to_gui(session, weak).await;
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to apply engine prefs");
+                show_toast(weak, &format!("Settings apply failed: {e}"), true);
+            }
         }
     }
 }

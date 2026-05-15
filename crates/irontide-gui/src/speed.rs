@@ -261,6 +261,37 @@ pub fn parse_rate_limit(input: &str) -> Option<u64> {
     Some((val * multiplier) as u64)
 }
 
+// v0.187.3 / Step 3: numeric KiB/s rate-limit parser. 0 = unlimited per qBt
+// convention. Negative inputs and non-numeric strings → 0 (matches the
+// "Unlimited" round-trip the GUI now offers). Result is bytes/sec ready for
+// `Settings::download_rate_limit`. Range: 0..=RATE_MAX_KIBPS KiB/s.
+#[must_use]
+pub fn parse_kib_int(input: &str) -> u64 {
+    let trimmed = input.trim();
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("unlimited") {
+        return 0;
+    }
+    let parsed: i64 = trimmed.parse().unwrap_or(0);
+    let kib = if parsed < 0 {
+        0
+    } else {
+        u64::try_from(parsed).unwrap_or(0)
+    };
+    let capped = kib.min(u64::from(u32::MAX));
+    capped.saturating_mul(1024)
+}
+
+// v0.187.3 / Step 3: format bytes/sec as integer KiB/s. 0 → "Unlimited"; else
+// integer KiB (bytes/1024, floor). Pairs with `parse_kib_int` for round-trip.
+#[must_use]
+pub fn format_kib_int(bytes_per_sec: u64) -> String {
+    if bytes_per_sec == 0 {
+        "Unlimited".to_owned()
+    } else {
+        (bytes_per_sec / 1024).to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -430,6 +461,77 @@ mod tests {
     fn parse_rate_limit_invalid() {
         assert_eq!(parse_rate_limit("abc"), None);
         assert_eq!(parse_rate_limit("M"), None);
+    }
+
+    #[test]
+    fn format_kib_int_zero_returns_unlimited() {
+        assert_eq!(format_kib_int(0), "Unlimited");
+    }
+
+    #[test]
+    fn format_kib_int_one_kib_returns_1() {
+        assert_eq!(format_kib_int(1024), "1");
+    }
+
+    #[test]
+    fn parse_kib_int_unlimited_string_returns_zero() {
+        assert_eq!(parse_kib_int(""), 0);
+        assert_eq!(parse_kib_int("Unlimited"), 0);
+        assert_eq!(parse_kib_int("unlimited"), 0);
+    }
+
+    #[test]
+    fn parse_kib_int_negative_returns_zero() {
+        assert_eq!(parse_kib_int("-1"), 0);
+        assert_eq!(parse_kib_int("-9999"), 0);
+    }
+
+    #[test]
+    fn parse_kib_int_non_numeric_returns_zero() {
+        assert_eq!(parse_kib_int("abc"), 0);
+        assert_eq!(parse_kib_int("1M"), 0);
+    }
+
+    #[test]
+    fn parse_kib_int_one_returns_1024_bytes() {
+        assert_eq!(parse_kib_int("1"), 1024);
+        assert_eq!(parse_kib_int("100"), 100 * 1024);
+        assert_eq!(parse_kib_int("1024"), 1024 * 1024);
+    }
+
+    #[test]
+    fn parse_kib_int_caps_at_u32_max_kib() {
+        // Sentinel above u32::MAX KiB clamps to u32::MAX * 1024.
+        let huge = "99999999999".to_string(); // > u32::MAX
+        let expected = u64::from(u32::MAX) * 1024;
+        assert_eq!(parse_kib_int(&huge), expected);
+    }
+
+    // Round-trip per Step 3 / decision 7A. Without proptest, we sweep a
+    // representative set of values; covers the same property the proptest
+    // would assert (parse ∘ format == identity for integer KiB).
+    #[test]
+    fn parse_kib_int_round_trips_through_format() {
+        let samples: &[u64] = &[
+            0,
+            1,
+            100,
+            1000,
+            65536,
+            1_048_576,
+            10_000_000,
+            u64::from(u32::MAX),
+        ];
+        for &n_kib in samples {
+            let bytes = n_kib * 1024;
+            let formatted = format_kib_int(bytes);
+            let parsed = parse_kib_int(&formatted);
+            if n_kib == 0 {
+                assert_eq!(parsed, 0, "zero formats as Unlimited which parses to 0");
+            } else {
+                assert_eq!(parsed, bytes, "round-trip failed for {n_kib} KiB");
+            }
+        }
     }
 
     #[test]

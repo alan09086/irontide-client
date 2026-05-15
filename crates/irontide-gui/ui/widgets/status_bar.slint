@@ -8,6 +8,11 @@ export component StatusBar {
     in property <int> total-torrents: 0;
     in property <int> dht-nodes: 0;
     in property <int> listen-port: 0;
+    // v0.187.3 / 2.6: workspace version string ("0.187.3"). The dogfood
+    // report flagged "there is no about, or any way to see the version in
+    // the app" — empty string hides the label gracefully if the binding
+    // isn't wired (e.g. headless tests).
+    in property <string> app-version: "";
 
     height: Tokens.chrome-h - Tokens.sp-5;
 
@@ -52,6 +57,13 @@ export component StatusBar {
             }
             Text {
                 text: "Port: " + root.listen-port;
+                color: Tokens.fg-3;
+                font-size: Tokens.fs-12;
+                vertical-alignment: center;
+            }
+            // v0.187.3: version label. Suppressed when empty.
+            if root.app-version != "": Text {
+                text: "IronTide v" + root.app-version;
                 color: Tokens.fg-3;
                 font-size: Tokens.fs-12;
                 vertical-alignment: center;

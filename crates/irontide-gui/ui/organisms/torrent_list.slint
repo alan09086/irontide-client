@@ -560,6 +560,27 @@ export component TorrentListView {
                     }
                 }
             }
+
+            // v0.187.3 / Bug 13: horizontal scrollbar indicator. The
+            // list-flick `Flickable` supports horizontal scrolling but
+            // Slint's bare Flickable renders no scrollbar — the dogfood
+            // report flagged the missing visual cue. We render a 6px
+            // track with a thumb that mirrors `list-flick.viewport-x`
+            // and the visible-fraction of the columns total width.
+            //
+            // Suppressed when there's no overflow (total ≤ visible) so the
+            // bar only appears when scrolling is actually possible.
+            if root.total-columns-width > list-flick.width: Rectangle {
+                height: 6px;
+                background: Tokens.bg-2;
+                Rectangle {
+                    x: -list-flick.viewport-x * (parent.width / root.total-columns-width);
+                    width: parent.width * (list-flick.width / root.total-columns-width);
+                    height: parent.height;
+                    background: Tokens.border-2;
+                    border-radius: 3px;
+                }
+            }
         }
 
         // Error state

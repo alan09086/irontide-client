@@ -10,8 +10,39 @@ use std::str::FromStr;
 use crate::app::EnginePrefs;
 use crate::format::format_rate;
 use crate::skin::{self, Density, RadiusPreset, Skin, Theme};
-use crate::speed::parse_rate_limit;
+use crate::speed::{format_kib_int, parse_kib_int};
+// v0.187.3 / Step 3: `parse_rate_limit` + `format_rate_limit_display` remain
+// in `speed.rs` for the per-torrent detail-pane override (an advanced surface
+// where human-readable input is more ergonomic). The session-level prefs
+// switched to numeric KiB/s via `parse_kib_int` / `format_kib_int`.
 
+// v0.187.3 / 8A: per-field clamp ceilings. Negative input → 0 via the
+// clamp's lower bound; upper ceilings prevent unbounded values from reaching
+// the engine. PEERS_MAX mirrors `HARD_PEER_CEILING` in
+// `irontide-session::torrent_peers` — keep in sync; the engine-side ceiling
+// is the load-bearing invariant. `RATE_MAX_KIBPS` and `PORT_MAX` are kept
+// alongside as the canonical clamp ceilings for future PrefNumeric molecule
+// wire-up; `#[allow(dead_code)]` suppresses the unused-const warning until
+// the molecule consumes them.
+pub const PEERS_MAX: i32 = 4096;
+pub const ACTIVE_MAX: i32 = 1024;
+#[allow(dead_code)]
+pub const RATE_MAX_KIBPS: u64 = u32::MAX as u64;
+#[allow(dead_code)]
+pub const PORT_MAX: u16 = 65535;
+
+pub(crate) fn parse_int_pref<T>(s: &str, fallback: T, min: T, max: T) -> T
+where
+    T: FromStr + Ord + Copy,
+{
+    s.parse::<T>().unwrap_or(fallback).clamp(min, max)
+}
+
+// v0.187.3 / Step 3: legacy human-readable display helper. Retained behind
+// `#[allow(dead_code)]` as a private utility for the per-torrent detail-pane
+// override path; not used in this module after the session-level prefs
+// switched to numeric KiB/s.
+#[allow(dead_code)]
 fn format_rate_limit_display(bytes_per_sec: u64) -> String {
     if bytes_per_sec == 0 {
         return "Unlimited".to_owned();
@@ -505,13 +536,17 @@ impl PreferencesState {
         win.set_pref_ip_filter_enabled(self.ip_filter_enabled);
         win.set_pref_ip_filter_path(self.ip_filter_path.as_str().into());
         win.set_pref_ip_filter_auto_refresh(self.ip_filter_auto_refresh);
-        // Speed
+        // Speed — v0.187.3 / Step 3: switch the session-level rate limits to
+        // the numeric KiB/s display convention (0 = Unlimited). Per-torrent
+        // overrides in the detail pane keep the legacy human-readable form
+        // (`parse_rate_limit` / `format_rate_limit_display`) since they're
+        // an advanced surface where "1.5 MiB/s" is more ergonomic.
         win.set_pref_dl_limit_enabled(self.dl_limit_enabled);
-        win.set_pref_dl_limit_value(format_rate_limit_display(self.dl_limit_value).into());
+        win.set_pref_dl_limit_value(format_kib_int(self.dl_limit_value).into());
         win.set_pref_ul_limit_enabled(self.ul_limit_enabled);
-        win.set_pref_ul_limit_value(format_rate_limit_display(self.ul_limit_value).into());
-        win.set_pref_alt_dl_limit(format_rate_limit_display(self.alt_dl_limit).into());
-        win.set_pref_alt_ul_limit(format_rate_limit_display(self.alt_ul_limit).into());
+        win.set_pref_ul_limit_value(format_kib_int(self.ul_limit_value).into());
+        win.set_pref_alt_dl_limit(format_kib_int(self.alt_dl_limit).into());
+        win.set_pref_alt_ul_limit(format_kib_int(self.alt_ul_limit).into());
         win.set_pref_alt_speed_enabled(self.alt_speed_enabled);
         win.set_pref_rate_limit_overhead(self.rate_limit_overhead);
         win.set_pref_rate_limit_utp(self.rate_limit_utp);
@@ -641,41 +676,50 @@ impl PreferencesState {
         let new_randomize_port = win.get_pref_randomize_port();
         let new_enable_upnp = win.get_pref_enable_upnp();
         let new_enable_natpmp = win.get_pref_enable_natpmp();
-        let new_max_conn_global: i32 = win
-            .get_pref_max_connections_global()
-            .as_str()
-            .parse()
-            .unwrap_or(self.max_connections_global);
-        let new_max_peers: i32 = win
-            .get_pref_max_peers_per_torrent()
-            .as_str()
-            .parse()
-            .unwrap_or(self.max_peers_per_torrent);
-        let new_max_ul_slots_global: i32 = win
-            .get_pref_max_upload_slots_global()
-            .as_str()
-            .parse()
-            .unwrap_or(self.max_upload_slots_global);
-        let new_max_ul_slots_per: i32 = win
-            .get_pref_max_upload_slots_per_torrent()
-            .as_str()
-            .parse()
-            .unwrap_or(self.max_upload_slots_per_torrent);
-        let new_active_dl: i32 = win
-            .get_pref_active_downloads()
-            .as_str()
-            .parse()
-            .unwrap_or(self.active_downloads);
-        let new_active_seeds: i32 = win
-            .get_pref_active_seeds()
-            .as_str()
-            .parse()
-            .unwrap_or(self.active_seeds);
-        let new_active_limit: i32 = win
-            .get_pref_active_limit()
-            .as_str()
-            .parse()
-            .unwrap_or(self.active_limit);
+        let new_max_conn_global: i32 = parse_int_pref(
+            win.get_pref_max_connections_global().as_str(),
+            self.max_connections_global,
+            0,
+            PEERS_MAX,
+        );
+        // Bug 7: clamp at input — negative values silently became "unlimited"
+        // pre-v0.187.3, which exhausted FDs under load.
+        let new_max_peers: i32 = parse_int_pref(
+            win.get_pref_max_peers_per_torrent().as_str(),
+            self.max_peers_per_torrent,
+            0,
+            PEERS_MAX,
+        );
+        let new_max_ul_slots_global: i32 = parse_int_pref(
+            win.get_pref_max_upload_slots_global().as_str(),
+            self.max_upload_slots_global,
+            0,
+            PEERS_MAX,
+        );
+        let new_max_ul_slots_per: i32 = parse_int_pref(
+            win.get_pref_max_upload_slots_per_torrent().as_str(),
+            self.max_upload_slots_per_torrent,
+            0,
+            PEERS_MAX,
+        );
+        let new_active_dl: i32 = parse_int_pref(
+            win.get_pref_active_downloads().as_str(),
+            self.active_downloads,
+            0,
+            ACTIVE_MAX,
+        );
+        let new_active_seeds: i32 = parse_int_pref(
+            win.get_pref_active_seeds().as_str(),
+            self.active_seeds,
+            0,
+            ACTIVE_MAX,
+        );
+        let new_active_limit: i32 = parse_int_pref(
+            win.get_pref_active_limit().as_str(),
+            self.active_limit,
+            0,
+            ACTIVE_MAX,
+        );
         let new_proxy_type = win.get_pref_proxy_type().to_string();
         let new_proxy_host = win.get_pref_proxy_host().to_string();
         let new_proxy_port: u16 = win
@@ -689,17 +733,15 @@ impl PreferencesState {
         self.ip_filter_path = win.get_pref_ip_filter_path().to_string();
         self.ip_filter_auto_refresh = win.get_pref_ip_filter_auto_refresh();
 
-        // Speed
+        // Speed — v0.187.3 / Step 3: numeric KiB/s parser. Negative and
+        // non-numeric strings become 0 ("Unlimited"); positive numbers are
+        // treated as KiB/s and multiplied to bytes/sec for the engine.
         let new_dl_limit_enabled = win.get_pref_dl_limit_enabled();
-        let new_dl_limit_value: u64 = parse_rate_limit(win.get_pref_dl_limit_value().as_str())
-            .unwrap_or(self.dl_limit_value);
+        let new_dl_limit_value: u64 = parse_kib_int(win.get_pref_dl_limit_value().as_str());
         let new_ul_limit_enabled = win.get_pref_ul_limit_enabled();
-        let new_ul_limit_value: u64 = parse_rate_limit(win.get_pref_ul_limit_value().as_str())
-            .unwrap_or(self.ul_limit_value);
-        self.alt_dl_limit = parse_rate_limit(win.get_pref_alt_dl_limit().as_str())
-            .unwrap_or(self.alt_dl_limit);
-        self.alt_ul_limit = parse_rate_limit(win.get_pref_alt_ul_limit().as_str())
-            .unwrap_or(self.alt_ul_limit);
+        let new_ul_limit_value: u64 = parse_kib_int(win.get_pref_ul_limit_value().as_str());
+        self.alt_dl_limit = parse_kib_int(win.get_pref_alt_dl_limit().as_str());
+        self.alt_ul_limit = parse_kib_int(win.get_pref_alt_ul_limit().as_str());
         self.alt_speed_enabled = win.get_pref_alt_speed_enabled();
         self.rate_limit_overhead = win.get_pref_rate_limit_overhead();
         self.rate_limit_utp = win.get_pref_rate_limit_utp();
@@ -951,12 +993,24 @@ impl PreferencesState {
             self.webui_reverse_proxy = new_webui_rproxy;
         }
         self.webui_https = win.get_pref_webui_https();
-        self.webui_bind = win.get_pref_webui_bind().to_string();
-        self.webui_port = win
+        // v0.187.3 / 2A: diff webui_bind/port against the committed snapshot
+        // and emit EnginePrefs entries so bridge.rs can both (a) write the
+        // values back to settings.qbt_compat (the single source of truth)
+        // and (b) drive the restart-required toast.
+        let new_webui_bind = win.get_pref_webui_bind().to_string();
+        let new_webui_port: u16 = win
             .get_pref_webui_port()
             .as_str()
             .parse()
             .unwrap_or(self.webui_port);
+        if new_webui_bind != self.webui_bind {
+            ep.qbt_compat_bind_address = Some(new_webui_bind.clone());
+            self.webui_bind = new_webui_bind;
+        }
+        if new_webui_port != self.webui_port {
+            ep.qbt_compat_port = Some(new_webui_port);
+            self.webui_port = new_webui_port;
+        }
         self.ddns_enabled = win.get_pref_ddns_enabled();
         self.ddns_service = win.get_pref_ddns_service().to_string();
         self.ddns_domain = win.get_pref_ddns_domain().to_string();
