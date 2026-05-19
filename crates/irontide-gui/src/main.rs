@@ -16,6 +16,7 @@ mod scheduler;
 mod ip_filter_page;
 #[allow(dead_code)]
 mod logs_stats_page;
+mod category_suggest;
 mod search;
 mod single_instance;
 mod skin;
@@ -291,6 +292,7 @@ fn main() -> Result<(), error::GuiError> {
                     win.set_add_torrent_preview_name(slint::SharedString::new());
                     win.set_add_torrent_preview_size(slint::SharedString::new());
                     win.set_add_torrent_preview_file_count(0);
+                    win.set_add_torrent_suggested_category(slint::SharedString::new());
                 });
                 return;
             }
@@ -309,11 +311,14 @@ fn main() -> Result<(), error::GuiError> {
                     file_selected: Vec::new(),
                     source: app::AddTorrentSource::Magnet(uri_str),
                 };
+                let suggested = bridge::suggest_category(&name, &[], &[])
+                    .unwrap_or_default();
                 cb_state.lock().add_torrent_preview = Some(preview);
                 let _ = weak.upgrade_in_event_loop(move |win| {
                     win.set_add_torrent_preview_name(name.into());
                     win.set_add_torrent_preview_size("Unknown until metadata received".into());
                     win.set_add_torrent_preview_file_count(0);
+                    win.set_add_torrent_suggested_category(suggested.into());
                 });
             } else {
                 cb_state.lock().add_torrent_preview = None;
@@ -321,6 +326,7 @@ fn main() -> Result<(), error::GuiError> {
                     win.set_add_torrent_preview_name("Invalid magnet URI".into());
                     win.set_add_torrent_preview_size(slint::SharedString::new());
                     win.set_add_torrent_preview_file_count(0);
+                    win.set_add_torrent_suggested_category(slint::SharedString::new());
                 });
             }
         });

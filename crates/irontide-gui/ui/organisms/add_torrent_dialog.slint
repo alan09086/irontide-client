@@ -30,6 +30,7 @@ export component AddTorrentDialog {
     in property <bool> skip-checking: false;
     in property <[string]> categories: [];
     in property <string> selected-category: "";
+    in property <string> suggested-category: "";
 
     // Callbacks
     callback add-confirmed(string);  // download_dir
@@ -245,6 +246,34 @@ export component AddTorrentDialog {
                             color: Tokens.fg-3;
                             font-size: Tokens.fs-11;
                             overflow: elide;
+                        }
+
+                        if root.suggested-category != "": HorizontalLayout {
+                            spacing: Tokens.sp-2;
+                            alignment: start;
+
+                            Text {
+                                text: "Suggested:";
+                                color: Tokens.fg-3;
+                                font-size: Tokens.fs-11;
+                                vertical-alignment: center;
+                            }
+
+                            Rectangle {
+                                width: suggest-label.preferred-width + Tokens.sp-4;
+                                height: Tokens.sp-6;
+                                background: Tokens.accent;
+                                border-radius: Tokens.r-sm;
+
+                                suggest-label := Text {
+                                    text: root.suggested-category;
+                                    color: Tokens.accent-fg;
+                                    font-size: Tokens.fs-11;
+                                    font-weight: 600;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
                         }
 
                         // File list (scrollable)
