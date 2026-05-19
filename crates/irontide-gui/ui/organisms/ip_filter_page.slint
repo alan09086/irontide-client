@@ -1,0 +1,442 @@
+import { Tokens } from "../tokens.slint";
+
+export struct IpFilterRuleRow {
+    label: string,
+    first: string,
+    last: string,
+    enabled: bool,
+}
+
+export struct BannedPeerRow {
+    ip: string,
+}
+
+export component IpFilterPage inherits Rectangle {
+    in property <[IpFilterRuleRow]> rules;
+    in property <[BannedPeerRow]> banned-peers;
+    in property <int> filter-range-count: 0;
+    in property <bool> filter-enabled: false;
+
+    callback add-rule(string, string);
+    callback remove-rule(int);
+    callback toggle-rule(int);
+    callback unban-peer(string);
+    callback import-file();
+    callback toggle-filter-enabled();
+
+    background: Tokens.bg-0;
+
+    VerticalLayout {
+        padding: Tokens.sp-3;
+        spacing: Tokens.sp-3;
+
+        // Header
+        HorizontalLayout {
+            spacing: Tokens.sp-2;
+
+            Text {
+                horizontal-stretch: 1;
+                text: "IP Filter";
+                color: Tokens.fg-0;
+                font-size: Tokens.fs-16;
+                font-weight: 700;
+                vertical-alignment: center;
+            }
+
+            // Enable toggle
+            Rectangle {
+                width: Tokens.sp-10 + Tokens.sp-4;
+                height: Tokens.sp-7;
+                border-radius: Tokens.r-sm;
+                background: filter-enable-touch.has-hover
+                    ? Tokens.bg-hover
+                    : (root.filter-enabled ? Tokens.accent : Tokens.bg-1);
+                border-width: 1px;
+                border-color: Tokens.border-1;
+
+                Text {
+                    text: root.filter-enabled ? "Enabled" : "Disabled";
+                    color: root.filter-enabled ? Tokens.accent-fg : Tokens.fg-2;
+                    font-size: Tokens.fs-12;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                filter-enable-touch := TouchArea {
+                    clicked => {
+                        root.toggle-filter-enabled();
+                    }
+                }
+            }
+        }
+
+        // Stats strip
+        HorizontalLayout {
+            spacing: Tokens.sp-3;
+
+            HorizontalLayout {
+                spacing: Tokens.sp-1;
+                Text {
+                    text: root.rules.length;
+                    color: Tokens.fg-0;
+                    font-size: Tokens.fs-13;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: "manual rules";
+                    color: Tokens.fg-2;
+                    font-size: Tokens.fs-12;
+                    vertical-alignment: center;
+                }
+            }
+
+            HorizontalLayout {
+                spacing: Tokens.sp-1;
+                Text {
+                    text: root.filter-range-count;
+                    color: Tokens.fg-0;
+                    font-size: Tokens.fs-13;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: "total ranges";
+                    color: Tokens.fg-2;
+                    font-size: Tokens.fs-12;
+                    vertical-alignment: center;
+                }
+            }
+
+            HorizontalLayout {
+                spacing: Tokens.sp-1;
+                Text {
+                    text: root.banned-peers.length;
+                    color: root.banned-peers.length > 0 ? Tokens.status-error : Tokens.fg-0;
+                    font-size: Tokens.fs-13;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: "banned peers";
+                    color: Tokens.fg-2;
+                    font-size: Tokens.fs-12;
+                    vertical-alignment: center;
+                }
+            }
+
+            Rectangle { horizontal-stretch: 1; }
+
+            // Import button
+            Rectangle {
+                width: Tokens.sp-10 + Tokens.sp-8;
+                height: Tokens.sp-7;
+                border-radius: Tokens.r-sm;
+                background: import-touch.has-hover ? Tokens.accent-hover : Tokens.accent;
+
+                Text {
+                    text: "Import .p2p/.dat";
+                    color: Tokens.accent-fg;
+                    font-size: Tokens.fs-12;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                import-touch := TouchArea {
+                    clicked => {
+                        root.import-file();
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: Tokens.sp-3;
+
+            // Left pane: Rules
+            VerticalLayout {
+                horizontal-stretch: 2;
+                spacing: Tokens.sp-2;
+
+                // Rules header + add form
+                HorizontalLayout {
+                    spacing: Tokens.sp-2;
+
+                    Text {
+                        horizontal-stretch: 1;
+                        text: "Filter Rules";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-14;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // Add rule input
+                HorizontalLayout {
+                    spacing: Tokens.sp-1;
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        height: Tokens.sp-7;
+                        border-radius: Tokens.r-sm;
+                        background: Tokens.bg-0;
+                        border-width: 1px;
+                        border-color: Tokens.border-1;
+
+                        label-input := TextInput {
+                            x: Tokens.sp-1;
+                            y: 0;
+                            width: parent.width - Tokens.sp-2;
+                            height: parent.height;
+                            color: Tokens.fg-0;
+                            font-size: Tokens.fs-12;
+                        }
+                    }
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        height: Tokens.sp-7;
+                        border-radius: Tokens.r-sm;
+                        background: Tokens.bg-0;
+                        border-width: 1px;
+                        border-color: Tokens.border-1;
+
+                        range-input := TextInput {
+                            x: Tokens.sp-1;
+                            y: 0;
+                            width: parent.width - Tokens.sp-2;
+                            height: parent.height;
+                            color: Tokens.fg-0;
+                            font-size: Tokens.fs-12;
+                            accepted => {
+                                root.add-rule(label-input.text, self.text);
+                                label-input.text = "";
+                                self.text = "";
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: Tokens.sp-7;
+                        height: Tokens.sp-7;
+                        border-radius: Tokens.r-sm;
+                        background: add-rule-touch.has-hover ? Tokens.accent-hover : Tokens.accent;
+
+                        Text {
+                            text: "+";
+                            color: Tokens.accent-fg;
+                            font-size: Tokens.fs-14;
+                            font-weight: 700;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        add-rule-touch := TouchArea {
+                            clicked => {
+                                root.add-rule(label-input.text, range-input.text);
+                                label-input.text = "";
+                                range-input.text = "";
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    text: "Enter: label | IP, range (1.2.3.0-1.2.3.255), or CIDR (1.2.3.0/24)";
+                    color: Tokens.fg-2;
+                    font-size: Tokens.fs-11;
+                }
+
+                // Rules list
+                Rectangle {
+                    vertical-stretch: 1;
+                    background: Tokens.bg-1;
+                    border-radius: Tokens.r-md;
+                    border-width: 1px;
+                    border-color: Tokens.border-1;
+
+                    Flickable {
+                        VerticalLayout {
+                            spacing: 1px;
+
+                            // Header
+                            HorizontalLayout {
+                                padding-left: Tokens.sp-2;
+                                padding-right: Tokens.sp-2;
+                                height: Tokens.sp-7;
+
+                                Text {
+                                    horizontal-stretch: 2;
+                                    text: "Label";
+                                    color: Tokens.fg-2;
+                                    font-size: Tokens.fs-12;
+                                    font-weight: 600;
+                                    vertical-alignment: center;
+                                }
+                                Text {
+                                    horizontal-stretch: 2;
+                                    text: "First IP";
+                                    color: Tokens.fg-2;
+                                    font-size: Tokens.fs-12;
+                                    font-weight: 600;
+                                    vertical-alignment: center;
+                                }
+                                Text {
+                                    horizontal-stretch: 2;
+                                    text: "Last IP";
+                                    color: Tokens.fg-2;
+                                    font-size: Tokens.fs-12;
+                                    font-weight: 600;
+                                    vertical-alignment: center;
+                                }
+                                Rectangle { width: Tokens.sp-7; }
+                            }
+
+                            for rule[idx] in root.rules : Rectangle {
+                                height: Tokens.sp-8;
+                                background: rule-hover.has-hover ? Tokens.bg-hover : (mod(idx, 2) == 0 ? Tokens.bg-0 : Tokens.bg-1);
+
+                                HorizontalLayout {
+                                    padding-left: Tokens.sp-2;
+                                    padding-right: Tokens.sp-2;
+                                    spacing: Tokens.sp-1;
+
+                                    Text {
+                                        horizontal-stretch: 2;
+                                        text: rule.label;
+                                        color: rule.enabled ? Tokens.fg-0 : Tokens.fg-2;
+                                        font-size: Tokens.fs-12;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                    }
+                                    Text {
+                                        horizontal-stretch: 2;
+                                        text: rule.first;
+                                        color: Tokens.fg-1;
+                                        font-size: Tokens.fs-12;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                    }
+                                    Text {
+                                        horizontal-stretch: 2;
+                                        text: rule.last;
+                                        color: Tokens.fg-1;
+                                        font-size: Tokens.fs-12;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                    }
+
+                                    Rectangle {
+                                        width: Tokens.sp-7;
+                                        height: Tokens.sp-6;
+                                        border-radius: Tokens.r-sm;
+                                        background: rm-touch.has-hover ? Tokens.status-error : Tokens.bg-hover;
+
+                                        Text {
+                                            text: "×";
+                                            color: Tokens.fg-0;
+                                            font-size: Tokens.fs-13;
+                                            horizontal-alignment: center;
+                                            vertical-alignment: center;
+                                        }
+
+                                        rm-touch := TouchArea {
+                                            clicked => { root.remove-rule(idx); }
+                                        }
+                                    }
+                                }
+
+                                rule-hover := TouchArea {
+                                    clicked => { root.toggle-rule(idx); }
+                                }
+                            }
+
+                            if root.rules.length == 0 : Text {
+                                text: "No manual rules configured";
+                                color: Tokens.fg-2;
+                                font-size: Tokens.fs-12;
+                                horizontal-alignment: center;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Right pane: Banned peers
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: Tokens.sp-2;
+
+                Text {
+                    text: "Banned Peers";
+                    color: Tokens.fg-0;
+                    font-size: Tokens.fs-14;
+                    font-weight: 600;
+                }
+
+                Rectangle {
+                    vertical-stretch: 1;
+                    background: Tokens.bg-1;
+                    border-radius: Tokens.r-md;
+                    border-width: 1px;
+                    border-color: Tokens.border-1;
+
+                    Flickable {
+                        VerticalLayout {
+                            spacing: 1px;
+
+                            for peer[idx] in root.banned-peers : Rectangle {
+                                height: Tokens.sp-8;
+                                background: banned-hover.has-hover ? Tokens.bg-hover : (mod(idx, 2) == 0 ? Tokens.bg-0 : Tokens.bg-1);
+
+                                HorizontalLayout {
+                                    padding-left: Tokens.sp-2;
+                                    padding-right: Tokens.sp-2;
+                                    spacing: Tokens.sp-1;
+
+                                    Text {
+                                        horizontal-stretch: 1;
+                                        text: peer.ip;
+                                        color: Tokens.status-error;
+                                        font-size: Tokens.fs-12;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                    }
+
+                                    Rectangle {
+                                        width: Tokens.sp-10;
+                                        height: Tokens.sp-6;
+                                        border-radius: Tokens.r-sm;
+                                        background: unban-touch.has-hover ? Tokens.accent-hover : Tokens.accent;
+
+                                        Text {
+                                            text: "Unban";
+                                            color: Tokens.accent-fg;
+                                            font-size: Tokens.fs-11;
+                                            horizontal-alignment: center;
+                                            vertical-alignment: center;
+                                        }
+
+                                        unban-touch := TouchArea {
+                                            clicked => { root.unban-peer(peer.ip); }
+                                        }
+                                    }
+                                }
+
+                                banned-hover := TouchArea {}
+                            }
+
+                            if root.banned-peers.length == 0 : Text {
+                                text: "No banned peers";
+                                color: Tokens.fg-2;
+                                font-size: Tokens.fs-12;
+                                horizontal-alignment: center;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

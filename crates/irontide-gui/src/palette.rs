@@ -34,6 +34,7 @@ pub enum PaletteCommandId {
     ToggleSearch,
     ToggleRss,
     ToggleScheduler,
+    ToggleIpFilter,
     OpenPreferences,
     SelectAll,
     // Settings
@@ -200,6 +201,12 @@ pub static COMMANDS: &[PaletteCommand] = &[
         hotkey_hint: "",
     },
     PaletteCommand {
+        id: PaletteCommandId::ToggleIpFilter,
+        label: "IP Filter",
+        category: PaletteCategory::Tools,
+        hotkey_hint: "",
+    },
+    PaletteCommand {
         id: PaletteCommandId::SelectAll,
         label: "Select All",
         category: PaletteCategory::Tools,
@@ -311,6 +318,7 @@ pub enum DispatchAction {
     ToggleSearch,
     ToggleRss,
     ToggleScheduler,
+    ToggleIpFilter,
     SendCommand(crate::app::GuiCommand),
     SetPredicate(crate::sidebar::SidebarPredicate),
     OpenPreferences,
@@ -381,6 +389,7 @@ pub fn dispatch(id: PaletteCommandId, selected: &[String]) -> DispatchAction {
         PaletteCommandId::ToggleSearch => DispatchAction::ToggleSearch,
         PaletteCommandId::ToggleRss => DispatchAction::ToggleRss,
         PaletteCommandId::ToggleScheduler => DispatchAction::ToggleScheduler,
+        PaletteCommandId::ToggleIpFilter => DispatchAction::ToggleIpFilter,
         PaletteCommandId::OpenPreferences => DispatchAction::OpenPreferences,
         PaletteCommandId::SelectAll => DispatchAction::SelectAll,
         PaletteCommandId::Quit => DispatchAction::Quit,

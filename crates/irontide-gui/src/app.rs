@@ -331,6 +331,18 @@ pub enum GuiCommand {
     SchedulerApplyPreset { name: String },
     /// M198: update the limited rate.
     SchedulerLimitedRateChanged { rate_kib: u32 },
+    /// M199: add an IP filter rule.
+    IpFilterAddRule { label: String, range: String },
+    /// M199: remove an IP filter rule by index.
+    IpFilterRemoveRule { index: usize },
+    /// M199: toggle an IP filter rule's enabled state.
+    IpFilterToggleRule { index: usize },
+    /// M199: unban a peer IP.
+    IpFilterUnbanPeer { ip: String },
+    /// M199: import a .p2p or .dat file.
+    IpFilterImportFile,
+    /// M199: toggle IP filter enabled.
+    IpFilterToggleEnabled,
     /// M180: set per-torrent DL/UL rate limits.
     SetTorrentRateLimit {
         /// Hex-encoded info-hash string.

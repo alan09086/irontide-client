@@ -672,6 +672,24 @@ async fn handle_gui_command(
         GuiCommand::SchedulerLimitedRateChanged { rate_kib } => {
             handle_scheduler_limited_rate_changed(rate_kib, weak);
         }
+        GuiCommand::IpFilterAddRule { label, range } => {
+            handle_ip_filter_add_rule(&label, &range, weak);
+        }
+        GuiCommand::IpFilterRemoveRule { index } => {
+            handle_ip_filter_remove_rule(index, weak);
+        }
+        GuiCommand::IpFilterToggleRule { index } => {
+            handle_ip_filter_toggle_rule(index, weak);
+        }
+        GuiCommand::IpFilterUnbanPeer { ip } => {
+            handle_ip_filter_unban_peer(&ip, session, weak).await;
+        }
+        GuiCommand::IpFilterImportFile => {
+            handle_ip_filter_import_file(weak);
+        }
+        GuiCommand::IpFilterToggleEnabled => {
+            handle_ip_filter_toggle_enabled(session, weak).await;
+        }
     }
 
     let elapsed = start.elapsed();
@@ -2373,6 +2391,179 @@ fn handle_scheduler_limited_rate_changed(
         tracing::warn!("failed to save schedule: {e}");
     }
     push_scheduler_state(weak);
+}
+
+// ── IP Filter handlers (M199) ───────────────────────────────────────────────
+
+fn handle_ip_filter_add_rule(
+    label: &str,
+    range: &str,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    if let Some((first, last)) = crate::ip_filter_page::parse_ip_range(range) {
+        let mut state = crate::ip_filter_page::load_state();
+        state.rules.push(crate::ip_filter_page::ManualRule {
+            label: if label.is_empty() {
+                range.to_string()
+            } else {
+                label.to_string()
+            },
+            first: first.to_string(),
+            last: last.to_string(),
+            enabled: true,
+        });
+        if let Err(e) = crate::ip_filter_page::save_state(&state) {
+            tracing::warn!("failed to save IP filter state: {e}");
+        }
+        push_ip_filter_state(weak);
+    }
+}
+
+fn handle_ip_filter_remove_rule(index: usize, weak: &slint::Weak<crate::MainWindow>) {
+    let mut state = crate::ip_filter_page::load_state();
+    if index < state.rules.len() {
+        state.rules.remove(index);
+        if let Err(e) = crate::ip_filter_page::save_state(&state) {
+            tracing::warn!("failed to save IP filter state: {e}");
+        }
+    }
+    push_ip_filter_state(weak);
+}
+
+fn handle_ip_filter_toggle_rule(index: usize, weak: &slint::Weak<crate::MainWindow>) {
+    let mut state = crate::ip_filter_page::load_state();
+    if let Some(rule) = state.rules.get_mut(index) {
+        rule.enabled = !rule.enabled;
+        if let Err(e) = crate::ip_filter_page::save_state(&state) {
+            tracing::warn!("failed to save IP filter state: {e}");
+        }
+    }
+    push_ip_filter_state(weak);
+}
+
+async fn handle_ip_filter_unban_peer(
+    ip: &str,
+    session: &irontide::session::SessionHandle,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    if let Ok(addr) = ip.parse::<std::net::IpAddr>()
+        && let Err(e) = session.unban_peer(addr).await
+    {
+        tracing::warn!("failed to unban {ip}: {e}");
+    }
+    push_ip_filter_state_with_session(weak, session).await;
+}
+
+fn handle_ip_filter_import_file(weak: &slint::Weak<crate::MainWindow>) {
+    let dialog = rfd::FileDialog::new()
+        .add_filter("IP filter files", &["p2p", "dat", "txt"])
+        .set_title("Import IP filter file");
+    if let Some(path) = dialog.pick_file() {
+        match std::fs::read_to_string(&path) {
+            Ok(content) => {
+                let result = if path.extension().is_some_and(|e| e == "dat") {
+                    irontide::session::parse_dat(&content)
+                } else {
+                    irontide::session::parse_p2p(&content)
+                };
+                match result {
+                    Ok(filter) => {
+                        let count = filter.num_ranges();
+                        let mut state = crate::ip_filter_page::load_state();
+                        let filename = path
+                            .file_name()
+                            .map_or_else(|| "imported".to_string(), |n| n.to_string_lossy().to_string());
+                        if !state.imported_files.contains(&filename) {
+                            state.imported_files.push(filename);
+                        }
+                        if let Err(e) = crate::ip_filter_page::save_state(&state) {
+                            tracing::warn!("failed to save IP filter state: {e}");
+                        }
+                        tracing::info!("imported {count} IP filter ranges from {}", path.display());
+                    }
+                    Err(e) => {
+                        tracing::warn!("failed to parse IP filter file {}: {e}", path.display());
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!("failed to read IP filter file {}: {e}", path.display());
+            }
+        }
+    }
+    push_ip_filter_state(weak);
+}
+
+async fn handle_ip_filter_toggle_enabled(
+    session: &irontide::session::SessionHandle,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    if let Ok(mut settings) = session.settings().await {
+        settings.ip_filter_enabled = !settings.ip_filter_enabled;
+        if let Err(e) = session.apply_settings(settings).await {
+            tracing::warn!("failed to toggle IP filter: {e}");
+        }
+    }
+    push_ip_filter_state_with_session(weak, session).await;
+}
+
+pub fn push_ip_filter_state(weak: &slint::Weak<crate::MainWindow>) {
+    let state = crate::ip_filter_page::load_state();
+    let rule_rows: Vec<crate::IpFilterRuleRow> = state
+        .rules
+        .iter()
+        .map(|r| crate::IpFilterRuleRow {
+            label: r.label.clone().into(),
+            first: r.first.clone().into(),
+            last: r.last.clone().into(),
+            enabled: r.enabled,
+        })
+        .collect();
+
+    let _ = weak.upgrade_in_event_loop(move |win| {
+        let model = std::rc::Rc::new(slint::VecModel::from(rule_rows));
+        win.set_ip_filter_rules(slint::ModelRc::from(model));
+    });
+}
+
+async fn push_ip_filter_state_with_session(
+    weak: &slint::Weak<crate::MainWindow>,
+    session: &irontide::session::SessionHandle,
+) {
+    let state = crate::ip_filter_page::load_state();
+    let rule_rows: Vec<crate::IpFilterRuleRow> = state
+        .rules
+        .iter()
+        .map(|r| crate::IpFilterRuleRow {
+            label: r.label.clone().into(),
+            first: r.first.clone().into(),
+            last: r.last.clone().into(),
+            enabled: r.enabled,
+        })
+        .collect();
+
+    let banned_rows: Vec<crate::BannedPeerRow> = session
+        .banned_peers()
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|ip| crate::BannedPeerRow {
+            ip: ip.to_string().into(),
+        })
+        .collect();
+
+    let filter_enabled = session
+        .settings()
+        .await
+        .is_ok_and(|s| s.ip_filter_enabled);
+
+    let _ = weak.upgrade_in_event_loop(move |win| {
+        let rule_model = std::rc::Rc::new(slint::VecModel::from(rule_rows));
+        win.set_ip_filter_rules(slint::ModelRc::from(rule_model));
+        let banned_model = std::rc::Rc::new(slint::VecModel::from(banned_rows));
+        win.set_ip_filter_banned_peers(slint::ModelRc::from(banned_model));
+        win.set_ip_filter_enabled(filter_enabled);
+    });
 }
 
 pub fn push_scheduler_state(weak: &slint::Weak<crate::MainWindow>) {

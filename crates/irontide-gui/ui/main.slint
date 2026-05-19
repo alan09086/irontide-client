@@ -29,8 +29,9 @@ import { CommandPalette, PaletteItem, PaletteCategory } from "organisms/command_
 import { SearchPage, SearchResultRow } from "organisms/search_page.slint";
 import { RssPage, RssFeedRow, RssItemRow, RssRuleRow } from "organisms/rss_page.slint";
 import { SchedulerPage, SchedulerCell } from "organisms/scheduler_page.slint";
+import { IpFilterPage, IpFilterRuleRow, BannedPeerRow } from "organisms/ip_filter_page.slint";
 
-export { Tokens, Shadow, SidebarRow, TorrentRow, FileTreeRow, PaletteItem, PaletteCategory, SearchResultRow, RssFeedRow, RssItemRow, RssRuleRow, SchedulerCell }
+export { Tokens, Shadow, SidebarRow, TorrentRow, FileTreeRow, PaletteItem, PaletteCategory, SearchResultRow, RssFeedRow, RssItemRow, RssRuleRow, SchedulerCell, IpFilterRuleRow, BannedPeerRow }
 
 component MenuButton {
     in property <string> text;
@@ -378,6 +379,19 @@ export component MainWindow inherits Window {
     callback scheduler-cell-clicked(int, int);
     callback scheduler-apply-preset(string);
     callback scheduler-limited-rate-changed(int);
+
+    // ── IP Filter (M199) ──
+    in-out property <bool> show-ip-filter-page: false;
+    in-out property <[IpFilterRuleRow]> ip-filter-rules;
+    in-out property <[BannedPeerRow]> ip-filter-banned-peers;
+    in-out property <int> ip-filter-range-count: 0;
+    in-out property <bool> ip-filter-enabled: false;
+    callback ip-filter-add-rule(string, string);
+    callback ip-filter-remove-rule(int);
+    callback ip-filter-toggle-rule(int);
+    callback ip-filter-unban-peer(string);
+    callback ip-filter-import-file();
+    callback ip-filter-toggle-enabled();
 
     // ── Modifier tracking ──
     in-out property <bool> shift-held: false;
@@ -845,7 +859,21 @@ export component MainWindow inherits Window {
                         limited-rate-changed(rate) => { root.scheduler-limited-rate-changed(rate); }
                     }
 
-                    if !root.show-search-page && !root.show-rss-page && !root.show-scheduler-page : TorrentListView {
+                    if root.show-ip-filter-page : IpFilterPage {
+                        vertical-stretch: 1;
+                        rules: root.ip-filter-rules;
+                        banned-peers: root.ip-filter-banned-peers;
+                        filter-range-count: root.ip-filter-range-count;
+                        filter-enabled: root.ip-filter-enabled;
+                        add-rule(label, range) => { root.ip-filter-add-rule(label, range); }
+                        remove-rule(idx) => { root.ip-filter-remove-rule(idx); }
+                        toggle-rule(idx) => { root.ip-filter-toggle-rule(idx); }
+                        unban-peer(ip) => { root.ip-filter-unban-peer(ip); }
+                        import-file() => { root.ip-filter-import-file(); }
+                        toggle-filter-enabled() => { root.ip-filter-toggle-enabled(); }
+                    }
+
+                    if !root.show-search-page && !root.show-rss-page && !root.show-scheduler-page && !root.show-ip-filter-page : TorrentListView {
                         vertical-stretch: 2;
                         session-ready: root.session-ready;
                         error-text: root.error-text;
@@ -871,7 +899,7 @@ export component MainWindow inherits Window {
                         column-visibility-toggled(c) => { root.column-visibility-toggled(c); }
                     }
 
-                    if root.session-ready && root.error-text == "" && !root.show-search-page && !root.show-rss-page && !root.show-scheduler-page: Rectangle {
+                    if root.session-ready && root.error-text == "" && !root.show-search-page && !root.show-rss-page && !root.show-scheduler-page && !root.show-ip-filter-page: Rectangle {
                         vertical-stretch: 1;
                         min-height: Tokens.sp-10 * 5;
                         background: Tokens.bg-1;

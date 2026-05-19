@@ -13,6 +13,7 @@ mod sidebar;
 mod sidebar_view;
 mod rss;
 mod scheduler;
+mod ip_filter_page;
 mod search;
 mod single_instance;
 mod skin;
@@ -1037,6 +1038,7 @@ fn main() -> Result<(), error::GuiError> {
                         if !current {
                             win.set_show_rss_page(false);
                             win.set_show_scheduler_page(false);
+                            win.set_show_ip_filter_page(false);
                         }
                     });
                 }
@@ -1047,6 +1049,7 @@ fn main() -> Result<(), error::GuiError> {
                         if !current {
                             win.set_show_search_page(false);
                             win.set_show_scheduler_page(false);
+                            win.set_show_ip_filter_page(false);
                         }
                     });
                 }
@@ -1058,7 +1061,21 @@ fn main() -> Result<(), error::GuiError> {
                         if !current {
                             win.set_show_search_page(false);
                             win.set_show_rss_page(false);
+                            win.set_show_ip_filter_page(false);
                             crate::bridge::push_scheduler_state(&sched_weak);
+                        }
+                    });
+                }
+                palette::DispatchAction::ToggleIpFilter => {
+                    let filter_weak = weak2.clone();
+                    let _ = weak2.upgrade_in_event_loop(move |win| {
+                        let current = win.get_show_ip_filter_page();
+                        win.set_show_ip_filter_page(!current);
+                        if !current {
+                            win.set_show_search_page(false);
+                            win.set_show_rss_page(false);
+                            win.set_show_scheduler_page(false);
+                            crate::bridge::push_ip_filter_state(&filter_weak);
                         }
                     });
                 }
@@ -1321,6 +1338,71 @@ fn main() -> Result<(), error::GuiError> {
                 let _ = tx.send(app::GuiCommand::SchedulerLimitedRateChanged {
                     rate_kib: u32::try_from(rate).unwrap_or(512),
                 });
+            }
+        });
+    }
+
+    // 6m. Wire IP Filter callbacks (M199).
+    {
+        let cb_state = state.clone();
+        main_window.on_ip_filter_add_rule(move |label, range| {
+            let cmd_tx = cb_state.lock().cmd_tx.clone();
+            if let Some(tx) = cmd_tx {
+                let _ = tx.send(app::GuiCommand::IpFilterAddRule {
+                    label: label.to_string(),
+                    range: range.to_string(),
+                });
+            }
+        });
+    }
+    {
+        let cb_state = state.clone();
+        main_window.on_ip_filter_remove_rule(move |idx| {
+            let cmd_tx = cb_state.lock().cmd_tx.clone();
+            if let Some(tx) = cmd_tx {
+                let _ = tx.send(app::GuiCommand::IpFilterRemoveRule {
+                    index: usize::try_from(idx).unwrap_or(0),
+                });
+            }
+        });
+    }
+    {
+        let cb_state = state.clone();
+        main_window.on_ip_filter_toggle_rule(move |idx| {
+            let cmd_tx = cb_state.lock().cmd_tx.clone();
+            if let Some(tx) = cmd_tx {
+                let _ = tx.send(app::GuiCommand::IpFilterToggleRule {
+                    index: usize::try_from(idx).unwrap_or(0),
+                });
+            }
+        });
+    }
+    {
+        let cb_state = state.clone();
+        main_window.on_ip_filter_unban_peer(move |ip| {
+            let cmd_tx = cb_state.lock().cmd_tx.clone();
+            if let Some(tx) = cmd_tx {
+                let _ = tx.send(app::GuiCommand::IpFilterUnbanPeer {
+                    ip: ip.to_string(),
+                });
+            }
+        });
+    }
+    {
+        let cb_state = state.clone();
+        main_window.on_ip_filter_import_file(move || {
+            let cmd_tx = cb_state.lock().cmd_tx.clone();
+            if let Some(tx) = cmd_tx {
+                let _ = tx.send(app::GuiCommand::IpFilterImportFile);
+            }
+        });
+    }
+    {
+        let cb_state = state.clone();
+        main_window.on_ip_filter_toggle_enabled(move || {
+            let cmd_tx = cb_state.lock().cmd_tx.clone();
+            if let Some(tx) = cmd_tx {
+                let _ = tx.send(app::GuiCommand::IpFilterToggleEnabled);
             }
         });
     }
