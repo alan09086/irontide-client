@@ -184,6 +184,11 @@ pub fn handle_menu_action(
                 win.set_show_add_torrent_dialog(true);
             });
         }
+        crate::app::MenuAction::CreateTorrent => {
+            let _ = weak.upgrade_in_event_loop(|win| {
+                win.set_show_create_torrent_dialog(true);
+            });
+        }
         crate::app::MenuAction::Preferences => {
             let _ = weak.upgrade_in_event_loop(|win| {
                 win.set_show_preferences_dialog(true);
@@ -595,6 +600,9 @@ async fn handle_gui_command(
             skip_checking,
         } => {
             handle_add_torrent_from_preview(preview, download_dir, start_paused, skip_checking, session, weak).await;
+        }
+        GuiCommand::CreateTorrent { state } => {
+            handle_create_torrent(state, weak);
         }
     }
 
@@ -1492,6 +1500,235 @@ async fn confirm_settings_to_gui(
     });
 }
 
+/// Recursively sum file sizes in a directory tree (no external dependency).
+fn dir_total_size(dir: &std::path::Path) -> u64 {
+    let mut total: u64 = 0;
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        if let Ok(entries) = std::fs::read_dir(&current) {
+            for entry in entries.flatten() {
+                let ft = entry.file_type();
+                if let Ok(ft) = ft {
+                    if ft.is_file() {
+                        total += entry.metadata().map_or(0, |m| m.len());
+                    } else if ft.is_dir() {
+                        stack.push(entry.path());
+                    }
+                }
+            }
+        }
+    }
+    total
+}
+
+/// M192: Handle "Browse..." for the Create Torrent source (file or folder).
+pub fn handle_browse_create_torrent_source(
+    weak: &slint::Weak<crate::MainWindow>,
+    state: &Arc<Mutex<AppState>>,
+) {
+    let weak = weak.clone();
+    let state = state.clone();
+    std::thread::spawn(move || {
+        let path = rfd::FileDialog::new().pick_folder().or_else(|| {
+            rfd::FileDialog::new().pick_file()
+        });
+        if let Some(p) = path {
+            let path_str = p.to_string_lossy().into_owned();
+            let name = p
+                .file_name()
+                .map_or_else(|| path_str.clone(), |n| n.to_string_lossy().into_owned());
+            let total_size = if p.is_dir() {
+                dir_total_size(&p)
+            } else {
+                std::fs::metadata(&p).map_or(0, |m| m.len())
+            };
+            let size_str = crate::format::format_size(total_size);
+            let default_output = p
+                .parent()
+                .unwrap_or(p.as_path())
+                .join(format!("{name}.torrent"))
+                .to_string_lossy()
+                .into_owned();
+
+            {
+                let mut st = state.lock();
+                st.create_torrent.source_path.clone_from(&path_str);
+                st.create_torrent.source_name.clone_from(&name);
+                st.create_torrent.source_size_bytes = total_size;
+                st.create_torrent.output_path.clone_from(&default_output);
+                st.create_torrent.create_error.clear();
+            }
+
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_create_torrent_source_path(path_str.into());
+                win.set_create_torrent_source_name(name.into());
+                win.set_create_torrent_source_size(size_str.into());
+                win.set_create_torrent_output_path(default_output.into());
+                win.set_create_torrent_error(slint::SharedString::default());
+            });
+        }
+    });
+}
+
+/// M192: Handle "Browse..." for the Create Torrent output file path.
+pub fn handle_browse_create_torrent_output(weak: &slint::Weak<crate::MainWindow>, state: &Arc<Mutex<AppState>>) {
+    let weak = weak.clone();
+    let state = state.clone();
+    std::thread::spawn(move || {
+        let file = rfd::FileDialog::new()
+            .add_filter("Torrent", &["torrent"])
+            .set_file_name("output.torrent")
+            .save_file();
+        if let Some(p) = file {
+            let path_str = p.to_string_lossy().into_owned();
+            state.lock().create_torrent.output_path.clone_from(&path_str);
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_create_torrent_output_path(path_str.into());
+            });
+        }
+    });
+}
+
+/// M192: parse tracker text into `(url, tier)` pairs.
+///
+/// Blank lines separate tiers. Within a tier, each non-empty line is a tracker URL.
+fn parse_tracker_tiers(text: &str) -> Vec<(String, usize)> {
+    let mut result = Vec::new();
+    let mut tier: usize = 0;
+    let mut tier_had_url = false;
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            if tier_had_url {
+                tier += 1;
+                tier_had_url = false;
+            }
+        } else {
+            result.push((trimmed.to_owned(), tier));
+            tier_had_url = true;
+        }
+    }
+    result
+}
+
+/// M192: resolve the piece size label to bytes, or `None` for auto.
+fn resolve_piece_size(label: &str, total_size: u64) -> u64 {
+    match label {
+        "256 KiB" => 256 * 1024,
+        "512 KiB" => 512 * 1024,
+        "1 MiB" => 1024 * 1024,
+        "2 MiB" => 2 * 1024 * 1024,
+        "4 MiB" => 4 * 1024 * 1024,
+        _ => irontide::core::auto_piece_size(total_size),
+    }
+}
+
+/// M192: run `CreateTorrent::generate_with_progress` on a background thread.
+fn handle_create_torrent(
+    ct_state: crate::app::CreateTorrentState,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    let weak = weak.clone();
+    let weak_progress = weak.clone();
+    let weak_done = weak.clone();
+    let weak_err = weak.clone();
+
+    // Signal creation started
+    let _ = weak.upgrade_in_event_loop(|win| {
+        win.set_create_torrent_is_creating(true);
+        win.set_create_torrent_progress(0.0);
+        win.set_create_torrent_error(slint::SharedString::default());
+    });
+
+    std::thread::spawn(move || {
+        let source = std::path::Path::new(&ct_state.source_path);
+        let mut builder = irontide::core::CreateTorrent::new();
+
+        if source.is_dir() {
+            builder = builder.add_directory(source);
+        } else {
+            builder = builder.add_file(source);
+        }
+
+        let piece_size = resolve_piece_size(&ct_state.piece_size_label, ct_state.source_size_bytes);
+        builder = builder.set_piece_size(piece_size);
+
+        let version = match ct_state.format {
+            crate::app::CreateTorrentFormat::V1 => irontide::core::TorrentVersion::V1Only,
+            crate::app::CreateTorrentFormat::V2 => irontide::core::TorrentVersion::V2Only,
+            crate::app::CreateTorrentFormat::Hybrid => irontide::core::TorrentVersion::Hybrid,
+        };
+        builder = builder.set_version(version);
+
+        if ct_state.is_private {
+            builder = builder.set_private(true);
+        }
+
+        if !ct_state.comment.is_empty() {
+            builder = builder.set_comment(ct_state.comment);
+        }
+
+        if !ct_state.source_tag.is_empty() {
+            builder = builder.set_source(ct_state.source_tag);
+        }
+
+        builder = builder.set_creator("IronTide".to_owned());
+
+        for (url, tier) in parse_tracker_tiers(&ct_state.tracker_text) {
+            builder = builder.add_tracker(url, tier);
+        }
+
+        for line in ct_state.web_seed_text.lines() {
+            let trimmed = line.trim();
+            if !trimmed.is_empty() {
+                builder = builder.add_web_seed(trimmed.to_owned());
+            }
+        }
+
+        let result = builder.generate_with_progress(|current, total| {
+            if total > 0 {
+                #[allow(
+                    clippy::cast_precision_loss,
+                    reason = "M192: piece count ratio — precision is ample for a progress bar"
+                )]
+                let progress = current as f32 / total as f32;
+                let weak_p = weak_progress.clone();
+                let _ = weak_p.upgrade_in_event_loop(move |win| {
+                    win.set_create_torrent_progress(progress);
+                });
+            }
+        });
+
+        match result {
+            Ok(create_result) => {
+                if let Err(e) = std::fs::write(&ct_state.output_path, &create_result.bytes) {
+                    let msg = format!("Failed to write .torrent file: {e}");
+                    let _ = weak_err.upgrade_in_event_loop(move |win| {
+                        win.set_create_torrent_is_creating(false);
+                        win.set_create_torrent_error(msg.into());
+                    });
+                    return;
+                }
+                let output = ct_state.output_path.clone();
+                let _ = weak_done.upgrade_in_event_loop(move |win| {
+                    win.set_create_torrent_is_creating(false);
+                    win.set_create_torrent_progress(1.0);
+                    win.set_create_torrent_error(slint::SharedString::default());
+                    win.set_show_create_torrent_dialog(false);
+                });
+                show_toast(&weak, &format!("Created {output}"), false);
+            }
+            Err(e) => {
+                let msg = format!("Torrent creation failed: {e}");
+                let _ = weak_err.upgrade_in_event_loop(move |win| {
+                    win.set_create_torrent_is_creating(false);
+                    win.set_create_torrent_error(msg.into());
+                });
+            }
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1758,5 +1995,79 @@ mod tests {
         let dir = tempfile::tempdir().expect("create temp dir");
         // Should not panic — just returns early.
         delete_torrent_files(dir.path(), "does_not_exist.bin", 1);
+    }
+
+    // ── M192: Create Torrent helpers ─────────────────────────────────────
+
+    #[test]
+    fn parse_tracker_tiers_single_tier() {
+        let text = "http://tracker1.example.com/announce\nhttp://tracker2.example.com/announce";
+        let tiers = parse_tracker_tiers(text);
+        assert_eq!(tiers.len(), 2);
+        assert_eq!(tiers[0].1, 0);
+        assert_eq!(tiers[1].1, 0);
+    }
+
+    #[test]
+    fn parse_tracker_tiers_multi_tier() {
+        let text = "http://tier0.example.com/announce\n\nhttp://tier1a.example.com/announce\nhttp://tier1b.example.com/announce\n\nhttp://tier2.example.com/announce";
+        let tiers = parse_tracker_tiers(text);
+        assert_eq!(tiers.len(), 4);
+        assert_eq!(tiers[0].1, 0);
+        assert_eq!(tiers[1].1, 1);
+        assert_eq!(tiers[2].1, 1);
+        assert_eq!(tiers[3].1, 2);
+    }
+
+    #[test]
+    fn parse_tracker_tiers_empty_input() {
+        assert!(parse_tracker_tiers("").is_empty());
+        assert!(parse_tracker_tiers("   \n  \n").is_empty());
+    }
+
+    #[test]
+    fn parse_tracker_tiers_trims_whitespace() {
+        let text = "  http://t.example.com/announce  ";
+        let tiers = parse_tracker_tiers(text);
+        assert_eq!(tiers.len(), 1);
+        assert_eq!(tiers[0].0, "http://t.example.com/announce");
+    }
+
+    #[test]
+    fn resolve_piece_size_auto_uses_core() {
+        let size = resolve_piece_size("Auto", 500_000_000);
+        assert_eq!(size, irontide::core::auto_piece_size(500_000_000));
+    }
+
+    #[test]
+    fn resolve_piece_size_explicit_values() {
+        assert_eq!(resolve_piece_size("256 KiB", 0), 256 * 1024);
+        assert_eq!(resolve_piece_size("512 KiB", 0), 512 * 1024);
+        assert_eq!(resolve_piece_size("1 MiB", 0), 1024 * 1024);
+        assert_eq!(resolve_piece_size("2 MiB", 0), 2 * 1024 * 1024);
+        assert_eq!(resolve_piece_size("4 MiB", 0), 4 * 1024 * 1024);
+    }
+
+    #[test]
+    fn resolve_piece_size_unknown_falls_back_to_auto() {
+        let size = resolve_piece_size("garbage", 1_000_000);
+        assert_eq!(size, irontide::core::auto_piece_size(1_000_000));
+    }
+
+    #[test]
+    fn dir_total_size_empty_dir() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        assert_eq!(dir_total_size(dir.path()), 0);
+    }
+
+    #[test]
+    fn dir_total_size_with_files() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        std::fs::write(dir.path().join("a.txt"), b"hello").unwrap();
+        std::fs::write(dir.path().join("b.txt"), b"world!").unwrap();
+        let sub = dir.path().join("sub");
+        std::fs::create_dir(&sub).unwrap();
+        std::fs::write(sub.join("c.txt"), b"nested").unwrap();
+        assert_eq!(dir_total_size(dir.path()), 5 + 6 + 6);
     }
 }

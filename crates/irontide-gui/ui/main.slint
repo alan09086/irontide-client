@@ -7,6 +7,7 @@
 import { Tokens, Shadow } from "tokens.slint";
 import { StatusBar } from "widgets/status_bar.slint";
 import { AddTorrentDialog, AddTorrentFileRow } from "organisms/add_torrent_dialog.slint";
+import { CreateTorrentDialog } from "organisms/create_torrent_dialog.slint";
 import { ContextMenu } from "widgets/context_menu.slint";
 import { ConfirmDeleteDialog } from "widgets/confirm_delete_dialog.slint";
 import { PreferencesDialog } from "organisms/preferences_dialog.slint";
@@ -129,7 +130,33 @@ component MenuBar {
                     }
                 }
 
-                // Item 2: Preferences...
+                // Item 2: Create Torrent...
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: create-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+
+                    Text {
+                        text: "Create Torrent\u{2026}";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+
+                    create-touch := TouchArea {
+                        clicked => { root.menu-file-action(2); }
+                    }
+                }
+
+                // Separator
+                Rectangle {
+                    height: Tokens.border-width-thin;
+                    background: Tokens.border-1;
+                }
+
+                // Item 3: Preferences...
                 Rectangle {
                     height: Tokens.row-h;
                     background: prefs-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
@@ -158,7 +185,7 @@ component MenuBar {
                     }
 
                     prefs-touch := TouchArea {
-                        clicked => { root.menu-file-action(2); }
+                        clicked => { root.menu-file-action(3); }
                     }
                 }
 
@@ -168,7 +195,7 @@ component MenuBar {
                     background: Tokens.border-1;
                 }
 
-                // Item 3: Quit
+                // Item 4: Quit
                 Rectangle {
                     height: Tokens.row-h;
                     background: quit-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
@@ -184,7 +211,7 @@ component MenuBar {
                     }
 
                     quit-touch := TouchArea {
-                        clicked => { root.menu-file-action(3); }
+                        clicked => { root.menu-file-action(4); }
                     }
                 }
             }
@@ -360,6 +387,31 @@ export component MainWindow inherits Window {
     callback add-torrent-toggle-skip-checking();
     callback browse-torrent-file();
     callback browse-torrent-download-dir();
+
+    // ── Create Torrent Dialog (M192) ──
+    in-out property <bool> show-create-torrent-dialog: false;
+    in-out property <string> create-torrent-source-path: "";
+    in-out property <string> create-torrent-source-name: "";
+    in-out property <string> create-torrent-source-size: "";
+    in-out property <string> create-torrent-tracker-text: "";
+    in-out property <string> create-torrent-comment: "";
+    in-out property <string> create-torrent-piece-size: "Auto";
+    in-out property <string> create-torrent-format: "hybrid";
+    in-out property <bool> create-torrent-private: false;
+    in-out property <string> create-torrent-source-tag: "";
+    in-out property <string> create-torrent-output-path: "";
+    in-out property <bool> create-torrent-is-creating: false;
+    in-out property <float> create-torrent-progress: 0.0;
+    in-out property <string> create-torrent-error: "";
+    callback create-torrent-browse-source();
+    callback create-torrent-browse-output();
+    callback create-torrent-confirmed();
+    callback create-torrent-format-changed(string);
+    callback create-torrent-toggle-private();
+    callback create-torrent-tracker-edited(string);
+    callback create-torrent-comment-edited(string);
+    callback create-torrent-piece-size-changed(string);
+    callback create-torrent-source-tag-edited(string);
 
     // ── Context Menu ──
     in-out property <bool> show-context-menu: false;
@@ -582,7 +634,7 @@ export component MainWindow inherits Window {
             // The Tweaks overlay is treated as modal too — it absorbs
             // its own keys above, so any leftover key event with
             // root.show-tweaks should not trigger sidebar shortcuts.
-            if !root.show-add-torrent-dialog && !root.show-delete-dialog && !root.show-context-menu && !root.show-preferences-dialog && !root.show-command-palette {
+            if !root.show-add-torrent-dialog && !root.show-create-torrent-dialog && !root.show-delete-dialog && !root.show-context-menu && !root.show-preferences-dialog && !root.show-command-palette {
                 // v0.187.3 / Bug 2.2: accept BOTH the literal space character
                 // AND `Key.Space` — Slint forwards one or the other depending
                 // on IME state on Linux. Dogfood reported "Spacebar toggles
@@ -644,6 +696,10 @@ export component MainWindow inherits Window {
                 }
                 if root.show-add-torrent-dialog {
                     root.show-add-torrent-dialog = false;
+                    return accept;
+                }
+                if root.show-create-torrent-dialog {
+                    root.show-create-torrent-dialog = false;
                     return accept;
                 }
             }
@@ -875,6 +931,36 @@ export component MainWindow inherits Window {
         toggle-skip-checking => { root.add-torrent-toggle-skip-checking(); }
         browse-torrent-file => { root.browse-torrent-file(); }
         browse-download-dir => { root.browse-torrent-download-dir(); }
+    }
+
+    // Create Torrent Dialog overlay (M192)
+    CreateTorrentDialog {
+        show: root.show-create-torrent-dialog;
+        source-path: root.create-torrent-source-path;
+        source-name: root.create-torrent-source-name;
+        source-size: root.create-torrent-source-size;
+        tracker-text: root.create-torrent-tracker-text;
+        comment: root.create-torrent-comment;
+        piece-size-label: root.create-torrent-piece-size;
+        format: root.create-torrent-format;
+        is-private: root.create-torrent-private;
+        source-tag: root.create-torrent-source-tag;
+        output-path: root.create-torrent-output-path;
+        is-creating: root.create-torrent-is-creating;
+        create-progress: root.create-torrent-progress;
+        create-error: root.create-torrent-error;
+        width: root.width;
+        height: root.height;
+        browse-source => { root.create-torrent-browse-source(); }
+        browse-output => { root.create-torrent-browse-output(); }
+        create-confirmed => { root.create-torrent-confirmed(); }
+        cancel => { root.show-create-torrent-dialog = false; }
+        format-changed(fmt) => { root.create-torrent-format-changed(fmt); }
+        toggle-private => { root.create-torrent-toggle-private(); }
+        tracker-text-edited(text) => { root.create-torrent-tracker-edited(text); }
+        comment-edited(text) => { root.create-torrent-comment-edited(text); }
+        piece-size-changed(opt) => { root.create-torrent-piece-size-changed(opt); }
+        source-tag-edited(text) => { root.create-torrent-source-tag-edited(text); }
     }
 
     // Context Menu overlay (on top of everything)

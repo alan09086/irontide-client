@@ -13,6 +13,7 @@ pub enum AppPhase {
 pub enum MenuAction {
     AddMagnet,
     AddTorrentFile,
+    CreateTorrent,
     Preferences,
     Quit,
 }
@@ -99,6 +100,58 @@ pub enum AddTorrentSource {
     File(String),
     Magnet(String),
 }
+
+/// M192: torrent output format for the Create Torrent dialog.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CreateTorrentFormat {
+    V1,
+    #[default]
+    Hybrid,
+    V2,
+}
+
+impl CreateTorrentFormat {
+    #[must_use]
+    pub fn from_label(s: &str) -> Self {
+        match s {
+            "v1" => Self::V1,
+            "v2" => Self::V2,
+            _ => Self::Hybrid,
+        }
+    }
+
+    #[allow(dead_code, reason = "M192: used in palette test assertions")]
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::V1 => "v1",
+            Self::Hybrid => "hybrid",
+            Self::V2 => "v2",
+        }
+    }
+}
+
+/// M192: state for the Create Torrent dialog.
+#[derive(Debug, Clone, Default)]
+pub struct CreateTorrentState {
+    pub source_path: String,
+    pub source_name: String,
+    pub source_size_bytes: u64,
+    pub tracker_text: String,
+    pub web_seed_text: String,
+    pub comment: String,
+    pub piece_size_label: String,
+    pub format: CreateTorrentFormat,
+    pub is_private: bool,
+    pub source_tag: String,
+    pub output_path: String,
+    #[allow(dead_code, reason = "M192: read by handle_create_torrent for progress signalling")]
+    pub is_creating: bool,
+    #[allow(dead_code, reason = "M192: read by handle_create_torrent for progress signalling")]
+    pub create_progress: f32,
+    pub create_error: String,
+}
+
 
 /// File entry for the add-torrent preview.
 #[derive(Debug, Clone)]
@@ -221,6 +274,10 @@ pub enum GuiCommand {
         start_paused: bool,
         skip_checking: bool,
     },
+    /// M192: create a .torrent file from the dialog state.
+    CreateTorrent {
+        state: CreateTorrentState,
+    },
     /// M180: set per-torrent DL/UL rate limits.
     SetTorrentRateLimit {
         /// Hex-encoded info-hash string.
@@ -281,8 +338,9 @@ impl MenuAction {
         match index {
             0 => Some(Self::AddMagnet),
             1 => Some(Self::AddTorrentFile),
-            2 => Some(Self::Preferences),
-            3 => Some(Self::Quit),
+            2 => Some(Self::CreateTorrent),
+            3 => Some(Self::Preferences),
+            4 => Some(Self::Quit),
             _ => None,
         }
     }
@@ -400,6 +458,11 @@ pub struct AppState {
     pub add_torrent_start_paused: bool,
     /// M191: "skip hash check" toggle state in the add-torrent dialog.
     pub add_torrent_skip_checking: bool,
+    /// M192: state for the Create Torrent dialog.
+    pub create_torrent: CreateTorrentState,
+    /// M192: whether the Create Torrent dialog is visible.
+    #[allow(dead_code, reason = "M192: read by Slint property bindings at runtime")]
+    pub show_create_torrent_dialog: bool,
 }
 
 impl AppState {
@@ -441,6 +504,8 @@ impl AppState {
             add_torrent_tab: String::from("file"),
             add_torrent_start_paused: false,
             add_torrent_skip_checking: false,
+            create_torrent: CreateTorrentState::default(),
+            show_create_torrent_dialog: false,
         }
     }
 
@@ -798,14 +863,15 @@ mod tests {
     fn menu_action_from_index() {
         assert_eq!(MenuAction::from_index(0), Some(MenuAction::AddMagnet));
         assert_eq!(MenuAction::from_index(1), Some(MenuAction::AddTorrentFile));
-        assert_eq!(MenuAction::from_index(2), Some(MenuAction::Preferences));
-        assert_eq!(MenuAction::from_index(3), Some(MenuAction::Quit));
+        assert_eq!(MenuAction::from_index(2), Some(MenuAction::CreateTorrent));
+        assert_eq!(MenuAction::from_index(3), Some(MenuAction::Preferences));
+        assert_eq!(MenuAction::from_index(4), Some(MenuAction::Quit));
     }
 
     #[test]
     fn menu_action_out_of_bounds() {
         assert_eq!(MenuAction::from_index(-1), None);
-        assert_eq!(MenuAction::from_index(4), None);
+        assert_eq!(MenuAction::from_index(5), None);
         assert_eq!(MenuAction::from_index(100), None);
     }
 
@@ -964,8 +1030,9 @@ mod tests {
     fn menu_action_index_stability() {
         assert_eq!(MenuAction::from_index(0), Some(MenuAction::AddMagnet));
         assert_eq!(MenuAction::from_index(1), Some(MenuAction::AddTorrentFile));
-        assert_eq!(MenuAction::from_index(2), Some(MenuAction::Preferences));
-        assert_eq!(MenuAction::from_index(3), Some(MenuAction::Quit));
+        assert_eq!(MenuAction::from_index(2), Some(MenuAction::CreateTorrent));
+        assert_eq!(MenuAction::from_index(3), Some(MenuAction::Preferences));
+        assert_eq!(MenuAction::from_index(4), Some(MenuAction::Quit));
     }
 
     // ── ContextMenuState tests ────────────────────────────────────────────
@@ -1489,6 +1556,68 @@ mod tests {
         };
         assert!(preview.files.is_empty());
         assert!(preview.file_selected.is_empty());
+    }
+
+    // ── M192: CreateTorrentState + dialog state ──────────────────────────
+
+    #[test]
+    fn create_torrent_state_defaults() {
+        let ct = CreateTorrentState::default();
+        assert!(ct.source_path.is_empty());
+        assert!(ct.source_name.is_empty());
+        assert_eq!(ct.source_size_bytes, 0);
+        assert!(ct.tracker_text.is_empty());
+        assert!(ct.comment.is_empty());
+        assert_eq!(ct.piece_size_label, "");
+        assert_eq!(ct.format, CreateTorrentFormat::Hybrid);
+        assert!(!ct.is_private);
+        assert!(ct.source_tag.is_empty());
+        assert!(ct.output_path.is_empty());
+        assert!(!ct.is_creating);
+        assert!((ct.create_progress - 0.0).abs() < f32::EPSILON);
+        assert!(ct.create_error.is_empty());
+    }
+
+    #[test]
+    fn create_torrent_format_label_round_trip() {
+        for fmt in [
+            CreateTorrentFormat::V1,
+            CreateTorrentFormat::Hybrid,
+            CreateTorrentFormat::V2,
+        ] {
+            assert_eq!(CreateTorrentFormat::from_label(fmt.label()), fmt);
+        }
+    }
+
+    #[test]
+    fn create_torrent_format_unknown_defaults_to_hybrid() {
+        assert_eq!(
+            CreateTorrentFormat::from_label("unknown"),
+            CreateTorrentFormat::Hybrid
+        );
+    }
+
+    #[test]
+    fn create_torrent_dialog_state_defaults() {
+        let state = fresh_state();
+        assert!(!state.show_create_torrent_dialog);
+        assert!(state.create_torrent.source_path.is_empty());
+    }
+
+    #[test]
+    fn gui_command_create_torrent_constructs() {
+        let _cmd = GuiCommand::CreateTorrent {
+            state: CreateTorrentState {
+                source_path: "/home/user/files".into(),
+                source_name: "files".into(),
+                source_size_bytes: 1_048_576,
+                tracker_text: "http://tracker.example.com/announce".into(),
+                piece_size_label: "Auto".into(),
+                format: CreateTorrentFormat::V2,
+                is_private: true,
+                ..Default::default()
+            },
+        };
     }
 
     #[test]

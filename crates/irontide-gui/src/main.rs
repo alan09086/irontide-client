@@ -374,6 +374,72 @@ fn main() -> Result<(), error::GuiError> {
         });
     }
 
+    // 6e-ct. Wire Create Torrent dialog callbacks (M192).
+    {
+        let weak = main_window.as_weak();
+        let cb_state = state.clone();
+        main_window.on_create_torrent_browse_source(move || {
+            bridge::handle_browse_create_torrent_source(&weak, &cb_state);
+        });
+    }
+    {
+        let weak = main_window.as_weak();
+        let cb_state = state.clone();
+        main_window.on_create_torrent_browse_output(move || {
+            bridge::handle_browse_create_torrent_output(&weak, &cb_state);
+        });
+    }
+    {
+        let cb_state = state.clone();
+        main_window.on_create_torrent_format_changed(move |fmt| {
+            cb_state.lock().create_torrent.format =
+                crate::app::CreateTorrentFormat::from_label(fmt.as_str());
+        });
+    }
+    {
+        let cb_state = state.clone();
+        main_window.on_create_torrent_toggle_private(move || {
+            let mut st = cb_state.lock();
+            st.create_torrent.is_private = !st.create_torrent.is_private;
+        });
+    }
+    {
+        let cb_state = state.clone();
+        main_window.on_create_torrent_tracker_edited(move |text| {
+            cb_state.lock().create_torrent.tracker_text = text.to_string();
+        });
+    }
+    {
+        let cb_state = state.clone();
+        main_window.on_create_torrent_comment_edited(move |text| {
+            cb_state.lock().create_torrent.comment = text.to_string();
+        });
+    }
+    {
+        let cb_state = state.clone();
+        main_window.on_create_torrent_piece_size_changed(move |opt| {
+            cb_state.lock().create_torrent.piece_size_label = opt.to_string();
+        });
+    }
+    {
+        let cb_state = state.clone();
+        main_window.on_create_torrent_source_tag_edited(move |text| {
+            cb_state.lock().create_torrent.source_tag = text.to_string();
+        });
+    }
+    {
+        let cb_state = state.clone();
+        main_window.on_create_torrent_confirmed(move || {
+            let (ct_state, cmd_tx) = {
+                let st = cb_state.lock();
+                (st.create_torrent.clone(), st.cmd_tx.clone())
+            };
+            if let Some(tx) = cmd_tx {
+                let _ = tx.send(crate::app::GuiCommand::CreateTorrent { state: ct_state });
+            }
+        });
+    }
+
     // 6f. Wire right-click context menu.
     {
         let cb_state = state.clone();
@@ -926,6 +992,11 @@ fn main() -> Result<(), error::GuiError> {
                     let _ = weak2.upgrade_in_event_loop(|win| {
                         win.set_add_torrent_tab("file".into());
                         win.set_show_add_torrent_dialog(true);
+                    });
+                }
+                palette::DispatchAction::ShowCreateTorrent => {
+                    let _ = weak2.upgrade_in_event_loop(|win| {
+                        win.set_show_create_torrent_dialog(true);
                     });
                 }
                 palette::DispatchAction::SendCommand(gui_cmd) => {
