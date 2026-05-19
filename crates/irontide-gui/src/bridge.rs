@@ -320,6 +320,11 @@ pub fn handle_browse_torrent_file(
                         let created_by = preview.created_by.clone().unwrap_or_default();
                         let file_rows = build_sendable_file_rows(&preview);
 
+                        let file_exts = extract_file_extensions(&preview);
+                        let tracker_list = extract_tracker_urls(&preview);
+                        let suggested = suggest_category(&name, &file_exts, &tracker_list)
+                            .unwrap_or_default();
+
                         state.lock().add_torrent_preview = Some(preview);
 
                         let _ = weak.upgrade_in_event_loop(move |win| {
@@ -329,6 +334,7 @@ pub fn handle_browse_torrent_file(
                             win.set_add_torrent_preview_file_count(count);
                             win.set_add_torrent_preview_trackers(trackers.into());
                             win.set_add_torrent_preview_created_by(created_by.into());
+                            win.set_add_torrent_suggested_category(suggested.into());
                             let model = slint::ModelRc::new(slint::VecModel::from(file_rows));
                             win.set_add_torrent_preview_files(model);
                         });
@@ -509,6 +515,29 @@ fn extract_torrent_info(meta: &irontide::core::TorrentMeta) -> (String, u64, usi
             (name, total_size, file_count)
         }
     }
+}
+
+fn extract_file_extensions(preview: &crate::app::AddTorrentPreview) -> Vec<String> {
+    preview
+        .files
+        .iter()
+        .filter_map(|f| {
+            if f.is_folder {
+                return None;
+            }
+            f.name.rsplit('.').next().map(str::to_lowercase)
+        })
+        .collect()
+}
+
+fn extract_tracker_urls(preview: &crate::app::AddTorrentPreview) -> Vec<String> {
+    preview
+        .trackers
+        .split([',', '\n'])
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .collect()
 }
 
 /// Dispatch a `GuiCommand` to the appropriate session method.
@@ -698,6 +727,14 @@ async fn handle_gui_command(
         }
         GuiCommand::LogsSetFilter { level } => {
             handle_logs_set_filter(level, weak);
+        }
+        GuiCommand::CategorySuggestTrain {
+            category,
+            name,
+            file_extensions,
+            trackers,
+        } => {
+            handle_category_suggest_train(&category, &name, &file_extensions, &trackers);
         }
     }
 
@@ -895,6 +932,7 @@ async fn handle_add_torrent_from_preview(
                 win.set_add_torrent_preview_name(slint::SharedString::new());
                 win.set_add_torrent_preview_size(slint::SharedString::new());
                 win.set_add_torrent_preview_file_count(0);
+                win.set_add_torrent_suggested_category(slint::SharedString::new());
             });
             show_toast(weak, &format!("Added: {display_name}"), false);
         }
@@ -2747,6 +2785,26 @@ pub async fn push_logs_stats_state_with_session(
         let card_model = std::rc::Rc::new(slint::VecModel::from(card_rows));
         win.set_stat_cards(slint::ModelRc::from(card_model));
     });
+}
+
+// ── M202: category suggestion ─────────────────────────────────────────
+
+pub fn suggest_category(name: &str, file_extensions: &[String], trackers: &[String]) -> Option<String> {
+    let model = crate::category_suggest::ClassifierModel::load();
+    model.suggest(name, file_extensions, trackers).map(|r| r.category)
+}
+
+fn handle_category_suggest_train(
+    category: &str,
+    name: &str,
+    file_extensions: &[String],
+    trackers: &[String],
+) {
+    let mut model = crate::category_suggest::ClassifierModel::load();
+    model.train(category, name, file_extensions, trackers);
+    if let Err(e) = model.save() {
+        tracing::warn!("failed to save category classifier: {e}");
+    }
 }
 
 #[cfg(test)]

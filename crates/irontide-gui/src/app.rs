@@ -349,6 +349,14 @@ pub enum GuiCommand {
     LogsClear,
     /// M200: set log filter level (0=all, 1=warn, 2=error).
     LogsSetFilter { level: i32 },
+    /// M202: train the category classifier after a successful add.
+    #[allow(dead_code, reason = "M202: sent when category assignment is wired")]
+    CategorySuggestTrain {
+        category: String,
+        name: String,
+        file_extensions: Vec<String>,
+        trackers: Vec<String>,
+    },
     /// M180: set per-torrent DL/UL rate limits.
     SetTorrentRateLimit {
         /// Hex-encoded info-hash string.

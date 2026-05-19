@@ -443,6 +443,7 @@ export component MainWindow inherits Window {
     in-out property <[AddTorrentFileRow]> add-torrent-preview-files: [];
     in-out property <bool> add-torrent-start-paused: false;
     in-out property <bool> add-torrent-skip-checking: false;
+    in-out property <string> add-torrent-suggested-category: "";
     callback add-torrent-confirmed(string);  // download_dir
     callback add-torrent-tab-changed(string);
     callback add-torrent-magnet-changed(string);
@@ -1042,6 +1043,7 @@ export component MainWindow inherits Window {
         preview-files: root.add-torrent-preview-files;
         start-paused: root.add-torrent-start-paused;
         skip-checking: root.add-torrent-skip-checking;
+        suggested-category: root.add-torrent-suggested-category;
         width: root.width;
         height: root.height;
         add-confirmed(dir) => {
