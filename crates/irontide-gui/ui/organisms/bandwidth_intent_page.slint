@@ -1,0 +1,335 @@
+import { Tokens } from "../tokens.slint";
+
+export struct IntentPresetRow {
+    name: string,
+    description: string,
+    reserve-dl: string,
+    reserve-ul: string,
+}
+
+export component BandwidthIntentPage inherits Rectangle {
+    in property <int> mode: 0;
+    in property <string> detected-dl-text: "0";
+    in property <string> detected-ul-text: "0";
+    in property <string> reserved-dl-text: "0 Kbps";
+    in property <string> reserved-ul-text: "0 Kbps";
+    in property <string> effective-dl-text: "Unlimited";
+    in property <string> effective-ul-text: "Unlimited";
+    in property <[IntentPresetRow]> presets;
+
+    callback set-mode(int);
+    callback apply-preset(int);
+    callback set-detected-speeds(string, string);
+
+    background: Tokens.bg-0;
+
+    VerticalLayout {
+        padding: Tokens.sp-3;
+        spacing: Tokens.sp-3;
+
+        // Header
+        Text {
+            text: "Bandwidth Intent";
+            color: Tokens.fg-0;
+            font-size: Tokens.fs-16;
+            font-weight: 700;
+        }
+
+        Text {
+            text: "Declare your intent and let IronTide derive speed limits automatically.";
+            color: Tokens.fg-2;
+            font-size: Tokens.fs-12;
+            wrap: word-wrap;
+        }
+
+        // Mode selector
+        HorizontalLayout {
+            spacing: Tokens.sp-2;
+
+            Text {
+                text: "Mode:";
+                color: Tokens.fg-2;
+                font-size: Tokens.fs-12;
+                vertical-alignment: center;
+            }
+
+            for mode-opt[idx] in [
+                { label: "Unlimited", value: 0 },
+                { label: "Manual", value: 1 },
+                { label: "Leave Reserve", value: 2 },
+            ] : Rectangle {
+                width: Tokens.sp-10 + Tokens.sp-8;
+                height: Tokens.sp-7;
+                border-radius: Tokens.r-sm;
+                background: mode-touch.has-hover
+                    ? Tokens.accent-hover
+                    : (root.mode == idx ? Tokens.accent : Tokens.bg-1);
+                border-width: 1px;
+                border-color: root.mode == idx ? Tokens.accent : Tokens.border-1;
+
+                Text {
+                    text: mode-opt.label;
+                    color: root.mode == idx ? Tokens.accent-fg : Tokens.fg-2;
+                    font-size: Tokens.fs-12;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                mode-touch := TouchArea {
+                    clicked => { root.set-mode(idx); }
+                }
+            }
+        }
+
+        // Detected line speed inputs
+        HorizontalLayout {
+            spacing: Tokens.sp-3;
+
+            VerticalLayout {
+                spacing: Tokens.sp-1;
+
+                Text {
+                    text: "Detected Download (Kbps):";
+                    color: Tokens.fg-2;
+                    font-size: Tokens.fs-11;
+                }
+
+                Rectangle {
+                    height: Tokens.sp-7;
+                    border-radius: Tokens.r-sm;
+                    background: Tokens.bg-1;
+                    border-width: 1px;
+                    border-color: dl-input.has-focus ? Tokens.accent : Tokens.border-1;
+
+                    dl-input := TextInput {
+                        text: root.detected-dl-text;
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-12;
+                        horizontal-alignment: left;
+                        vertical-alignment: center;
+
+                        accepted => {
+                            root.set-detected-speeds(self.text, ul-input.text);
+                        }
+
+                        edited => {
+                            root.set-detected-speeds(self.text, ul-input.text);
+                        }
+                    }
+                }
+            }
+
+            VerticalLayout {
+                spacing: Tokens.sp-1;
+
+                Text {
+                    text: "Detected Upload (Kbps):";
+                    color: Tokens.fg-2;
+                    font-size: Tokens.fs-11;
+                }
+
+                Rectangle {
+                    height: Tokens.sp-7;
+                    border-radius: Tokens.r-sm;
+                    background: Tokens.bg-1;
+                    border-width: 1px;
+                    border-color: ul-input.has-focus ? Tokens.accent : Tokens.border-1;
+
+                    ul-input := TextInput {
+                        text: root.detected-ul-text;
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-12;
+                        horizontal-alignment: left;
+                        vertical-alignment: center;
+
+                        accepted => {
+                            root.set-detected-speeds(dl-input.text, self.text);
+                        }
+
+                        edited => {
+                            root.set-detected-speeds(dl-input.text, self.text);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Effective limits display
+        HorizontalLayout {
+            spacing: Tokens.sp-3;
+
+            Rectangle {
+                horizontal-stretch: 1;
+                height: Tokens.sp-10;
+                border-radius: Tokens.r-sm;
+                background: Tokens.bg-1;
+                border-width: 1px;
+                border-color: Tokens.border-1;
+
+                VerticalLayout {
+                    padding: Tokens.sp-2;
+                    spacing: Tokens.sp-1;
+
+                    Text {
+                        text: "Effective DL Limit";
+                        color: Tokens.fg-3;
+                        font-size: Tokens.fs-11;
+                    }
+
+                    Text {
+                        text: root.effective-dl-text;
+                        color: Tokens.status-downloading;
+                        font-size: Tokens.fs-14;
+                        font-weight: 600;
+                    }
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+                height: Tokens.sp-10;
+                border-radius: Tokens.r-sm;
+                background: Tokens.bg-1;
+                border-width: 1px;
+                border-color: Tokens.border-1;
+
+                VerticalLayout {
+                    padding: Tokens.sp-2;
+                    spacing: Tokens.sp-1;
+
+                    Text {
+                        text: "Effective UL Limit";
+                        color: Tokens.fg-3;
+                        font-size: Tokens.fs-11;
+                    }
+
+                    Text {
+                        text: root.effective-ul-text;
+                        color: Tokens.status-seeding;
+                        font-size: Tokens.fs-14;
+                        font-weight: 600;
+                    }
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+                height: Tokens.sp-10;
+                border-radius: Tokens.r-sm;
+                background: Tokens.bg-1;
+                border-width: 1px;
+                border-color: Tokens.border-1;
+
+                VerticalLayout {
+                    padding: Tokens.sp-2;
+                    spacing: Tokens.sp-1;
+
+                    Text {
+                        text: "Reserved DL";
+                        color: Tokens.fg-3;
+                        font-size: Tokens.fs-11;
+                    }
+
+                    Text {
+                        text: root.reserved-dl-text;
+                        color: Tokens.fg-1;
+                        font-size: Tokens.fs-14;
+                        font-weight: 600;
+                    }
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+                height: Tokens.sp-10;
+                border-radius: Tokens.r-sm;
+                background: Tokens.bg-1;
+                border-width: 1px;
+                border-color: Tokens.border-1;
+
+                VerticalLayout {
+                    padding: Tokens.sp-2;
+                    spacing: Tokens.sp-1;
+
+                    Text {
+                        text: "Reserved UL";
+                        color: Tokens.fg-3;
+                        font-size: Tokens.fs-11;
+                    }
+
+                    Text {
+                        text: root.reserved-ul-text;
+                        color: Tokens.fg-1;
+                        font-size: Tokens.fs-14;
+                        font-weight: 600;
+                    }
+                }
+            }
+        }
+
+        // Presets
+        Text {
+            text: "Quick Presets";
+            color: Tokens.fg-1;
+            font-size: Tokens.fs-14;
+            font-weight: 600;
+        }
+
+        HorizontalLayout {
+            spacing: Tokens.sp-2;
+
+            for preset[idx] in root.presets : Rectangle {
+                horizontal-stretch: 1;
+                height: Tokens.sp-10 + Tokens.sp-7;
+                border-radius: Tokens.r-sm;
+                background: preset-touch.has-hover ? Tokens.accent-hover : Tokens.bg-1;
+                border-width: 1px;
+                border-color: preset-touch.has-hover ? Tokens.accent : Tokens.border-1;
+
+                VerticalLayout {
+                    padding: Tokens.sp-2;
+                    spacing: Tokens.sp-1;
+
+                    Text {
+                        text: preset.name;
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-12;
+                        font-weight: 600;
+                    }
+
+                    Text {
+                        text: preset.description;
+                        color: Tokens.fg-3;
+                        font-size: Tokens.fs-11;
+                        wrap: word-wrap;
+                    }
+
+                    HorizontalLayout {
+                        spacing: Tokens.sp-1;
+
+                        Text {
+                            text: "↓ " + preset.reserve-dl;
+                            color: Tokens.status-downloading;
+                            font-size: Tokens.fs-11;
+                        }
+
+                        Text {
+                            text: "↑ " + preset.reserve-ul;
+                            color: Tokens.status-seeding;
+                            font-size: Tokens.fs-11;
+                        }
+                    }
+                }
+
+                preset-touch := TouchArea {
+                    clicked => { root.apply-preset(idx); }
+                }
+            }
+        }
+
+        // Spacer
+        Rectangle {
+            vertical-stretch: 1;
+        }
+    }
+}

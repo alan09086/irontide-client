@@ -357,6 +357,12 @@ pub enum GuiCommand {
         file_extensions: Vec<String>,
         trackers: Vec<String>,
     },
+    /// M203: set bandwidth intent mode (0=Unlimited, 1=Manual, 2=LeaveReserve).
+    IntentSetMode { mode: u8 },
+    /// M203: apply a bandwidth intent preset by index.
+    IntentApplyPreset { index: usize },
+    /// M203: set detected line speeds (Kbps).
+    IntentSetDetectedSpeeds { dl_kbps: u64, ul_kbps: u64 },
     /// M180: set per-torrent DL/UL rate limits.
     SetTorrentRateLimit {
         /// Hex-encoded info-hash string.

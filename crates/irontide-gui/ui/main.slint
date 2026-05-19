@@ -31,8 +31,9 @@ import { RssPage, RssFeedRow, RssItemRow, RssRuleRow } from "organisms/rss_page.
 import { SchedulerPage, SchedulerCell } from "organisms/scheduler_page.slint";
 import { IpFilterPage, IpFilterRuleRow, BannedPeerRow } from "organisms/ip_filter_page.slint";
 import { LogsStatsPage, LogRow, StatCardData, TransferBar } from "organisms/logs_stats_page.slint";
+import { BandwidthIntentPage, IntentPresetRow } from "organisms/bandwidth_intent_page.slint";
 
-export { Tokens, Shadow, SidebarRow, TorrentRow, FileTreeRow, PaletteItem, PaletteCategory, SearchResultRow, RssFeedRow, RssItemRow, RssRuleRow, SchedulerCell, IpFilterRuleRow, BannedPeerRow, LogRow, StatCardData, TransferBar }
+export { Tokens, Shadow, SidebarRow, TorrentRow, FileTreeRow, PaletteItem, PaletteCategory, SearchResultRow, RssFeedRow, RssItemRow, RssRuleRow, SchedulerCell, IpFilterRuleRow, BannedPeerRow, LogRow, StatCardData, TransferBar, IntentPresetRow }
 
 component MenuButton {
     in property <string> text;
@@ -405,6 +406,20 @@ export component MainWindow inherits Window {
     callback logs-tab-changed(int);
     callback logs-clear();
     callback logs-set-filter(int);
+
+    // ── Bandwidth Intent (M203) ──
+    in-out property <bool> show-bandwidth-intent-page: false;
+    in-out property <int> intent-mode: 0;
+    in-out property <string> intent-detected-dl-text: "0";
+    in-out property <string> intent-detected-ul-text: "0";
+    in-out property <string> intent-reserved-dl-text: "0 Kbps";
+    in-out property <string> intent-reserved-ul-text: "0 Kbps";
+    in-out property <string> intent-effective-dl-text: "Unlimited";
+    in-out property <string> intent-effective-ul-text: "Unlimited";
+    in-out property <[IntentPresetRow]> intent-presets;
+    callback intent-set-mode(int);
+    callback intent-apply-preset(int);
+    callback intent-set-detected-speeds(string, string);
 
     // ── Modifier tracking ──
     in-out property <bool> shift-held: false;
@@ -900,7 +915,22 @@ export component MainWindow inherits Window {
                         set-log-filter(level) => { root.logs-set-filter(level); }
                     }
 
-                    if !root.show-search-page && !root.show-rss-page && !root.show-scheduler-page && !root.show-ip-filter-page && !root.show-logs-stats-page : TorrentListView {
+                    if root.show-bandwidth-intent-page : BandwidthIntentPage {
+                        vertical-stretch: 1;
+                        mode: root.intent-mode;
+                        detected-dl-text: root.intent-detected-dl-text;
+                        detected-ul-text: root.intent-detected-ul-text;
+                        reserved-dl-text: root.intent-reserved-dl-text;
+                        reserved-ul-text: root.intent-reserved-ul-text;
+                        effective-dl-text: root.intent-effective-dl-text;
+                        effective-ul-text: root.intent-effective-ul-text;
+                        presets: root.intent-presets;
+                        set-mode(m) => { root.intent-set-mode(m); }
+                        apply-preset(idx) => { root.intent-apply-preset(idx); }
+                        set-detected-speeds(dl, ul) => { root.intent-set-detected-speeds(dl, ul); }
+                    }
+
+                    if !root.show-search-page && !root.show-rss-page && !root.show-scheduler-page && !root.show-ip-filter-page && !root.show-logs-stats-page && !root.show-bandwidth-intent-page : TorrentListView {
                         vertical-stretch: 2;
                         session-ready: root.session-ready;
                         error-text: root.error-text;
@@ -926,7 +956,7 @@ export component MainWindow inherits Window {
                         column-visibility-toggled(c) => { root.column-visibility-toggled(c); }
                     }
 
-                    if root.session-ready && root.error-text == "" && !root.show-search-page && !root.show-rss-page && !root.show-scheduler-page && !root.show-ip-filter-page && !root.show-logs-stats-page: Rectangle {
+                    if root.session-ready && root.error-text == "" && !root.show-search-page && !root.show-rss-page && !root.show-scheduler-page && !root.show-ip-filter-page && !root.show-logs-stats-page && !root.show-bandwidth-intent-page: Rectangle {
                         vertical-stretch: 1;
                         min-height: Tokens.sp-10 * 5;
                         background: Tokens.bg-1;

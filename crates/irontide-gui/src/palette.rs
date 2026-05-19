@@ -36,6 +36,7 @@ pub enum PaletteCommandId {
     ToggleScheduler,
     ToggleIpFilter,
     ToggleLogsStats,
+    ToggleBandwidthIntent,
     OpenPreferences,
     SelectAll,
     // Settings
@@ -214,6 +215,12 @@ pub static COMMANDS: &[PaletteCommand] = &[
         hotkey_hint: "",
     },
     PaletteCommand {
+        id: PaletteCommandId::ToggleBandwidthIntent,
+        label: "Bandwidth Intent",
+        category: PaletteCategory::Tools,
+        hotkey_hint: "",
+    },
+    PaletteCommand {
         id: PaletteCommandId::SelectAll,
         label: "Select All",
         category: PaletteCategory::Tools,
@@ -327,6 +334,7 @@ pub enum DispatchAction {
     ToggleScheduler,
     ToggleIpFilter,
     ToggleLogsStats,
+    ToggleBandwidthIntent,
     SendCommand(crate::app::GuiCommand),
     SetPredicate(crate::sidebar::SidebarPredicate),
     OpenPreferences,
@@ -399,6 +407,7 @@ pub fn dispatch(id: PaletteCommandId, selected: &[String]) -> DispatchAction {
         PaletteCommandId::ToggleScheduler => DispatchAction::ToggleScheduler,
         PaletteCommandId::ToggleIpFilter => DispatchAction::ToggleIpFilter,
         PaletteCommandId::ToggleLogsStats => DispatchAction::ToggleLogsStats,
+        PaletteCommandId::ToggleBandwidthIntent => DispatchAction::ToggleBandwidthIntent,
         PaletteCommandId::OpenPreferences => DispatchAction::OpenPreferences,
         PaletteCommandId::SelectAll => DispatchAction::SelectAll,
         PaletteCommandId::Quit => DispatchAction::Quit,
