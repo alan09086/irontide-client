@@ -601,6 +601,274 @@ impl PreferencesState {
         win.set_pref_dirty(false);
     }
 
+    #[must_use]
+    #[cfg(test)]
+    pub fn reset_tab(&mut self, tab: &str) -> bool {
+        let d = Self::default();
+        match tab {
+            "behavior" => {
+                self.skin = d.skin;
+                self.theme = d.theme;
+                self.density = d.density;
+                self.radius = d.radius;
+                self.confirm_delete = d.confirm_delete;
+                self.confirm_pause_all = d.confirm_pause_all;
+                self.show_torrent_added_toast = d.show_torrent_added_toast;
+                self.double_click_action = d.double_click_action;
+                self.start_minimized = d.start_minimized;
+                self.minimize_to_tray = d.minimize_to_tray;
+                self.resume_previous_session = d.resume_previous_session;
+                self.notify_on_complete = d.notify_on_complete;
+                self.notify_on_error = d.notify_on_error;
+                self.notify_on_rss = d.notify_on_rss;
+                self.play_sound_on_complete = d.play_sound_on_complete;
+                self.on_complete_program = d.on_complete_program;
+                true
+            }
+            "downloads" => {
+                self.download_dir = d.download_dir;
+                self.use_incomplete_dir = d.use_incomplete_dir;
+                self.incomplete_dir = d.incomplete_dir;
+                self.create_subfolder = d.create_subfolder;
+                self.pre_allocate = d.pre_allocate;
+                self.show_add_torrent_dialog = d.show_add_torrent_dialog;
+                self.skip_hash_check = d.skip_hash_check;
+                self.incomplete_extension = d.incomplete_extension;
+                self.use_auto_categories = d.use_auto_categories;
+                self.append_date_to_path = d.append_date_to_path;
+                self.watched_folder = d.watched_folder;
+                self.copy_torrent_to = d.copy_torrent_to;
+                self.delete_torrent_after_add = d.delete_torrent_after_add;
+                self.move_completed_enabled = d.move_completed_enabled;
+                self.move_completed_to = d.move_completed_to;
+                self.dl_on_complete_program = d.dl_on_complete_program;
+                true
+            }
+            "connection" => {
+                self.listen_port = d.listen_port;
+                self.randomize_port = d.randomize_port;
+                self.enable_upnp = d.enable_upnp;
+                self.enable_natpmp = d.enable_natpmp;
+                self.max_connections_global = d.max_connections_global;
+                self.max_peers_per_torrent = d.max_peers_per_torrent;
+                self.max_upload_slots_global = d.max_upload_slots_global;
+                self.max_upload_slots_per_torrent = d.max_upload_slots_per_torrent;
+                self.active_downloads = d.active_downloads;
+                self.active_seeds = d.active_seeds;
+                self.active_limit = d.active_limit;
+                self.proxy_type = d.proxy_type;
+                self.proxy_host = d.proxy_host;
+                self.proxy_port = d.proxy_port;
+                self.proxy_peer_connections = d.proxy_peer_connections;
+                self.proxy_hostnames = d.proxy_hostnames;
+                self.ip_filter_enabled = d.ip_filter_enabled;
+                self.ip_filter_path = d.ip_filter_path;
+                self.ip_filter_auto_refresh = d.ip_filter_auto_refresh;
+                true
+            }
+            "speed" => {
+                self.dl_limit_enabled = d.dl_limit_enabled;
+                self.dl_limit_value = d.dl_limit_value;
+                self.ul_limit_enabled = d.ul_limit_enabled;
+                self.ul_limit_value = d.ul_limit_value;
+                self.alt_dl_limit = d.alt_dl_limit;
+                self.alt_ul_limit = d.alt_ul_limit;
+                self.alt_speed_enabled = d.alt_speed_enabled;
+                self.rate_limit_overhead = d.rate_limit_overhead;
+                self.rate_limit_utp = d.rate_limit_utp;
+                self.rate_limit_lan = d.rate_limit_lan;
+                true
+            }
+            "bittorrent" => {
+                self.enable_dht = d.enable_dht;
+                self.enable_pex = d.enable_pex;
+                self.enable_lsd = d.enable_lsd;
+                self.encryption_mode = d.encryption_mode;
+                self.anonymous_mode = d.anonymous_mode;
+                self.seed_ratio_enabled = d.seed_ratio_enabled;
+                self.seed_ratio_value = d.seed_ratio_value;
+                self.max_ratio_action = d.max_ratio_action;
+                self.seed_time_enabled = d.seed_time_enabled;
+                self.seed_time_value = d.seed_time_value;
+                self.inactive_seed_time_enabled = d.inactive_seed_time_enabled;
+                self.inactive_seed_time_value = d.inactive_seed_time_value;
+                self.queueing_enabled = d.queueing_enabled;
+                true
+            }
+            "rss" => {
+                self.rss_enabled = d.rss_enabled;
+                self.rss_refresh_interval = d.rss_refresh_interval;
+                self.rss_max_articles = d.rss_max_articles;
+                self.rss_auto_download = d.rss_auto_download;
+                self.rss_smart_filter = d.rss_smart_filter;
+                self.rss_download_repacks = d.rss_download_repacks;
+                true
+            }
+            "webui" => {
+                self.webui_enabled = d.webui_enabled;
+                self.webui_bind = d.webui_bind;
+                self.webui_port = d.webui_port;
+                self.webui_https = d.webui_https;
+                self.webui_username = d.webui_username;
+                self.webui_bypass_local_auth = d.webui_bypass_local_auth;
+                self.webui_session_ttl = d.webui_session_ttl;
+                self.webui_max_failed_auth = d.webui_max_failed_auth;
+                self.webui_ban_duration = d.webui_ban_duration;
+                self.webui_csrf = d.webui_csrf;
+                self.webui_host_validation = d.webui_host_validation;
+                self.webui_reverse_proxy = d.webui_reverse_proxy;
+                self.ddns_enabled = d.ddns_enabled;
+                self.ddns_service = d.ddns_service;
+                self.ddns_domain = d.ddns_domain;
+                true
+            }
+            "advanced" => {
+                self.hashing_threads = d.hashing_threads;
+                self.save_resume_interval = d.save_resume_interval;
+                self.storage_mode = d.storage_mode;
+                self.disk_cache_size = d.disk_cache_size;
+                self.enable_utp = d.enable_utp;
+                self.enable_fast_extension = d.enable_fast_extension;
+                self.enable_holepunch = d.enable_holepunch;
+                self.enable_bep40 = d.enable_bep40;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    pub fn populate_slint_tab(&self, tab: &str, win: &crate::MainWindow) {
+        match tab {
+            "behavior" => {
+                win.set_pref_skin(self.skin.to_string().into());
+                win.set_pref_theme(self.theme.to_string().into());
+                win.set_pref_density(self.density.to_string().into());
+                win.set_pref_radius(self.radius.to_string().into());
+                win.set_pref_confirm_delete(self.confirm_delete);
+                win.set_pref_confirm_pause_all(self.confirm_pause_all);
+                win.set_pref_show_torrent_added_toast(self.show_torrent_added_toast);
+                win.set_pref_double_click_action(self.double_click_action.as_str().into());
+                win.set_pref_start_minimized(self.start_minimized);
+                win.set_pref_minimize_to_tray(self.minimize_to_tray);
+                win.set_pref_resume_previous_session(self.resume_previous_session);
+                win.set_pref_notify_on_complete(self.notify_on_complete);
+                win.set_pref_notify_on_error(self.notify_on_error);
+                win.set_pref_notify_on_rss(self.notify_on_rss);
+                win.set_pref_play_sound_on_complete(self.play_sound_on_complete);
+                win.set_pref_on_complete_program(self.on_complete_program.as_str().into());
+            }
+            "downloads" => {
+                win.set_pref_download_dir(self.download_dir.as_str().into());
+                win.set_pref_use_incomplete_dir(self.use_incomplete_dir);
+                win.set_pref_incomplete_dir(self.incomplete_dir.as_str().into());
+                win.set_pref_create_subfolder(self.create_subfolder);
+                win.set_pref_pre_allocate(self.pre_allocate);
+                win.set_pref_show_add_torrent_dialog(self.show_add_torrent_dialog);
+                win.set_pref_skip_hash_check(self.skip_hash_check);
+                win.set_pref_incomplete_extension(self.incomplete_extension);
+                win.set_pref_use_auto_categories(self.use_auto_categories);
+                win.set_pref_append_date_to_path(self.append_date_to_path);
+                win.set_pref_watched_folder(self.watched_folder.as_str().into());
+                win.set_pref_copy_torrent_to(self.copy_torrent_to.as_str().into());
+                win.set_pref_delete_torrent_after_add(self.delete_torrent_after_add);
+                win.set_pref_move_completed_enabled(self.move_completed_enabled);
+                win.set_pref_move_completed_to(self.move_completed_to.as_str().into());
+                win.set_pref_dl_on_complete_program(self.dl_on_complete_program.as_str().into());
+            }
+            "connection" => {
+                win.set_pref_listen_port(self.listen_port.to_string().into());
+                win.set_pref_randomize_port(self.randomize_port);
+                win.set_pref_enable_upnp(self.enable_upnp);
+                win.set_pref_enable_natpmp(self.enable_natpmp);
+                win.set_pref_max_connections_global(self.max_connections_global.to_string().into());
+                win.set_pref_max_peers_per_torrent(self.max_peers_per_torrent.to_string().into());
+                win.set_pref_max_upload_slots_global(
+                    self.max_upload_slots_global.to_string().into(),
+                );
+                win.set_pref_max_upload_slots_per_torrent(
+                    self.max_upload_slots_per_torrent.to_string().into(),
+                );
+                win.set_pref_active_downloads(self.active_downloads.to_string().into());
+                win.set_pref_active_seeds(self.active_seeds.to_string().into());
+                win.set_pref_active_limit(self.active_limit.to_string().into());
+                win.set_pref_proxy_type(self.proxy_type.as_str().into());
+                win.set_pref_proxy_host(self.proxy_host.as_str().into());
+                win.set_pref_proxy_port(self.proxy_port.to_string().into());
+                win.set_pref_proxy_peer_connections(self.proxy_peer_connections);
+                win.set_pref_proxy_hostnames(self.proxy_hostnames);
+                win.set_pref_ip_filter_enabled(self.ip_filter_enabled);
+                win.set_pref_ip_filter_path(self.ip_filter_path.as_str().into());
+                win.set_pref_ip_filter_auto_refresh(self.ip_filter_auto_refresh);
+            }
+            "speed" => {
+                win.set_pref_dl_limit_enabled(self.dl_limit_enabled);
+                win.set_pref_dl_limit_value(format_kib_int(self.dl_limit_value).into());
+                win.set_pref_ul_limit_enabled(self.ul_limit_enabled);
+                win.set_pref_ul_limit_value(format_kib_int(self.ul_limit_value).into());
+                win.set_pref_alt_dl_limit(format_kib_int(self.alt_dl_limit).into());
+                win.set_pref_alt_ul_limit(format_kib_int(self.alt_ul_limit).into());
+                win.set_pref_alt_speed_enabled(self.alt_speed_enabled);
+                win.set_pref_rate_limit_overhead(self.rate_limit_overhead);
+                win.set_pref_rate_limit_utp(self.rate_limit_utp);
+                win.set_pref_rate_limit_lan(self.rate_limit_lan);
+            }
+            "bittorrent" => {
+                win.set_pref_enable_dht(self.enable_dht);
+                win.set_pref_enable_pex(self.enable_pex);
+                win.set_pref_enable_lsd(self.enable_lsd);
+                win.set_pref_encryption_mode(self.encryption_mode.as_str().into());
+                win.set_pref_anonymous_mode(self.anonymous_mode);
+                win.set_pref_seed_ratio_enabled(self.seed_ratio_enabled);
+                win.set_pref_seed_ratio_value(format!("{:.2}", self.seed_ratio_value).into());
+                win.set_pref_max_ratio_action(self.max_ratio_action.as_str().into());
+                win.set_pref_seed_time_enabled(self.seed_time_enabled);
+                win.set_pref_seed_time_value(self.seed_time_value.to_string().into());
+                win.set_pref_inactive_seed_time_enabled(self.inactive_seed_time_enabled);
+                win.set_pref_inactive_seed_time_value(
+                    self.inactive_seed_time_value.to_string().into(),
+                );
+                win.set_pref_queueing_enabled(self.queueing_enabled);
+            }
+            "rss" => {
+                win.set_pref_rss_enabled(self.rss_enabled);
+                win.set_pref_rss_refresh_interval(self.rss_refresh_interval.to_string().into());
+                win.set_pref_rss_max_articles(self.rss_max_articles.to_string().into());
+                win.set_pref_rss_auto_download(self.rss_auto_download);
+                win.set_pref_rss_smart_filter(self.rss_smart_filter);
+                win.set_pref_rss_download_repacks(self.rss_download_repacks);
+            }
+            "webui" => {
+                win.set_pref_webui_enabled(self.webui_enabled);
+                win.set_pref_webui_bind(self.webui_bind.as_str().into());
+                win.set_pref_webui_port(self.webui_port.to_string().into());
+                win.set_pref_webui_https(self.webui_https);
+                win.set_pref_webui_username(self.webui_username.as_str().into());
+                win.set_pref_webui_bypass_local_auth(self.webui_bypass_local_auth);
+                win.set_pref_webui_session_ttl(self.webui_session_ttl.to_string().into());
+                win.set_pref_webui_max_failed_auth(self.webui_max_failed_auth.to_string().into());
+                win.set_pref_webui_ban_duration(self.webui_ban_duration.to_string().into());
+                win.set_pref_webui_csrf(self.webui_csrf);
+                win.set_pref_webui_host_validation(self.webui_host_validation);
+                win.set_pref_webui_reverse_proxy(self.webui_reverse_proxy);
+                win.set_pref_ddns_enabled(self.ddns_enabled);
+                win.set_pref_ddns_service(self.ddns_service.as_str().into());
+                win.set_pref_ddns_domain(self.ddns_domain.as_str().into());
+            }
+            "advanced" => {
+                win.set_pref_hashing_threads(self.hashing_threads.to_string().into());
+                win.set_pref_save_resume_interval(self.save_resume_interval.to_string().into());
+                win.set_pref_storage_mode(self.storage_mode.as_str().into());
+                win.set_pref_disk_cache_size(self.disk_cache_size.to_string().into());
+                win.set_pref_enable_utp(self.enable_utp);
+                win.set_pref_enable_fast_ext(self.enable_fast_extension);
+                win.set_pref_enable_holepunch(self.enable_holepunch);
+                win.set_pref_enable_bep40(self.enable_bep40);
+                win.set_pref_config_path(self.config_path.as_str().into());
+            }
+            _ => {}
+        }
+    }
+
     /// Read Slint dialog properties, diff against committed state, apply
     /// changes, and return what changed.
     pub fn diff_and_apply(&mut self, win: &crate::MainWindow) -> ApplyResult {
@@ -1392,6 +1660,155 @@ mod tests {
                 std::mem::discriminant(mode)
             );
         }
+    }
+
+    // ── v0.187.4: reset_tab per-tab tests ─────────────────────────
+
+    fn mutated_state() -> PreferencesState {
+        PreferencesState {
+            skin: Skin::Forge,
+            theme: Theme::Light,
+            density: Density::Compact,
+            radius: RadiusPreset::Sharp,
+            confirm_delete: false,
+            resume_previous_session: false,
+            download_dir: "/custom".to_owned(),
+            create_subfolder: false,
+            pre_allocate: true,
+            listen_port: 9999,
+            enable_upnp: false,
+            max_connections_global: 1,
+            dl_limit_enabled: true,
+            dl_limit_value: 500,
+            rate_limit_utp: false,
+            enable_dht: false,
+            enable_pex: false,
+            encryption_mode: "Require encryption".to_owned(),
+            seed_ratio_enabled: true,
+            rss_enabled: true,
+            rss_refresh_interval: 5,
+            rss_max_articles: 999,
+            webui_enabled: true,
+            webui_port: 1234,
+            webui_csrf: false,
+            ddns_enabled: true,
+            hashing_threads: 16,
+            disk_cache_size: 2048,
+            enable_utp: false,
+            enable_bep40: false,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn reset_tab_behavior() {
+        let d = PreferencesState::default();
+        let mut s = mutated_state();
+        assert!(s.reset_tab("behavior"));
+        assert_eq!(s.skin, d.skin);
+        assert_eq!(s.theme, d.theme);
+        assert_eq!(s.density, d.density);
+        assert_eq!(s.radius, d.radius);
+        assert_eq!(s.confirm_delete, d.confirm_delete);
+        assert_eq!(s.resume_previous_session, d.resume_previous_session);
+        // Non-behavior fields untouched
+        assert_eq!(s.download_dir, "/custom");
+        assert!(!s.enable_dht);
+    }
+
+    #[test]
+    fn reset_tab_downloads() {
+        let d = PreferencesState::default();
+        let mut s = mutated_state();
+        assert!(s.reset_tab("downloads"));
+        assert_eq!(s.download_dir, d.download_dir);
+        assert_eq!(s.create_subfolder, d.create_subfolder);
+        assert_eq!(s.pre_allocate, d.pre_allocate);
+        // Non-downloads fields untouched
+        assert_eq!(s.skin, Skin::Forge);
+    }
+
+    #[test]
+    fn reset_tab_connection() {
+        let d = PreferencesState::default();
+        let mut s = mutated_state();
+        assert!(s.reset_tab("connection"));
+        assert_eq!(s.listen_port, d.listen_port);
+        assert_eq!(s.enable_upnp, d.enable_upnp);
+        assert_eq!(s.max_connections_global, d.max_connections_global);
+        // Non-connection fields untouched
+        assert!(s.dl_limit_enabled);
+    }
+
+    #[test]
+    fn reset_tab_speed() {
+        let d = PreferencesState::default();
+        let mut s = mutated_state();
+        assert!(s.reset_tab("speed"));
+        assert_eq!(s.dl_limit_enabled, d.dl_limit_enabled);
+        assert_eq!(s.dl_limit_value, d.dl_limit_value);
+        assert_eq!(s.rate_limit_utp, d.rate_limit_utp);
+        // Non-speed fields untouched
+        assert_eq!(s.listen_port, 9999);
+    }
+
+    #[test]
+    fn reset_tab_bittorrent() {
+        let d = PreferencesState::default();
+        let mut s = mutated_state();
+        assert!(s.reset_tab("bittorrent"));
+        assert_eq!(s.enable_dht, d.enable_dht);
+        assert_eq!(s.enable_pex, d.enable_pex);
+        assert_eq!(s.encryption_mode, d.encryption_mode);
+        assert_eq!(s.seed_ratio_enabled, d.seed_ratio_enabled);
+        // Non-bittorrent fields untouched
+        assert!(s.rss_enabled);
+    }
+
+    #[test]
+    fn reset_tab_rss() {
+        let d = PreferencesState::default();
+        let mut s = mutated_state();
+        assert!(s.reset_tab("rss"));
+        assert_eq!(s.rss_enabled, d.rss_enabled);
+        assert_eq!(s.rss_refresh_interval, d.rss_refresh_interval);
+        assert_eq!(s.rss_max_articles, d.rss_max_articles);
+        // Non-rss fields untouched
+        assert!(s.webui_enabled);
+    }
+
+    #[test]
+    fn reset_tab_webui() {
+        let d = PreferencesState::default();
+        let mut s = mutated_state();
+        assert!(s.reset_tab("webui"));
+        assert_eq!(s.webui_enabled, d.webui_enabled);
+        assert_eq!(s.webui_port, d.webui_port);
+        assert_eq!(s.webui_csrf, d.webui_csrf);
+        assert_eq!(s.ddns_enabled, d.ddns_enabled);
+        // Non-webui fields untouched
+        assert_eq!(s.hashing_threads, 16);
+    }
+
+    #[test]
+    fn reset_tab_advanced() {
+        let d = PreferencesState::default();
+        let mut s = mutated_state();
+        assert!(s.reset_tab("advanced"));
+        assert_eq!(s.hashing_threads, d.hashing_threads);
+        assert_eq!(s.disk_cache_size, d.disk_cache_size);
+        assert_eq!(s.enable_utp, d.enable_utp);
+        assert_eq!(s.enable_bep40, d.enable_bep40);
+        // Non-advanced fields untouched
+        assert!(s.webui_enabled);
+    }
+
+    #[test]
+    fn reset_tab_unknown_returns_false() {
+        let mut s = mutated_state();
+        let before_skin = s.skin;
+        assert!(!s.reset_tab("nonexistent"));
+        assert_eq!(s.skin, before_skin);
     }
 
     #[test]

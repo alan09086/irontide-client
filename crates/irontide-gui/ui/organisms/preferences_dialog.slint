@@ -7,6 +7,7 @@
 import { Tokens } from "../tokens.slint";
 import { PrefGroup, PrefField, PrefToggle, PrefTextInput } from "../molecules/pref_controls.slint";
 import { PrefSelect } from "../molecules/pref_select.slint";
+import { PrefResetRow } from "../molecules/pref_reset_row.slint";
 
 export component PreferencesDialog {
     in property <bool> show;
@@ -165,6 +166,7 @@ export component PreferencesDialog {
     callback browse-watched-folder();
     callback browse-copy-torrent-to();
     callback browse-move-completed-to();
+    callback reset-tab(string);
 
     if root.show: Rectangle {
         background: Tokens.bg-0.with-alpha(80%);
@@ -508,6 +510,10 @@ export component PreferencesDialog {
                                             }
                                         }
                                     }
+
+                                    PrefResetRow {
+                                        reset-requested => { root.reset-tab("behavior"); }
+                                    }
                                 }
 
                                 // ── Downloads tab ─────────────────────
@@ -784,6 +790,10 @@ export component PreferencesDialog {
                                             }
                                         }
                                     }
+
+                                    PrefResetRow {
+                                        reset-requested => { root.reset-tab("downloads"); }
+                                    }
                                 }
 
                                 // ── Connection tab ───────────────────
@@ -1043,6 +1053,10 @@ export component PreferencesDialog {
                                             }
                                         }
                                     }
+
+                                    PrefResetRow {
+                                        reset-requested => { root.reset-tab("connection"); }
+                                    }
                                 }
 
                                 // ── Speed tab ────────────────────────
@@ -1187,6 +1201,10 @@ export component PreferencesDialog {
                                                 root.dirty = true;
                                             }
                                         }
+                                    }
+
+                                    PrefResetRow {
+                                        reset-requested => { root.reset-tab("speed"); }
                                     }
                                 }
 
@@ -1410,6 +1428,10 @@ export component PreferencesDialog {
                                             edited(v) => { root.dirty = true; }
                                         }
                                     }
+
+                                    PrefResetRow {
+                                        reset-requested => { root.reset-tab("bittorrent"); }
+                                    }
                                 }
 
                                 // ── RSS tab ──────────────────────────
@@ -1509,6 +1531,10 @@ export component PreferencesDialog {
                                                 root.dirty = true;
                                             }
                                         }
+                                    }
+
+                                    PrefResetRow {
+                                        reset-requested => { root.reset-tab("rss"); }
                                     }
                                 }
 
@@ -1744,6 +1770,10 @@ export component PreferencesDialog {
                                             }
                                         }
                                     }
+
+                                    PrefResetRow {
+                                        reset-requested => { root.reset-tab("webui"); }
+                                    }
                                 }
 
                                 // ── Advanced tab ─────────────────────
@@ -1892,15 +1922,8 @@ export component PreferencesDialog {
                                         }
                                     }
 
-                                    PrefField {
-                                        label: "Reset to defaults";
-                                        not-yet-active: true;
-                                        Text {
-                                            text: "Not yet available";
-                                            color: Tokens.fg-3;
-                                            font-size: Tokens.fs-13;
-                                            vertical-alignment: center;
-                                        }
+                                    PrefResetRow {
+                                        reset-requested => { root.reset-tab("advanced"); }
                                     }
                                 }
                             }

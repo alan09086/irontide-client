@@ -884,6 +884,15 @@ fn main() -> Result<(), error::GuiError> {
             bridge::handle_browse_pref_folder(&weak, &cb_state, "pref-download-dir");
         });
     }
+    {
+        let weak = main_window.as_weak();
+        main_window.on_preferences_reset_tab(move |tab| {
+            let Some(win) = weak.upgrade() else { return };
+            let defaults = crate::prefs::PreferencesState::default();
+            defaults.populate_slint_tab(tab.as_str(), &win);
+            win.set_pref_dirty(true);
+        });
+    }
 
     // 7. Spawn session thread.
     let session_handle =

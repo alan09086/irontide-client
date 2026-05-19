@@ -1,0 +1,32 @@
+import { Tokens } from "../tokens.slint";
+
+export component PrefResetRow inherits VerticalLayout {
+    callback reset-requested();
+
+    padding-top: Tokens.sp-4;
+
+    HorizontalLayout {
+        alignment: end;
+
+        Rectangle {
+            width: 140px;
+            height: 28px;
+            background: touch.has-hover ? Tokens.bg-hover : transparent;
+            border-color: Tokens.border-1;
+            border-width: Tokens.border-width-thin;
+            border-radius: Tokens.r-sm;
+
+            touch := TouchArea {
+                clicked => { root.reset-requested(); }
+            }
+
+            Text {
+                text: "Reset to Defaults";
+                color: Tokens.fg-1;
+                font-size: Tokens.fs-13;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
