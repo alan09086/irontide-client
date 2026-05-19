@@ -290,9 +290,9 @@ impl SkinSettings {
 
         // Density → (row_h, row_px, chrome_h, sidebar_w, filters_w)
         let (row_h, row_px, chrome_h, sidebar_w, filters_w) = match self.density {
-            Density::Compact => (24.0, 4.0, 32.0, 200.0, 180.0),
-            Density::Balanced => (28.0, 6.0, 36.0, 240.0, 200.0),
-            Density::Spacious => (36.0, 10.0, 44.0, 280.0, 240.0),
+            Density::Compact => (28.0, 6.0, 34.0, 210.0, 190.0),
+            Density::Balanced => (32.0, 8.0, 40.0, 240.0, 200.0),
+            Density::Spacious => (40.0, 12.0, 48.0, 280.0, 240.0),
         };
 
         // Radius preset → (r-sm, r-md, r-lg, r-xl)
@@ -778,14 +778,21 @@ mod tests {
             ..Default::default()
         }
         .resolve();
+        let balanced = SkinSettings {
+            density: Density::Balanced,
+            ..Default::default()
+        }
+        .resolve();
         let spacious = SkinSettings {
             density: Density::Spacious,
             ..Default::default()
         }
         .resolve();
-        assert!(compact.row_h < spacious.row_h);
-        assert!((compact.row_h - 24.0).abs() < f32::EPSILON);
-        assert!((spacious.row_h - 36.0).abs() < f32::EPSILON);
+        assert!(compact.row_h < balanced.row_h);
+        assert!(balanced.row_h < spacious.row_h);
+        assert!((compact.row_h - 28.0).abs() < f32::EPSILON);
+        assert!((balanced.row_h - 32.0).abs() < f32::EPSILON);
+        assert!((spacious.row_h - 40.0).abs() < f32::EPSILON);
     }
 
     // ── Radius delta ──
@@ -858,11 +865,11 @@ mod tests {
                         assert_eq!(r.dur, 150);
                         assert_eq!(r.dur_slow, 300);
 
-                        // Row-h should track density.
+                        // Row-h should track density (M188 values).
                         let expected_row_h = match density {
-                            Density::Compact => 24.0,
-                            Density::Balanced => 28.0,
-                            Density::Spacious => 36.0,
+                            Density::Compact => 28.0,
+                            Density::Balanced => 32.0,
+                            Density::Spacious => 40.0,
                         };
                         assert!(
                             (r.row_h - expected_row_h).abs() < f32::EPSILON,

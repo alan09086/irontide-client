@@ -10,6 +10,7 @@
 // Visual properties flow through the M172b `Tokens` global. No literal
 // colours/sizes here.
 
+import { ListView } from "std-widgets.slint";
 import { Tokens } from "../tokens.slint";
 import { TorrentProgressBar } from "../widgets/progress_bar.slint";
 
@@ -116,6 +117,8 @@ export component TorrentListView {
     callback sort-requested(/* column index */ int);
     callback row-clicked(/* info-hash */ string, /* shift */ bool, /* ctrl */ bool);
     callback row-right-clicked(/* info-hash */ string, /* x */ length, /* y */ length);
+    callback column-move-requested(/* from */ int, /* to */ int);
+    callback column-visibility-toggled(/* column index */ int);
 
     Rectangle {
         background: Tokens.bg-0;
@@ -171,7 +174,7 @@ export component TorrentListView {
 
                 // Inner container that scrolls horizontally in sync with the list
                 header-scroll := Rectangle {
-                    x: list-flick.viewport-x;
+                    x: list-view.viewport-x;
                     width: root.total-columns-width;
                     height: parent.height;
 
@@ -412,14 +415,12 @@ export component TorrentListView {
                 } // header-scroll
             }
 
-            // ── Torrent List (scrollable) ──
-            list-flick := Flickable {
+            // ── Torrent List (virtualized) ──
+            list-view := ListView {
                 vertical-stretch: 1;
-                viewport-height: root.torrent-model.length * Tokens.row-h;
                 viewport-width: max(root.total-columns-width, self.width);
 
                 for item[index] in root.torrent-model: Rectangle {
-                    y: index * Tokens.row-h;
                     height: Tokens.row-h;
                     width: root.total-columns-width;
                     background: item.selected
@@ -561,21 +562,14 @@ export component TorrentListView {
                 }
             }
 
-            // v0.187.3 / Bug 13: horizontal scrollbar indicator. The
-            // list-flick `Flickable` supports horizontal scrolling but
-            // Slint's bare Flickable renders no scrollbar — the dogfood
-            // report flagged the missing visual cue. We render a 6px
-            // track with a thumb that mirrors `list-flick.viewport-x`
-            // and the visible-fraction of the columns total width.
-            //
-            // Suppressed when there's no overflow (total ≤ visible) so the
-            // bar only appears when scrolling is actually possible.
-            if root.total-columns-width > list-flick.width: Rectangle {
+            // Horizontal scrollbar indicator (v0.187.3 / Bug 13).
+            // Suppressed when there's no overflow (total ≤ visible).
+            if root.total-columns-width > list-view.width: Rectangle {
                 height: 6px;
                 background: Tokens.bg-2;
                 Rectangle {
-                    x: -list-flick.viewport-x * (parent.width / root.total-columns-width);
-                    width: parent.width * (list-flick.width / root.total-columns-width);
+                    x: -list-view.viewport-x * (parent.width / root.total-columns-width);
+                    width: parent.width * (list-view.width / root.total-columns-width);
                     height: parent.height;
                     background: Tokens.border-2;
                     border-radius: 3px;

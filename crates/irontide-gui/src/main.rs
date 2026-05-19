@@ -28,6 +28,19 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 use slint::Model as _;
 
+fn push_column_widths(cols: &columns::ColumnConfig, win: &MainWindow) {
+    use columns::ColumnId;
+    win.set_col_progress_width(cols.effective_width(ColumnId::Progress));
+    win.set_col_state_width(cols.effective_width(ColumnId::State));
+    win.set_col_down_rate_width(cols.effective_width(ColumnId::DownRate));
+    win.set_col_up_rate_width(cols.effective_width(ColumnId::UpRate));
+    win.set_col_seeds_width(cols.effective_width(ColumnId::Seeds));
+    win.set_col_peers_width(cols.effective_width(ColumnId::Peers));
+    win.set_col_eta_width(cols.effective_width(ColumnId::Eta));
+    win.set_col_size_width(cols.effective_width(ColumnId::Size));
+    win.set_col_ratio_width(cols.effective_width(ColumnId::Ratio));
+}
+
 fn main() -> Result<(), error::GuiError> {
     // 1. Install panic hook.
     panic_hook::install();
@@ -132,6 +145,42 @@ fn main() -> Result<(), error::GuiError> {
             } else {
                 st.sort.column = col;
                 st.sort.ascending = true;
+            }
+        });
+    }
+
+    // 6c-col. Wire column-move callback (M188).
+    {
+        let cb_state = state.clone();
+        let weak = main_window.as_weak();
+        main_window.on_column_move_requested(move |from, to| {
+            #[allow(
+                clippy::cast_sign_loss,
+                reason = "M188: Slint int→usize for column indices; negative values rejected by bounds check"
+            )]
+            let (from_u, to_u) = (from as usize, to as usize);
+            let mut st = cb_state.lock();
+            st.columns.move_column(from_u, to_u);
+            st.columns_dirty = true;
+            if let Some(win) = weak.upgrade() {
+                push_column_widths(&st.columns, &win);
+            }
+        });
+    }
+
+    // 6c-vis. Wire column-visibility toggle callback (M188).
+    {
+        let cb_state = state.clone();
+        let weak = main_window.as_weak();
+        main_window.on_column_visibility_toggled(move |col_index| {
+            let Some(col) = columns::ColumnId::from_index(col_index) else {
+                return;
+            };
+            let mut st = cb_state.lock();
+            st.columns.toggle_visibility(col);
+            st.columns_dirty = true;
+            if let Some(win) = weak.upgrade() {
+                push_column_widths(&st.columns, &win);
             }
         });
     }

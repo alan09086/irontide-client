@@ -540,6 +540,8 @@ export component MainWindow inherits Window {
     callback quit-requested();
     callback sort-requested(/* column index */ int);
     callback row-clicked(/* info-hash */ string, /* shift */ bool, /* ctrl */ bool);
+    callback column-move-requested(/* from */ int, /* to */ int);
+    callback column-visibility-toggled(/* column index */ int);
 
     // ── FocusScope for keyboard shortcuts + modifier key tracking ──
     focus-scope := FocusScope {
@@ -729,6 +731,8 @@ export component MainWindow inherits Window {
                         sort-requested(c) => { root.sort-requested(c); }
                         row-clicked(h, s, c) => { root.row-clicked(h, s, c); }
                         row-right-clicked(h, x, y) => { root.row-right-clicked(h, x, y); }
+                        column-move-requested(f, t) => { root.column-move-requested(f, t); }
+                        column-visibility-toggled(c) => { root.column-visibility-toggled(c); }
                     }
 
                     if root.session-ready && root.error-text == "": Rectangle {

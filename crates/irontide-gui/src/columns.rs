@@ -109,8 +109,9 @@ impl ColumnId {
         }
     }
 
-    /// Minimum pixel width for this column.
-    #[allow(dead_code)] // Used in M164 drag-resize
+    /// Minimum pixel width for this column (enforced during drag-resize).
+    #[must_use]
+    #[allow(dead_code)]
     pub fn min_width(self) -> f32 {
         match self {
             Self::Name => 100.0,
@@ -254,7 +255,6 @@ impl ColumnConfig {
     /// Drag-reorder: remove the column at position `from` and insert it at
     /// position `to`.  Both indices must be within bounds; out-of-bounds
     /// indices are silently ignored.
-    #[allow(dead_code)] // Used in M164 drag-reorder
     pub fn move_column(&mut self, from: usize, to: usize) {
         if from >= self.order.len() || to >= self.order.len() || from == to {
             return;
@@ -267,11 +267,24 @@ impl ColumnConfig {
         self.widths.insert(insert_at, width);
     }
 
+    /// Return the effective width for `col` — its stored width when visible,
+    /// or `0.0` when hidden.
+    #[must_use]
+    pub fn effective_width(&self, col: ColumnId) -> f32 {
+        if !self.visible.contains(&col) {
+            return 0.0;
+        }
+        self.order
+            .iter()
+            .position(|c| *c == col)
+            .and_then(|i| self.widths.get(i).copied())
+            .unwrap_or(col.default_width())
+    }
+
     /// Toggle the visibility of `col`.
     ///
     /// [`ColumnId::Name`] can never be hidden — calling this with `Name`
     /// while it is visible is a no-op.
-    #[allow(dead_code)] // Used in M164 column visibility menu
     pub fn toggle_visibility(&mut self, col: ColumnId) {
         if col == ColumnId::Name && self.visible.contains(&col) {
             // Name must always remain visible.
@@ -385,6 +398,80 @@ mod tests {
             10,
             "widths length must match order length"
         );
+    }
+
+    #[test]
+    fn effective_width_returns_zero_for_hidden_column() {
+        let mut cfg = ColumnConfig::default();
+        let w_before = cfg.effective_width(ColumnId::Progress);
+        assert!(w_before > 0.0);
+        cfg.toggle_visibility(ColumnId::Progress);
+        assert!(
+            (cfg.effective_width(ColumnId::Progress) - 0.0).abs() < f32::EPSILON,
+            "hidden column should have effective width 0"
+        );
+    }
+
+    #[test]
+    fn effective_width_returns_stored_for_visible_column() {
+        let mut cfg = ColumnConfig::default();
+        cfg.widths[1] = 150.0;
+        assert!(
+            (cfg.effective_width(ColumnId::Progress) - 150.0).abs() < f32::EPSILON,
+        );
+    }
+
+    #[test]
+    fn toggle_visibility_round_trip() {
+        let mut cfg = ColumnConfig::default();
+        assert!(cfg.visible.contains(&ColumnId::Ratio));
+        cfg.toggle_visibility(ColumnId::Ratio);
+        assert!(!cfg.visible.contains(&ColumnId::Ratio));
+        cfg.toggle_visibility(ColumnId::Ratio);
+        assert!(cfg.visible.contains(&ColumnId::Ratio));
+    }
+
+    #[test]
+    fn move_column_out_of_bounds_is_noop() {
+        let cfg_before = ColumnConfig::default();
+        let mut cfg = ColumnConfig::default();
+        cfg.move_column(99, 0);
+        assert_eq!(cfg.order, cfg_before.order);
+        cfg.move_column(0, 99);
+        assert_eq!(cfg.order, cfg_before.order);
+    }
+
+    #[test]
+    fn move_column_same_index_is_noop() {
+        let cfg_before = ColumnConfig::default();
+        let mut cfg = ColumnConfig::default();
+        cfg.move_column(3, 3);
+        assert_eq!(cfg.order, cfg_before.order);
+    }
+
+    #[test]
+    fn move_column_preserves_widths() {
+        let mut cfg = ColumnConfig::default();
+        cfg.widths[0] = 999.0;
+        let w0 = cfg.widths[0];
+        cfg.move_column(0, 5);
+        assert!(
+            (cfg.widths[5] - w0).abs() < f32::EPSILON,
+            "width must follow column during move"
+        );
+    }
+
+    #[test]
+    fn hidden_column_persists_through_round_trip() {
+        let mut original = ColumnConfig::default();
+        original.toggle_visibility(ColumnId::Seeds);
+        original.toggle_visibility(ColumnId::UpRate);
+        let gui = original.to_gui_config();
+        let restored = ColumnConfig::from_gui_config(&gui);
+        assert!(!restored.visible.contains(&ColumnId::Seeds));
+        assert!(!restored.visible.contains(&ColumnId::UpRate));
+        assert!(restored.visible.contains(&ColumnId::Name));
+        assert!(restored.visible.contains(&ColumnId::Progress));
     }
 
     /// Serialise to `GuiConfig`, deserialise back, verify order/visibility/widths.
