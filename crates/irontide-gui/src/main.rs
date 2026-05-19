@@ -16,6 +16,7 @@ mod scheduler;
 mod ip_filter_page;
 #[allow(dead_code)]
 mod logs_stats_page;
+mod bandwidth_intent;
 mod category_suggest;
 mod search;
 mod single_instance;
@@ -1048,6 +1049,7 @@ fn main() -> Result<(), error::GuiError> {
                             win.set_show_scheduler_page(false);
                             win.set_show_ip_filter_page(false);
                             win.set_show_logs_stats_page(false);
+                            win.set_show_bandwidth_intent_page(false);
                         }
                     });
                 }
@@ -1060,6 +1062,7 @@ fn main() -> Result<(), error::GuiError> {
                             win.set_show_scheduler_page(false);
                             win.set_show_ip_filter_page(false);
                             win.set_show_logs_stats_page(false);
+                            win.set_show_bandwidth_intent_page(false);
                         }
                     });
                 }
@@ -1073,6 +1076,7 @@ fn main() -> Result<(), error::GuiError> {
                             win.set_show_rss_page(false);
                             win.set_show_ip_filter_page(false);
                             win.set_show_logs_stats_page(false);
+                            win.set_show_bandwidth_intent_page(false);
                             crate::bridge::push_scheduler_state(&sched_weak);
                         }
                     });
@@ -1087,6 +1091,7 @@ fn main() -> Result<(), error::GuiError> {
                             win.set_show_rss_page(false);
                             win.set_show_scheduler_page(false);
                             win.set_show_logs_stats_page(false);
+                            win.set_show_bandwidth_intent_page(false);
                             crate::bridge::push_ip_filter_state(&filter_weak);
                         }
                     });
@@ -1101,7 +1106,23 @@ fn main() -> Result<(), error::GuiError> {
                             win.set_show_rss_page(false);
                             win.set_show_scheduler_page(false);
                             win.set_show_ip_filter_page(false);
+                            win.set_show_bandwidth_intent_page(false);
                             crate::bridge::push_logs_stats_state(&logs_weak);
+                        }
+                    });
+                }
+                palette::DispatchAction::ToggleBandwidthIntent => {
+                    let intent_weak = weak2.clone();
+                    let _ = weak2.upgrade_in_event_loop(move |win| {
+                        let current = win.get_show_bandwidth_intent_page();
+                        win.set_show_bandwidth_intent_page(!current);
+                        if !current {
+                            win.set_show_search_page(false);
+                            win.set_show_rss_page(false);
+                            win.set_show_scheduler_page(false);
+                            win.set_show_ip_filter_page(false);
+                            win.set_show_logs_stats_page(false);
+                            crate::bridge::push_bandwidth_intent_state(&intent_weak);
                         }
                     });
                 }
@@ -1364,6 +1385,41 @@ fn main() -> Result<(), error::GuiError> {
                 let _ = tx.send(app::GuiCommand::SchedulerLimitedRateChanged {
                     rate_kib: u32::try_from(rate).unwrap_or(512),
                 });
+            }
+        });
+    }
+
+    // 6l-2. Wire Bandwidth Intent callbacks (M203).
+    {
+        let cb_state = state.clone();
+        main_window.on_intent_set_mode(move |mode| {
+            let cmd_tx = cb_state.lock().cmd_tx.clone();
+            if let Some(tx) = cmd_tx {
+                let _ = tx.send(app::GuiCommand::IntentSetMode {
+                    mode: u8::try_from(mode).unwrap_or(0),
+                });
+            }
+        });
+    }
+    {
+        let cb_state = state.clone();
+        main_window.on_intent_apply_preset(move |index| {
+            let cmd_tx = cb_state.lock().cmd_tx.clone();
+            if let Some(tx) = cmd_tx {
+                let _ = tx.send(app::GuiCommand::IntentApplyPreset {
+                    index: usize::try_from(index).unwrap_or(0),
+                });
+            }
+        });
+    }
+    {
+        let cb_state = state.clone();
+        main_window.on_intent_set_detected_speeds(move |dl_text, ul_text| {
+            let cmd_tx = cb_state.lock().cmd_tx.clone();
+            if let Some(tx) = cmd_tx {
+                let dl_kbps = dl_text.trim().parse::<u64>().unwrap_or(0);
+                let ul_kbps = ul_text.trim().parse::<u64>().unwrap_or(0);
+                let _ = tx.send(app::GuiCommand::IntentSetDetectedSpeeds { dl_kbps, ul_kbps });
             }
         });
     }

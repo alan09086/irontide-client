@@ -736,6 +736,15 @@ async fn handle_gui_command(
         } => {
             handle_category_suggest_train(&category, &name, &file_extensions, &trackers);
         }
+        GuiCommand::IntentSetMode { mode } => {
+            handle_intent_set_mode(mode, weak);
+        }
+        GuiCommand::IntentApplyPreset { index } => {
+            handle_intent_apply_preset(index, weak);
+        }
+        GuiCommand::IntentSetDetectedSpeeds { dl_kbps, ul_kbps } => {
+            handle_intent_set_detected_speeds(dl_kbps, ul_kbps, weak);
+        }
     }
 
     let elapsed = start.elapsed();
@@ -2631,6 +2640,78 @@ pub fn push_scheduler_state(weak: &slint::Weak<crate::MainWindow>) {
         win.set_scheduler_limited_rate_kib(limited_rate);
         let model = std::rc::Rc::new(slint::VecModel::from(cells));
         win.set_scheduler_cells(slint::ModelRc::from(model));
+    });
+}
+
+// ── Bandwidth Intent (M203) ─────────────────────────────────────────────────
+
+fn handle_intent_set_mode(mode: u8, weak: &slint::Weak<crate::MainWindow>) {
+    let mut intent = crate::bandwidth_intent::BandwidthIntent::load();
+    intent.mode = match mode {
+        1 => crate::bandwidth_intent::IntentMode::ManualLimits,
+        2 => crate::bandwidth_intent::IntentMode::LeaveReserve,
+        _ => crate::bandwidth_intent::IntentMode::Unlimited,
+    };
+    let _ = intent.save();
+    push_bandwidth_intent_state(weak);
+}
+
+fn handle_intent_apply_preset(index: usize, weak: &slint::Weak<crate::MainWindow>) {
+    let mut intent = crate::bandwidth_intent::BandwidthIntent::load();
+    if let Some(preset) = crate::bandwidth_intent::PRESETS.get(index) {
+        intent.apply_preset(preset);
+        let _ = intent.save();
+    }
+    push_bandwidth_intent_state(weak);
+}
+
+fn handle_intent_set_detected_speeds(
+    dl_kbps: u64,
+    ul_kbps: u64,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    let mut intent = crate::bandwidth_intent::BandwidthIntent::load();
+    intent.detected_download_kbps = dl_kbps;
+    intent.detected_upload_kbps = ul_kbps;
+    let _ = intent.save();
+    push_bandwidth_intent_state(weak);
+}
+
+pub fn push_bandwidth_intent_state(weak: &slint::Weak<crate::MainWindow>) {
+    let intent = crate::bandwidth_intent::BandwidthIntent::load();
+    let mode = match intent.mode {
+        crate::bandwidth_intent::IntentMode::Unlimited => 0,
+        crate::bandwidth_intent::IntentMode::ManualLimits => 1,
+        crate::bandwidth_intent::IntentMode::LeaveReserve => 2,
+    };
+    let detected_dl = intent.detected_download_kbps.to_string();
+    let detected_ul = intent.detected_upload_kbps.to_string();
+    let reserved_dl = crate::bandwidth_intent::format_speed_kbps(intent.reserved_download_kbps);
+    let reserved_ul = crate::bandwidth_intent::format_speed_kbps(intent.reserved_upload_kbps);
+    let limits = intent.effective_limits();
+    let effective_dl = crate::bandwidth_intent::format_speed_bytes(limits.download_bytes_per_sec);
+    let effective_ul = crate::bandwidth_intent::format_speed_bytes(limits.upload_bytes_per_sec);
+
+    let presets: Vec<crate::IntentPresetRow> = crate::bandwidth_intent::PRESETS
+        .iter()
+        .map(|p| crate::IntentPresetRow {
+            name: p.name.into(),
+            description: p.description.into(),
+            reserve_dl: crate::bandwidth_intent::format_speed_kbps(p.reserve_download_kbps).into(),
+            reserve_ul: crate::bandwidth_intent::format_speed_kbps(p.reserve_upload_kbps).into(),
+        })
+        .collect();
+
+    let _ = weak.upgrade_in_event_loop(move |win| {
+        win.set_intent_mode(mode);
+        win.set_intent_detected_dl_text(detected_dl.into());
+        win.set_intent_detected_ul_text(detected_ul.into());
+        win.set_intent_reserved_dl_text(reserved_dl.into());
+        win.set_intent_reserved_ul_text(reserved_ul.into());
+        win.set_intent_effective_dl_text(effective_dl.into());
+        win.set_intent_effective_ul_text(effective_ul.into());
+        let model = std::rc::Rc::new(slint::VecModel::from(presets));
+        win.set_intent_presets(slint::ModelRc::from(model));
     });
 }
 
