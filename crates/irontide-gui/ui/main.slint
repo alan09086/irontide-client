@@ -334,6 +334,10 @@ export component MainWindow inherits Window {
     in-out property <int> status-total-torrents: 0;
     in-out property <int> status-dht-nodes: 0;
     in-out property <int> status-listen-port: 0;
+    // M193: per-state torrent counts for system tray icon state derivation.
+    in-out property <int> status-downloading-count: 0;
+    in-out property <int> status-seeding-count: 0;
+    in-out property <int> status-error-count: 0;
     // v0.187.3 / 2.6: workspace version string ("0.187.3"). Set once at
     // startup from `APP_VERSION` in main.rs. Surfaced in the StatusBar
     // footer and the new About tab in the preferences dialog.

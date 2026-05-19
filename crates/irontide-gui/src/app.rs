@@ -278,6 +278,10 @@ pub enum GuiCommand {
     CreateTorrent {
         state: CreateTorrentState,
     },
+    /// M193: pause every torrent in the session (tray menu action).
+    PauseAll,
+    /// M193: resume every torrent in the session (tray menu action).
+    ResumeAll,
     /// M180: set per-torrent DL/UL rate limits.
     SetTorrentRateLimit {
         /// Hex-encoded info-hash string.
