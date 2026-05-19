@@ -57,6 +57,7 @@ mod tests {
         for path in [
             "js/htmx.min.js",
             "js/ws-live.js",
+            "js/col-resize.js",
             "css/pico.min.css",
             "css/app.css",
             "settings.html",
@@ -156,6 +157,28 @@ mod tests {
         assert!(
             content.contains("data-detail-hash"),
             "ws-live.js must consult body.data-detail-hash before dispatching"
+        );
+    }
+
+    #[test]
+    fn test_col_resize_js_has_storage_and_drag() {
+        let (_mime, bytes) = get("js/col-resize.js").expect("col-resize.js embedded");
+        let content = String::from_utf8_lossy(&bytes);
+        assert!(
+            content.contains("localStorage"),
+            "col-resize.js must persist widths to localStorage"
+        );
+        assert!(
+            content.contains("mousedown"),
+            "col-resize.js must handle mousedown for drag initiation"
+        );
+        assert!(
+            content.contains("col-resize-handle"),
+            "col-resize.js must create drag handle elements"
+        );
+        assert!(
+            content.contains("htmx:afterSwap"),
+            "col-resize.js must re-apply widths after HTMX swaps"
         );
     }
 

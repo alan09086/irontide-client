@@ -594,3 +594,64 @@ async fn settings_page_served_at_slash_settings() {
         &text[..text.len().min(200)]
     );
 }
+
+// ---------------------------------------------------------------------------
+// M189 — OOB stats bar
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn torrent_list_fragment_includes_oob_stats_bar() {
+    let (router, _tempdir) = test_router_isolated().await;
+
+    let req = Request::get("/webui/fragments/torrent-list")
+        .body(Body::empty())
+        .expect("build request");
+    let response = router.oneshot(req).await.expect("response");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("collect body")
+        .to_bytes();
+    let text = String::from_utf8_lossy(&body);
+
+    assert!(
+        text.contains("hx-swap-oob"),
+        "response must contain an OOB swap fragment, got: {}",
+        &text[..text.len().min(300)]
+    );
+    assert!(
+        text.contains("id=\"stats-bar\""),
+        "OOB fragment must target #stats-bar"
+    );
+    assert!(
+        text.contains("stat-active"),
+        "stats bar must contain the active-count span"
+    );
+}
+
+#[tokio::test]
+async fn torrent_list_fragment_stats_bar_reflects_active_torrents() {
+    let (router, _tempdir) = test_router_isolated().await;
+    seed_magnet(&router).await;
+
+    let req = Request::get("/webui/fragments/torrent-list")
+        .body(Body::empty())
+        .expect("build request");
+    let response = router.oneshot(req).await.expect("response");
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("collect body")
+        .to_bytes();
+    let text = String::from_utf8_lossy(&body);
+
+    assert!(
+        text.contains("Active: 1"),
+        "stats bar should show 1 active torrent after seeding a magnet, got: {}",
+        &text[..text.len().min(500)]
+    );
+}

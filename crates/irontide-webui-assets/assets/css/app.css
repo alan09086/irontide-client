@@ -52,6 +52,14 @@ progress[data-state="paused"]::-moz-progress-bar {
   white-space: nowrap;
 }
 
+#torrent-list tbody tr:nth-child(even) {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+#torrent-list tbody tr:hover {
+  background-color: rgba(255, 255, 255, 0.07);
+}
+
 /* ─── Responsive: hide detail columns on small screens ───────── */
 @media (max-width: 768px) {
   .col-down,

@@ -67,6 +67,17 @@ pub(crate) struct TorrentListTemplate {
     pub torrents: Vec<TorrentRow>,
 }
 
+/// Askama template for the out-of-band stats bar update, piggybacked
+/// onto the torrent list fragment response via `hx-swap-oob`.
+#[derive(Template)]
+#[template(path = "stats_bar_oob.html")]
+pub(crate) struct StatsBarOobTemplate {
+    pub active: usize,
+    pub down_rate: String,
+    pub up_rate: String,
+    pub ratio: String,
+}
+
 /// Askama template that renders the full detail page for a single torrent.
 ///
 /// The Info panel is rendered server-side via `{% include "info_tab.html" %}`
@@ -318,6 +329,21 @@ pub async fn torrent_list_fragment(State(session): State<AppState>) -> impl Into
         }
     };
 
+    let mut active_count: usize = 0;
+    let mut total_dl: u64 = 0;
+    let mut total_ul: u64 = 0;
+    let mut all_time_dl: u64 = 0;
+    let mut all_time_ul: u64 = 0;
+    for t in &summaries {
+        if !matches!(t.state, TorrentState::Paused | TorrentState::Queued) {
+            active_count += 1;
+        }
+        total_dl += t.download_rate;
+        total_ul += t.upload_rate;
+        all_time_dl += t.all_time_download;
+        all_time_ul += t.all_time_upload;
+    }
+
     let rows: Vec<TorrentRow> = summaries
         .into_iter()
         .map(|t| {
@@ -344,8 +370,20 @@ pub async fn torrent_list_fragment(State(session): State<AppState>) -> impl Into
         })
         .collect();
 
-    let tmpl = TorrentListTemplate { torrents: rows };
-    tmpl.into_web_template().into_response()
+    let list_html = TorrentListTemplate { torrents: rows }
+        .render()
+        .unwrap_or_default();
+
+    let stats_html = StatsBarOobTemplate {
+        active: active_count,
+        down_rate: irontide_format::format_rate(total_dl),
+        up_rate: irontide_format::format_rate(total_ul),
+        ratio: irontide_format::format_ratio(all_time_ul, all_time_dl),
+    }
+    .render()
+    .unwrap_or_default();
+
+    Html(format!("{list_html}{stats_html}")).into_response()
 }
 
 /// Form body for the add-magnet endpoint.
