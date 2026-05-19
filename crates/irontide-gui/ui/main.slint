@@ -33,6 +33,7 @@ import { IpFilterPage, IpFilterRuleRow, BannedPeerRow } from "organisms/ip_filte
 import { LogsStatsPage, LogRow, StatCardData, TransferBar } from "organisms/logs_stats_page.slint";
 import { BandwidthIntentPage, IntentPresetRow } from "organisms/bandwidth_intent_page.slint";
 import { PhonePairPage } from "organisms/phone_pair_page.slint";
+import { FirstRunWizard } from "organisms/first_run_wizard.slint";
 
 export { Tokens, Shadow, SidebarRow, TorrentRow, FileTreeRow, PaletteItem, PaletteCategory, SearchResultRow, RssFeedRow, RssItemRow, RssRuleRow, SchedulerCell, IpFilterRuleRow, BannedPeerRow, LogRow, StatCardData, TransferBar, IntentPresetRow }
 
@@ -430,6 +431,16 @@ export component MainWindow inherits Window {
     in-out property <string> phone-pair-port-text: "9080";
     in-out property <string> phone-pair-status-text: "Ready";
     callback phone-pair-refresh();
+
+    // ── First-run wizard (M210) ──
+    in-out property <bool> show-first-run: false;
+    in-out property <int> first-run-step: 0;
+    in-out property <string> wizard-download-dir: "";
+    in-out property <string> wizard-listen-port: "6881";
+    in-out property <bool> wizard-enable-dht: true;
+    in-out property <bool> wizard-enable-utp: true;
+    in-out property <bool> wizard-enable-pex: true;
+    callback wizard-finish();
 
     // ── Update notification (M209) ──
     in-out property <bool> update-available: false;
@@ -1405,5 +1416,24 @@ export component MainWindow inherits Window {
         browse-watched-folder => { root.preferences-browse-watched-folder(); }
         browse-copy-torrent-to => { root.preferences-browse-copy-torrent-to(); }
         browse-move-completed-to => { root.preferences-browse-move-completed-to(); }
+    }
+
+    // M210: First-run wizard (highest z-order — covers everything)
+    if root.show-first-run : FirstRunWizard {
+        step: root.first-run-step;
+        download-dir: root.wizard-download-dir;
+        listen-port: root.wizard-listen-port;
+        enable-dht: root.wizard-enable-dht;
+        enable-utp: root.wizard-enable-utp;
+        enable-pex: root.wizard-enable-pex;
+
+        set-download-dir(dir) => { root.wizard-download-dir = dir; }
+        set-listen-port(port) => { root.wizard-listen-port = port; }
+        toggle-dht(v) => { root.wizard-enable-dht = v; }
+        toggle-utp(v) => { root.wizard-enable-utp = v; }
+        toggle-pex(v) => { root.wizard-enable-pex = v; }
+        next-step => { root.first-run-step = root.first-run-step + 1; }
+        prev-step => { root.first-run-step = root.first-run-step - 1; }
+        finish => { root.wizard-finish(); }
     }
 }

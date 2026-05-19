@@ -17,6 +17,7 @@ mod ip_filter_page;
 #[allow(dead_code)]
 mod logs_stats_page;
 mod bandwidth_intent;
+mod first_run;
 mod phone_pair;
 mod update_checker;
 mod category_suggest;
@@ -1698,7 +1699,38 @@ fn main() -> Result<(), error::GuiError> {
         _ipc_timer = timer;
     }
 
-    // 8b. Spawn update checker (M209).
+    // 8b. First-run wizard (M210).
+    if first_run::is_first_run() {
+        main_window.set_show_first_run(true);
+        main_window.set_wizard_download_dir(first_run::default_download_dir().into());
+    }
+    main_window.on_wizard_finish({
+        let weak = main_window.as_weak();
+        let cb_state = state.clone();
+        move || {
+            if let Some(win) = weak.upgrade() {
+                let download_dir = win.get_wizard_download_dir().to_string();
+                let listen_port: u16 = win.get_wizard_listen_port().to_string().parse().unwrap_or(6881);
+                let enable_dht = win.get_wizard_enable_dht();
+                let enable_utp = win.get_wizard_enable_utp();
+                let enable_pex = win.get_wizard_enable_pex();
+
+                // Persist wizard choices into preferences
+                let mut st = cb_state.lock();
+                st.prefs.download_dir = download_dir;
+                st.prefs.listen_port = listen_port;
+                st.prefs.enable_dht = enable_dht;
+                st.prefs.enable_utp = enable_utp;
+                st.prefs.enable_pex = enable_pex;
+                st.prefs_dirty = true;
+
+                win.set_show_first_run(false);
+                first_run::mark_complete();
+            }
+        }
+    });
+
+    // 8c. Spawn update checker (M209).
     update_checker::spawn_update_checker(main_window.as_weak());
     main_window.on_dismiss_update({
         let weak = main_window.as_weak();

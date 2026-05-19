@@ -20,8 +20,8 @@ crypto-openssl = ["irontide/crypto-openssl"]
 crypto-aws-lc = ["irontide/crypto-aws-lc"]
 
 [dependencies]
-irontide = { path = "../irontide", version = "0.209.0", default-features = false }
-irontide-api = { path = "../irontide-api", version = "0.209.0", features = ["webui"] }
+irontide = { path = "../irontide", version = "0.210.0", default-features = false }
+irontide-api = { path = "../irontide-api", version = "0.210.0", features = ["webui"] }
 irontide-config = { workspace = true }
 irontide-format = { workspace = true }
 slint = { workspace = true }
@@ -42,6 +42,7 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 quick-xml = { version = "0.37", features = ["serialize"] }
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 qrcode = "0.14"
+directories = "5"
 
 [build-dependencies]
 slint-build = { workspace = true }
