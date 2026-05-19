@@ -1,0 +1,408 @@
+import { Tokens } from "../tokens.slint";
+import { PillRow } from "../molecules/pill_row.slint";
+
+export component CreateTorrentDialog {
+    in property <bool> show;
+
+    // Source state (pushed from Rust after browse)
+    in property <string> source-path: "";
+    in property <string> source-name: "";
+    in property <string> source-size: "";
+
+    // Settings
+    in property <string> tracker-text: "";
+    in property <string> comment: "";
+    in property <string> piece-size-label: "Auto";
+    in property <string> format: "hybrid";
+    in property <bool> is-private: false;
+    in property <string> source-tag: "";
+    in property <string> output-path: "";
+
+    // Progress
+    in property <bool> is-creating: false;
+    in property <float> create-progress: 0.0;
+    in property <string> create-error: "";
+
+    // Callbacks
+    callback browse-source();
+    callback browse-output();
+    callback cancel();
+    callback create-confirmed();
+    callback format-changed(string);
+    callback toggle-private();
+    callback tracker-text-edited(string);
+    callback comment-edited(string);
+    callback piece-size-changed(string);
+    callback source-tag-edited(string);
+
+    if root.show: Rectangle {
+        background: Tokens.bg-0.with-alpha(80%);
+
+        backdrop-touch := TouchArea {
+            clicked => {
+                if !root.is-creating { root.cancel(); }
+            }
+        }
+
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: min(parent.width - Tokens.sp-10, Tokens.sp-10 * 18);
+            height: min(parent.height - Tokens.sp-10, dialog-layout.preferred-height + Tokens.sp-9);
+            background: Tokens.bg-2;
+            border-color: Tokens.border-1;
+            border-width: Tokens.border-width-thin;
+            border-radius: Tokens.r-lg;
+
+            TouchArea { }
+
+            Flickable {
+                width: parent.width;
+                height: parent.height;
+
+                dialog-layout := VerticalLayout {
+                    padding: Tokens.sp-6;
+                    spacing: Tokens.sp-5;
+
+                    // Title
+                    Text {
+                        text: "Create Torrent";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-16;
+                        font-weight: 700;
+                    }
+
+                    // ── Source section ──
+                    VerticalLayout {
+                        spacing: Tokens.sp-2;
+                        Text { text: "Source file or folder:"; color: Tokens.fg-0; font-size: Tokens.fs-13; }
+                        HorizontalLayout {
+                            spacing: Tokens.sp-4;
+                            Rectangle {
+                                horizontal-stretch: 1;
+                                height: Tokens.chrome-h - Tokens.sp-2;
+                                background: Tokens.bg-inset;
+                                border-color: Tokens.border-2;
+                                border-width: Tokens.border-width-thin;
+                                border-radius: Tokens.r-md;
+
+                                Text {
+                                    x: Tokens.sp-4;
+                                    color: root.source-path == "" ? Tokens.fg-3 : Tokens.fg-0;
+                                    font-size: Tokens.fs-13;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                    text: root.source-path == "" ? "(no source selected)" : root.source-path;
+                                    width: parent.width - Tokens.sp-6;
+                                }
+                            }
+                            Rectangle {
+                                width: Tokens.sp-10 * 2;
+                                height: Tokens.chrome-h - Tokens.sp-2;
+                                background: browse-src-touch.has-hover ? Tokens.bg-hover : Tokens.accent;
+                                border-radius: Tokens.r-md;
+
+                                Text {
+                                    text: "Browse...";
+                                    color: Tokens.accent-fg;
+                                    font-size: Tokens.fs-13;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                                browse-src-touch := TouchArea {
+                                    clicked => { root.browse-source(); }
+                                }
+                            }
+                        }
+
+                        // Source info (name + size), shown when a source is selected
+                        if root.source-path != "": HorizontalLayout {
+                            spacing: Tokens.sp-6;
+                            Text { text: root.source-name; color: Tokens.fg-1; font-size: Tokens.fs-12; }
+                            Text { text: root.source-size; color: Tokens.fg-3; font-size: Tokens.fs-12; }
+                        }
+                    }
+
+                    // ── Trackers ──
+                    VerticalLayout {
+                        spacing: Tokens.sp-2;
+                        Text { text: "Trackers (one per line, blank line = new tier):"; color: Tokens.fg-0; font-size: Tokens.fs-13; }
+                        Rectangle {
+                            height: Tokens.sp-10 * 3;
+                            background: Tokens.bg-inset;
+                            border-color: Tokens.border-2;
+                            border-width: Tokens.border-width-thin;
+                            border-radius: Tokens.r-md;
+
+                            tracker-input := TextInput {
+                                x: Tokens.sp-4;
+                                y: Tokens.sp-2;
+                                width: parent.width - Tokens.sp-6;
+                                height: parent.height - Tokens.sp-4;
+                                color: Tokens.fg-0;
+                                font-size: Tokens.fs-12;
+                                wrap: word-wrap;
+                                edited => { root.tracker-text-edited(self.text); }
+                            }
+                        }
+                    }
+
+                    // ── Settings row (piece size + format + private) ──
+                    HorizontalLayout {
+                        spacing: Tokens.sp-6;
+
+                        // Piece size
+                        VerticalLayout {
+                            spacing: Tokens.sp-2;
+                            horizontal-stretch: 1;
+                            Text { text: "Piece size:"; color: Tokens.fg-0; font-size: Tokens.fs-13; }
+                            PillRow {
+                                label: "";
+                                options: ["Auto", "256 KiB", "512 KiB", "1 MiB", "2 MiB", "4 MiB"];
+                                selected: root.piece-size-label;
+                                option-clicked(opt) => { root.piece-size-changed(opt); }
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: Tokens.sp-6;
+
+                        // Format
+                        VerticalLayout {
+                            spacing: Tokens.sp-2;
+                            Text { text: "Format:"; color: Tokens.fg-0; font-size: Tokens.fs-13; }
+                            PillRow {
+                                label: "";
+                                options: ["v1", "hybrid", "v2"];
+                                selected: root.format;
+                                option-clicked(opt) => { root.format-changed(opt); }
+                            }
+                        }
+
+                        // Private toggle
+                        VerticalLayout {
+                            spacing: Tokens.sp-2;
+                            Text { text: "Private:"; color: Tokens.fg-0; font-size: Tokens.fs-13; }
+                            HorizontalLayout {
+                                spacing: Tokens.sp-3;
+                                Rectangle {
+                                    width: Tokens.sp-5;
+                                    height: Tokens.sp-5;
+                                    background: root.is-private ? Tokens.accent : Tokens.bg-inset;
+                                    border-color: root.is-private ? Tokens.accent : Tokens.border-2;
+                                    border-width: Tokens.border-width-thin;
+                                    border-radius: Tokens.r-sm;
+
+                                    if root.is-private: Text {
+                                        text: "\u{2713}";
+                                        color: Tokens.accent-fg;
+                                        font-size: Tokens.fs-12;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+
+                                    private-touch := TouchArea {
+                                        clicked => { root.toggle-private(); }
+                                    }
+                                }
+                                Text {
+                                    text: root.is-private ? "Yes" : "No";
+                                    color: Tokens.fg-1;
+                                    font-size: Tokens.fs-13;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+
+                    // ── Comment ──
+                    VerticalLayout {
+                        spacing: Tokens.sp-2;
+                        Text { text: "Comment (optional):"; color: Tokens.fg-0; font-size: Tokens.fs-13; }
+                        Rectangle {
+                            height: Tokens.chrome-h - Tokens.sp-2;
+                            background: Tokens.bg-inset;
+                            border-color: Tokens.border-2;
+                            border-width: Tokens.border-width-thin;
+                            border-radius: Tokens.r-md;
+
+                            comment-input := TextInput {
+                                x: Tokens.sp-4;
+                                y: 0;
+                                width: parent.width - Tokens.sp-6;
+                                height: parent.height;
+                                color: Tokens.fg-0;
+                                font-size: Tokens.fs-13;
+                                edited => { root.comment-edited(self.text); }
+                            }
+                        }
+                    }
+
+                    // ── Source tag ──
+                    VerticalLayout {
+                        spacing: Tokens.sp-2;
+                        Text { text: "Source tag (optional):"; color: Tokens.fg-0; font-size: Tokens.fs-13; }
+                        Rectangle {
+                            height: Tokens.chrome-h - Tokens.sp-2;
+                            background: Tokens.bg-inset;
+                            border-color: Tokens.border-2;
+                            border-width: Tokens.border-width-thin;
+                            border-radius: Tokens.r-md;
+
+                            source-tag-input := TextInput {
+                                x: Tokens.sp-4;
+                                y: 0;
+                                width: parent.width - Tokens.sp-6;
+                                height: parent.height;
+                                color: Tokens.fg-0;
+                                font-size: Tokens.fs-13;
+                                edited => { root.source-tag-edited(self.text); }
+                            }
+                        }
+                    }
+
+                    // ── Output path ──
+                    VerticalLayout {
+                        spacing: Tokens.sp-2;
+                        Text { text: "Save .torrent file to:"; color: Tokens.fg-0; font-size: Tokens.fs-13; }
+                        HorizontalLayout {
+                            spacing: Tokens.sp-4;
+                            Rectangle {
+                                horizontal-stretch: 1;
+                                height: Tokens.chrome-h - Tokens.sp-2;
+                                background: Tokens.bg-inset;
+                                border-color: Tokens.border-2;
+                                border-width: Tokens.border-width-thin;
+                                border-radius: Tokens.r-md;
+
+                                Text {
+                                    x: Tokens.sp-4;
+                                    color: root.output-path == "" ? Tokens.fg-3 : Tokens.fg-0;
+                                    font-size: Tokens.fs-13;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                    text: root.output-path == "" ? "(choose output location)" : root.output-path;
+                                    width: parent.width - Tokens.sp-6;
+                                }
+                            }
+                            Rectangle {
+                                width: Tokens.sp-10 * 2;
+                                height: Tokens.chrome-h - Tokens.sp-2;
+                                background: browse-out-touch.has-hover ? Tokens.bg-hover : Tokens.accent;
+                                border-radius: Tokens.r-md;
+
+                                Text {
+                                    text: "Browse...";
+                                    color: Tokens.accent-fg;
+                                    font-size: Tokens.fs-13;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                                browse-out-touch := TouchArea {
+                                    clicked => { root.browse-output(); }
+                                }
+                            }
+                        }
+                    }
+
+                    // ── Progress bar (shown during creation) ──
+                    if root.is-creating: VerticalLayout {
+                        spacing: Tokens.sp-2;
+                        Text {
+                            text: "Hashing... " + Math.round(root.create-progress * 100) + "%";
+                            color: Tokens.fg-1;
+                            font-size: Tokens.fs-13;
+                        }
+                        Rectangle {
+                            height: Tokens.sp-2;
+                            background: Tokens.bg-inset;
+                            border-radius: Tokens.r-sm;
+
+                            Rectangle {
+                                x: 0;
+                                width: parent.width * root.create-progress;
+                                height: parent.height;
+                                background: Tokens.accent;
+                                border-radius: Tokens.r-sm;
+                            }
+                        }
+                    }
+
+                    // ── Error display ──
+                    if root.create-error != "": Rectangle {
+                        height: Tokens.chrome-h;
+                        background: Tokens.status-error.with-alpha(15%);
+                        border-color: Tokens.status-error;
+                        border-width: Tokens.border-width-thin;
+                        border-radius: Tokens.r-md;
+
+                        Text {
+                            x: Tokens.sp-4;
+                            text: root.create-error;
+                            color: Tokens.status-error;
+                            font-size: Tokens.fs-12;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            width: parent.width - Tokens.sp-6;
+                        }
+                    }
+
+                    // ── Button row ──
+                    HorizontalLayout {
+                        spacing: Tokens.sp-4;
+
+                        Rectangle { horizontal-stretch: 1; }
+
+                        // Cancel
+                        Rectangle {
+                            width: Tokens.sp-10 * 2;
+                            height: Tokens.chrome-h - Tokens.sp-2;
+                            background: cancel-touch.has-hover ? Tokens.bg-hover : transparent;
+                            border-color: Tokens.border-2;
+                            border-width: Tokens.border-width-thin;
+                            border-radius: Tokens.r-md;
+
+                            Text {
+                                text: root.is-creating ? "Cancel" : "Close";
+                                color: Tokens.fg-0;
+                                font-size: Tokens.fs-13;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                            cancel-touch := TouchArea {
+                                clicked => { root.cancel(); }
+                            }
+                        }
+
+                        // Create
+                        Rectangle {
+                            width: Tokens.sp-10 * 2;
+                            height: Tokens.chrome-h - Tokens.sp-2;
+                            background: root.source-path == "" || root.output-path == "" || root.is-creating
+                                ? Tokens.accent.with-alpha(40%)
+                                : (create-touch.has-hover ? Tokens.bg-hover : Tokens.accent);
+                            border-radius: Tokens.r-md;
+                            opacity: root.source-path == "" || root.output-path == "" || root.is-creating ? 0.5 : 1.0;
+
+                            Text {
+                                text: "Create";
+                                color: Tokens.accent-fg;
+                                font-size: Tokens.fs-13;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                            create-touch := TouchArea {
+                                clicked => {
+                                    if root.source-path != "" && root.output-path != "" && !root.is-creating {
+                                        root.create-confirmed();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -13,6 +13,7 @@ pub enum PaletteCommandId {
     // Action
     AddMagnetLink,
     AddTorrentFile,
+    CreateTorrent,
     PauseSelected,
     ResumeSelected,
     RemoveSelected,
@@ -76,6 +77,12 @@ pub static COMMANDS: &[PaletteCommand] = &[
     PaletteCommand {
         id: PaletteCommandId::AddTorrentFile,
         label: "Add Torrent File",
+        category: PaletteCategory::Action,
+        hotkey_hint: "",
+    },
+    PaletteCommand {
+        id: PaletteCommandId::CreateTorrent,
+        label: "Create Torrent",
         category: PaletteCategory::Action,
         hotkey_hint: "",
     },
@@ -279,6 +286,7 @@ pub fn resolved_hotkey(cmd: &PaletteCommand) -> SharedString {
 pub enum DispatchAction {
     ShowAddMagnet,
     ShowAddTorrent,
+    ShowCreateTorrent,
     SendCommand(crate::app::GuiCommand),
     SetPredicate(crate::sidebar::SidebarPredicate),
     OpenPreferences,
@@ -293,6 +301,7 @@ pub fn dispatch(id: PaletteCommandId, selected: &[String]) -> DispatchAction {
     match id {
         PaletteCommandId::AddMagnetLink => DispatchAction::ShowAddMagnet,
         PaletteCommandId::AddTorrentFile => DispatchAction::ShowAddTorrent,
+        PaletteCommandId::CreateTorrent => DispatchAction::ShowCreateTorrent,
         PaletteCommandId::PauseSelected => DispatchAction::SendCommand(GuiCommand::PauseTorrents {
             hashes: selected.to_vec(),
         }),
