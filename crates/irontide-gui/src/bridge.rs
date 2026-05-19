@@ -636,6 +636,30 @@ async fn handle_gui_command(
         GuiCommand::SearchAddResult { magnet_url } => {
             handle_open_magnet(&magnet_url, session, weak).await;
         }
+        GuiCommand::RssAddFeed { url } => {
+            handle_rss_add_feed(&url, weak).await;
+        }
+        GuiCommand::RssRemoveFeed { index } => {
+            handle_rss_remove_feed(index, weak);
+        }
+        GuiCommand::RssRefreshFeeds => {
+            handle_rss_refresh_feeds(weak).await;
+        }
+        GuiCommand::RssFeedSelected { index } => {
+            handle_rss_feed_selected(index, weak);
+        }
+        GuiCommand::RssDownloadItem {
+            index,
+            selected_feed,
+        } => {
+            handle_rss_download_item(index, selected_feed, session, weak).await;
+        }
+        GuiCommand::RssMarkItemRead {
+            index,
+            selected_feed,
+        } => {
+            handle_rss_mark_item_read(index, selected_feed, weak);
+        }
     }
 
     let elapsed = start.elapsed();
@@ -1955,6 +1979,339 @@ async fn handle_open_magnet(
             show_toast(weak, &msg, true);
         }
     }
+}
+
+// ── RSS handlers (M197) ────────────────────────────────────────────────────
+
+async fn handle_rss_add_feed(url: &str, weak: &slint::Weak<crate::MainWindow>) {
+    let url = url.trim().to_owned();
+    if url.is_empty() {
+        return;
+    }
+
+    let _ = weak.upgrade_in_event_loop({
+        let url2 = url.clone();
+        move |win| {
+            win.set_rss_refreshing(true);
+            let _ = url2;
+        }
+    });
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .unwrap_or_default();
+
+    let body = match client.get(&url).send().await {
+        Ok(resp) => match resp.text().await {
+            Ok(text) => text,
+            Err(e) => {
+                show_toast(weak, &format!("Failed to read feed: {e}"), true);
+                let _ = weak.upgrade_in_event_loop(|win| win.set_rss_refreshing(false));
+                return;
+            }
+        },
+        Err(e) => {
+            show_toast(weak, &format!("Failed to fetch feed: {e}"), true);
+            let _ = weak.upgrade_in_event_loop(|win| win.set_rss_refreshing(false));
+            return;
+        }
+    };
+
+    let title = crate::rss::extract_feed_title(&body);
+    let new_items = crate::rss::parse_rss_feed(&body, &url);
+
+    let mut state = crate::rss::load_state();
+    if state.feeds.iter().any(|f| f.url == url) {
+        show_toast(weak, "Feed already exists", false);
+        let _ = weak.upgrade_in_event_loop(|win| win.set_rss_refreshing(false));
+        return;
+    }
+
+    state.feeds.push(crate::rss::RssFeed {
+        url: url.clone(),
+        title,
+        enabled: true,
+        alias: None,
+        last_refresh: Some(chrono::Utc::now().timestamp()),
+        error: None,
+    });
+
+    let item_count = new_items.len();
+    for item in new_items {
+        if !state.items.iter().any(|existing| {
+            existing.title == item.title && existing.feed_url == item.feed_url
+        }) {
+            state.items.push(item);
+        }
+    }
+
+    if let Err(e) = crate::rss::save_state(&state) {
+        tracing::warn!("failed to save RSS state: {e}");
+    }
+
+    push_rss_state(weak, &state, -1);
+    show_toast(weak, &format!("Added feed with {item_count} items"), false);
+    let _ = weak.upgrade_in_event_loop(|win| win.set_rss_refreshing(false));
+}
+
+fn handle_rss_remove_feed(index: usize, weak: &slint::Weak<crate::MainWindow>) {
+    let mut state = crate::rss::load_state();
+    if index >= state.feeds.len() {
+        return;
+    }
+    let feed_url = state.feeds[index].url.clone();
+    state.feeds.remove(index);
+    state.items.retain(|item| item.feed_url != feed_url);
+    if let Err(e) = crate::rss::save_state(&state) {
+        tracing::warn!("failed to save RSS state: {e}");
+    }
+    push_rss_state(weak, &state, -1);
+}
+
+async fn handle_rss_refresh_feeds(weak: &slint::Weak<crate::MainWindow>) {
+    let _ = weak.upgrade_in_event_loop(|win| win.set_rss_refreshing(true));
+
+    let mut state = crate::rss::load_state();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .unwrap_or_default();
+
+    let mut new_count = 0usize;
+    for feed in &mut state.feeds {
+        if !feed.enabled {
+            continue;
+        }
+        match client.get(&feed.url).send().await {
+            Ok(resp) => match resp.text().await {
+                Ok(body) => {
+                    let items = crate::rss::parse_rss_feed(&body, &feed.url);
+                    feed.last_refresh = Some(chrono::Utc::now().timestamp());
+                    feed.error = None;
+                    for item in items {
+                        if !state.items.iter().any(|existing| {
+                            existing.title == item.title && existing.feed_url == item.feed_url
+                        }) {
+                            new_count += 1;
+                            state.items.push(item);
+                        }
+                    }
+                }
+                Err(e) => {
+                    feed.error = Some(e.to_string());
+                }
+            },
+            Err(e) => {
+                feed.error = Some(e.to_string());
+            }
+        }
+    }
+
+    if let Err(e) = crate::rss::save_state(&state) {
+        tracing::warn!("failed to save RSS state: {e}");
+    }
+
+    push_rss_state(weak, &state, -1);
+    let msg = if new_count > 0 {
+        format!("{new_count} new item(s)")
+    } else {
+        "Feeds up to date".to_owned()
+    };
+    show_toast(weak, &msg, false);
+    let _ = weak.upgrade_in_event_loop(|win| win.set_rss_refreshing(false));
+}
+
+fn handle_rss_feed_selected(index: i32, weak: &slint::Weak<crate::MainWindow>) {
+    let state = crate::rss::load_state();
+    push_rss_state(weak, &state, index);
+    let _ = weak.upgrade_in_event_loop(move |win| {
+        win.set_rss_selected_feed_index(index);
+    });
+}
+
+async fn handle_rss_download_item(
+    index: usize,
+    selected_idx: i32,
+    session: &irontide::session::SessionHandle,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    let mut state = crate::rss::load_state();
+
+    let visible_items: Vec<usize> = state
+        .items
+        .iter()
+        .enumerate()
+        .filter(|(_, item)| {
+            if selected_idx < 0 {
+                return true;
+            }
+            let feed_idx = usize::try_from(selected_idx).unwrap_or(0);
+            state
+                .feeds
+                .get(feed_idx)
+                .is_some_and(|f| f.url == item.feed_url)
+        })
+        .map(|(i, _)| i)
+        .collect();
+
+    let Some(&real_idx) = visible_items.get(index) else {
+        return;
+    };
+
+    let item = &state.items[real_idx];
+    let Some(url) = item.best_download_url().map(String::from) else {
+        show_toast(weak, "No download URL for this item", true);
+        return;
+    };
+
+    if url.starts_with("magnet:") {
+        handle_open_magnet(&url, session, weak).await;
+    } else {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .unwrap_or_default();
+        match client.get(&url).send().await {
+            Ok(resp) => match resp.bytes().await {
+                Ok(bytes) => {
+                    let params = irontide::AddTorrentParams::from_bytes(bytes.to_vec());
+                    match params.add_to(session).await {
+                        Ok(_) => {
+                            show_toast(weak, "Added torrent from RSS", false);
+                        }
+                        Err(e) => {
+                            show_toast(weak, &format!("Failed to add: {e}"), true);
+                        }
+                    }
+                }
+                Err(e) => {
+                    show_toast(weak, &format!("Failed to download torrent: {e}"), true);
+                    return;
+                }
+            },
+            Err(e) => {
+                show_toast(weak, &format!("Failed to fetch torrent: {e}"), true);
+                return;
+            }
+        }
+    }
+
+    state.items[real_idx].downloaded = true;
+    state.items[real_idx].read = true;
+    if let Err(e) = crate::rss::save_state(&state) {
+        tracing::warn!("failed to save RSS state: {e}");
+    }
+    push_rss_state(weak, &state, selected_idx);
+}
+
+fn handle_rss_mark_item_read(
+    index: usize,
+    selected_idx: i32,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    let mut state = crate::rss::load_state();
+
+    let visible_items: Vec<usize> = state
+        .items
+        .iter()
+        .enumerate()
+        .filter(|(_, item)| {
+            if selected_idx < 0 {
+                return true;
+            }
+            let feed_idx = usize::try_from(selected_idx).unwrap_or(0);
+            state
+                .feeds
+                .get(feed_idx)
+                .is_some_and(|f| f.url == item.feed_url)
+        })
+        .map(|(i, _)| i)
+        .collect();
+
+    if let Some(&real_idx) = visible_items.get(index) {
+        state.items[real_idx].read = true;
+        if let Err(e) = crate::rss::save_state(&state) {
+            tracing::warn!("failed to save RSS state: {e}");
+        }
+        push_rss_state(weak, &state, selected_idx);
+    }
+}
+
+fn push_rss_state(
+    weak: &slint::Weak<crate::MainWindow>,
+    state: &crate::rss::RssState,
+    selected_feed_index: i32,
+) {
+    let feed_rows: Vec<crate::RssFeedRow> = state
+        .feeds
+        .iter()
+        .map(|f| {
+            let item_count = state
+                .items
+                .iter()
+                .filter(|i| i.feed_url == f.url)
+                .count();
+            crate::RssFeedRow {
+                url: f.url.clone().into(),
+                title: f.alias.as_deref().unwrap_or(&f.title).into(),
+                enabled: f.enabled,
+                item_count: i32::try_from(item_count).unwrap_or(0),
+                error: f.error.as_deref().unwrap_or("").into(),
+            }
+        })
+        .collect();
+
+    let item_rows: Vec<crate::RssItemRow> = state
+        .items
+        .iter()
+        .filter(|item| {
+            if selected_feed_index < 0 {
+                return true;
+            }
+            let idx = usize::try_from(selected_feed_index).unwrap_or(0);
+            state
+                .feeds
+                .get(idx)
+                .is_some_and(|f| f.url == item.feed_url)
+        })
+        .map(|item| {
+            let feed_title = state
+                .feeds
+                .iter()
+                .find(|f| f.url == item.feed_url)
+                .map_or("", |f| f.alias.as_deref().unwrap_or(&f.title));
+            crate::RssItemRow {
+                title: item.display_title().into(),
+                pub_date: item.pub_date.as_deref().unwrap_or("").into(),
+                size: item.size.as_deref().unwrap_or("").into(),
+                feed_title: feed_title.into(),
+                has_download: item.best_download_url().is_some(),
+                downloaded: item.downloaded,
+                read: item.read,
+            }
+        })
+        .collect();
+
+    let rule_rows: Vec<crate::RssRuleRow> = state
+        .rules
+        .iter()
+        .map(|r| crate::RssRuleRow {
+            name: r.name.clone().into(),
+            enabled: r.enabled,
+            must_contain: r.must_contain.clone().into(),
+            must_not_contain: r.must_not_contain.clone().into(),
+        })
+        .collect();
+
+    let _ = weak.upgrade_in_event_loop(move |win| {
+        let feed_model = std::rc::Rc::new(slint::VecModel::from(feed_rows));
+        win.set_rss_feeds(slint::ModelRc::from(feed_model));
+        let item_model = std::rc::Rc::new(slint::VecModel::from(item_rows));
+        win.set_rss_items(slint::ModelRc::from(item_model));
+        let rule_model = std::rc::Rc::new(slint::VecModel::from(rule_rows));
+        win.set_rss_rules(slint::ModelRc::from(rule_model));
+    });
 }
 
 #[cfg(test)]

@@ -11,6 +11,7 @@ mod poll;
 mod prefs;
 mod sidebar;
 mod sidebar_view;
+mod rss;
 mod search;
 mod single_instance;
 mod skin;
@@ -1032,6 +1033,18 @@ fn main() -> Result<(), error::GuiError> {
                     let _ = weak2.upgrade_in_event_loop(|win| {
                         let current = win.get_show_search_page();
                         win.set_show_search_page(!current);
+                        if !current {
+                            win.set_show_rss_page(false);
+                        }
+                    });
+                }
+                palette::DispatchAction::ToggleRss => {
+                    let _ = weak2.upgrade_in_event_loop(|win| {
+                        let current = win.get_show_rss_page();
+                        win.set_show_rss_page(!current);
+                        if !current {
+                            win.set_show_search_page(false);
+                        }
                     });
                 }
                 palette::DispatchAction::SendCommand(gui_cmd) => {
@@ -1173,6 +1186,80 @@ fn main() -> Result<(), error::GuiError> {
             if let Some(tx) = cmd_tx {
                 let _ = tx.send(app::GuiCommand::SearchAddResult {
                     magnet_url: magnet_url.to_string(),
+                });
+            }
+        });
+    }
+
+    // 6k. Wire RSS callbacks (M197).
+    {
+        let cb_state = state.clone();
+        main_window.on_rss_add_feed(move |url| {
+            let cmd_tx = cb_state.lock().cmd_tx.clone();
+            if let Some(tx) = cmd_tx {
+                let _ = tx.send(app::GuiCommand::RssAddFeed {
+                    url: url.to_string(),
+                });
+            }
+        });
+    }
+    {
+        let cb_state = state.clone();
+        main_window.on_rss_remove_feed(move |idx| {
+            let cmd_tx = cb_state.lock().cmd_tx.clone();
+            if let Some(tx) = cmd_tx {
+                let _ = tx.send(app::GuiCommand::RssRemoveFeed {
+                    index: usize::try_from(idx).unwrap_or(0),
+                });
+            }
+        });
+    }
+    {
+        let cb_state = state.clone();
+        main_window.on_rss_refresh_feeds(move || {
+            let cmd_tx = cb_state.lock().cmd_tx.clone();
+            if let Some(tx) = cmd_tx {
+                let _ = tx.send(app::GuiCommand::RssRefreshFeeds);
+            }
+        });
+    }
+    {
+        let cb_state = state.clone();
+        main_window.on_rss_feed_selected(move |idx| {
+            let cmd_tx = cb_state.lock().cmd_tx.clone();
+            if let Some(tx) = cmd_tx {
+                let _ = tx.send(app::GuiCommand::RssFeedSelected { index: idx });
+            }
+        });
+    }
+    {
+        let cb_state = state.clone();
+        let weak_dl = main_window.as_weak();
+        main_window.on_rss_download_item(move |idx| {
+            let selected_feed = weak_dl
+                .upgrade()
+                .map_or(-1, |win| win.get_rss_selected_feed_index());
+            let cmd_tx = cb_state.lock().cmd_tx.clone();
+            if let Some(tx) = cmd_tx {
+                let _ = tx.send(app::GuiCommand::RssDownloadItem {
+                    index: usize::try_from(idx).unwrap_or(0),
+                    selected_feed,
+                });
+            }
+        });
+    }
+    {
+        let cb_state = state.clone();
+        let weak_mr = main_window.as_weak();
+        main_window.on_rss_mark_item_read(move |idx| {
+            let selected_feed = weak_mr
+                .upgrade()
+                .map_or(-1, |win| win.get_rss_selected_feed_index());
+            let cmd_tx = cb_state.lock().cmd_tx.clone();
+            if let Some(tx) = cmd_tx {
+                let _ = tx.send(app::GuiCommand::RssMarkItemRead {
+                    index: usize::try_from(idx).unwrap_or(0),
+                    selected_feed,
                 });
             }
         });

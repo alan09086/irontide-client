@@ -299,6 +299,30 @@ pub enum GuiCommand {
     SearchAddResult {
         magnet_url: String,
     },
+    /// M197: add an RSS feed by URL.
+    RssAddFeed {
+        url: String,
+    },
+    /// M197: remove an RSS feed by index.
+    RssRemoveFeed {
+        index: usize,
+    },
+    /// M197: refresh all RSS feeds.
+    RssRefreshFeeds,
+    /// M197: select a feed to filter items (-1 = all).
+    RssFeedSelected {
+        index: i32,
+    },
+    /// M197: download an RSS item by visible index.
+    RssDownloadItem {
+        index: usize,
+        selected_feed: i32,
+    },
+    /// M197: mark an RSS item as read by visible index.
+    RssMarkItemRead {
+        index: usize,
+        selected_feed: i32,
+    },
     /// M180: set per-torrent DL/UL rate limits.
     SetTorrentRateLimit {
         /// Hex-encoded info-hash string.

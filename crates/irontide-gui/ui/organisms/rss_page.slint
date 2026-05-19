@@ -1,0 +1,458 @@
+import { Tokens } from "../tokens.slint";
+
+export struct RssFeedRow {
+    url: string,
+    title: string,
+    enabled: bool,
+    item-count: int,
+    error: string,
+}
+
+export struct RssItemRow {
+    title: string,
+    pub-date: string,
+    size: string,
+    feed-title: string,
+    has-download: bool,
+    downloaded: bool,
+    read: bool,
+}
+
+export struct RssRuleRow {
+    name: string,
+    enabled: bool,
+    must-contain: string,
+    must-not-contain: string,
+}
+
+export component RssPage inherits Rectangle {
+    in property <[RssFeedRow]> feeds;
+    in property <[RssItemRow]> items;
+    in property <[RssRuleRow]> rules;
+    in property <int> selected-feed-index: -1;
+    in property <bool> refreshing: false;
+
+    callback add-feed-requested(string);
+    callback remove-feed-requested(int);
+    callback refresh-feeds-requested();
+    callback toggle-feed-enabled(int);
+    callback feed-selected(int);
+    callback download-item(int);
+    callback mark-item-read(int);
+
+    background: Tokens.bg-0;
+
+    HorizontalLayout {
+        padding: Tokens.sp-3;
+        spacing: Tokens.sp-3;
+
+        // Left pane: Feeds sidebar
+        Rectangle {
+            width: 250px;
+            border-radius: Tokens.r-md;
+            background: Tokens.bg-1;
+            border-width: 1px;
+            border-color: Tokens.border-1;
+
+            VerticalLayout {
+                padding: Tokens.sp-2;
+                spacing: Tokens.sp-2;
+
+                // Feeds header
+                HorizontalLayout {
+                    spacing: Tokens.sp-2;
+
+                    Text {
+                        horizontal-stretch: 1;
+                        text: "Feeds";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-14;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                    }
+
+                    Rectangle {
+                        width: Tokens.sp-7;
+                        height: Tokens.sp-7;
+                        border-radius: Tokens.r-sm;
+                        background: refresh-btn.has-hover ? Tokens.accent-hover : Tokens.accent;
+
+                        Text {
+                            text: root.refreshing ? "..." : "↻";
+                            color: Tokens.accent-fg;
+                            font-size: Tokens.fs-13;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        refresh-btn := TouchArea {
+                            clicked => {
+                                root.refresh-feeds-requested();
+                            }
+                        }
+                    }
+                }
+
+                // Feed URL input
+                HorizontalLayout {
+                    spacing: Tokens.sp-1;
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        height: Tokens.sp-7;
+                        border-radius: Tokens.r-sm;
+                        background: Tokens.bg-0;
+                        border-width: 1px;
+                        border-color: Tokens.border-1;
+
+                        feed-url-input := TextInput {
+                            x: Tokens.sp-1;
+                            y: 0;
+                            width: parent.width - Tokens.sp-2;
+                            height: parent.height;
+                            color: Tokens.fg-0;
+                            font-size: Tokens.fs-12;
+                            accepted => {
+                                root.add-feed-requested(self.text);
+                                self.text = "";
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: Tokens.sp-7;
+                        height: Tokens.sp-7;
+                        border-radius: Tokens.r-sm;
+                        background: add-feed-btn.has-hover ? Tokens.accent-hover : Tokens.accent;
+
+                        Text {
+                            text: "+";
+                            color: Tokens.accent-fg;
+                            font-size: Tokens.fs-14;
+                            font-weight: 700;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        add-feed-btn := TouchArea {
+                            clicked => {
+                                root.add-feed-requested(feed-url-input.text);
+                                feed-url-input.text = "";
+                            }
+                        }
+                    }
+                }
+
+                // Feed list
+                Flickable {
+                    vertical-stretch: 1;
+
+                    VerticalLayout {
+                        spacing: 1px;
+
+                        // "All Feeds" row
+                        Rectangle {
+                            height: Tokens.sp-8;
+                            background: all-feed-touch.has-hover
+                                ? Tokens.bg-hover
+                                : (root.selected-feed-index == -1 ? Tokens.accent : Tokens.bg-1);
+
+                            HorizontalLayout {
+                                padding-left: Tokens.sp-2;
+                                padding-right: Tokens.sp-2;
+
+                                Text {
+                                    horizontal-stretch: 1;
+                                    text: "All Feeds";
+                                    color: root.selected-feed-index == -1 ? Tokens.accent-fg : Tokens.fg-0;
+                                    font-size: Tokens.fs-13;
+                                    font-weight: 600;
+                                    vertical-alignment: center;
+                                }
+                            }
+
+                            all-feed-touch := TouchArea {
+                                clicked => {
+                                    root.feed-selected(-1);
+                                }
+                            }
+                        }
+
+                        for feed[idx] in root.feeds : Rectangle {
+                            height: Tokens.sp-9;
+                            background: feed-touch.has-hover
+                                ? Tokens.bg-hover
+                                : (root.selected-feed-index == idx ? Tokens.accent : Tokens.bg-1);
+
+                            HorizontalLayout {
+                                padding-left: Tokens.sp-2;
+                                padding-right: Tokens.sp-2;
+                                spacing: Tokens.sp-1;
+
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    alignment: center;
+                                    spacing: 2px;
+
+                                    Text {
+                                        text: feed.title;
+                                        color: root.selected-feed-index == idx ? Tokens.accent-fg : Tokens.fg-0;
+                                        font-size: Tokens.fs-12;
+                                        overflow: elide;
+                                    }
+                                    Text {
+                                        text: feed.error != "" ? feed.error : "\{feed.item-count} items";
+                                        color: feed.error != "" ? Tokens.status-error : Tokens.fg-2;
+                                        font-size: Tokens.fs-11;
+                                        overflow: elide;
+                                    }
+                                }
+                            }
+
+                            feed-touch := TouchArea {
+                                clicked => {
+                                    root.feed-selected(idx);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Rules section header
+                Rectangle {
+                    height: 1px;
+                    background: Tokens.border-1;
+                }
+
+                Text {
+                    text: "Download Rules";
+                    color: Tokens.fg-0;
+                    font-size: Tokens.fs-13;
+                    font-weight: 700;
+                }
+
+                // Rules list
+                Flickable {
+                    vertical-stretch: 1;
+                    max-height: 200px;
+
+                    VerticalLayout {
+                        spacing: 1px;
+
+                        for rule[idx] in root.rules : Rectangle {
+                            height: Tokens.sp-8;
+                            background: Tokens.bg-0;
+
+                            HorizontalLayout {
+                                padding-left: Tokens.sp-2;
+                                padding-right: Tokens.sp-2;
+                                spacing: Tokens.sp-1;
+
+                                VerticalLayout {
+                                    width: Tokens.sp-4;
+                                    alignment: center;
+
+                                    Rectangle {
+                                        width: Tokens.sp-4;
+                                        height: Tokens.sp-4;
+                                        border-radius: 2px;
+                                        border-width: 1px;
+                                        border-color: Tokens.border-1;
+                                        background: rule.enabled ? Tokens.accent : Tokens.bg-1;
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    alignment: center;
+
+                                    Text {
+                                        text: rule.name;
+                                        color: rule.enabled ? Tokens.fg-0 : Tokens.fg-2;
+                                        font-size: Tokens.fs-12;
+                                        overflow: elide;
+                                    }
+                                }
+                            }
+                        }
+
+                        if root.rules.length == 0 : Text {
+                            text: "No rules configured";
+                            color: Tokens.fg-2;
+                            font-size: Tokens.fs-11;
+                            horizontal-alignment: center;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Right pane: Items list
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: Tokens.sp-2;
+
+            // Items header
+            Rectangle {
+                height: Tokens.sp-7;
+                background: Tokens.bg-1;
+                border-radius: Tokens.r-sm;
+
+                HorizontalLayout {
+                    padding-left: Tokens.sp-2;
+                    padding-right: Tokens.sp-2;
+                    spacing: Tokens.sp-2;
+
+                    Text {
+                        horizontal-stretch: 4;
+                        text: "Title";
+                        color: Tokens.fg-2;
+                        font-size: Tokens.fs-12;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        width: Tokens.sp-10 + Tokens.sp-6;
+                        text: "Date";
+                        color: Tokens.fg-2;
+                        font-size: Tokens.fs-12;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        width: Tokens.sp-10 + Tokens.sp-4;
+                        text: "Size";
+                        color: Tokens.fg-2;
+                        font-size: Tokens.fs-12;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                    }
+                    Text {
+                        width: Tokens.sp-10;
+                        text: "Feed";
+                        color: Tokens.fg-2;
+                        font-size: Tokens.fs-12;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                    // Spacer for download button
+                    Rectangle {
+                        width: Tokens.sp-10;
+                    }
+                }
+            }
+
+            // Items list
+            Flickable {
+                vertical-stretch: 1;
+
+                VerticalLayout {
+                    spacing: 1px;
+
+                    for item[idx] in root.items : Rectangle {
+                        height: Tokens.sp-9;
+                        background: item-touch.has-hover ? Tokens.bg-hover : (mod(idx, 2) == 0 ? Tokens.bg-0 : Tokens.bg-1);
+
+                        HorizontalLayout {
+                            padding-left: Tokens.sp-2;
+                            padding-right: Tokens.sp-2;
+                            spacing: Tokens.sp-2;
+
+                            Text {
+                                horizontal-stretch: 4;
+                                text: item.title;
+                                color: item.read ? Tokens.fg-2 : Tokens.fg-0;
+                                font-size: Tokens.fs-13;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                            Text {
+                                width: Tokens.sp-10 + Tokens.sp-6;
+                                text: item.pub-date;
+                                color: Tokens.fg-2;
+                                font-size: Tokens.fs-12;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                            Text {
+                                width: Tokens.sp-10 + Tokens.sp-4;
+                                text: item.size;
+                                color: Tokens.fg-1;
+                                font-size: Tokens.fs-12;
+                                vertical-alignment: center;
+                                horizontal-alignment: right;
+                            }
+                            Text {
+                                width: Tokens.sp-10;
+                                text: item.feed-title;
+                                color: Tokens.fg-2;
+                                font-size: Tokens.fs-12;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+
+                            // Download button
+                            Rectangle {
+                                width: Tokens.sp-10;
+                                height: Tokens.sp-7;
+
+                                if item.has-download && !item.downloaded : Rectangle {
+                                    border-radius: Tokens.r-sm;
+                                    background: dl-touch.has-hover ? Tokens.accent-hover : Tokens.accent;
+
+                                    Text {
+                                        text: "DL";
+                                        color: Tokens.accent-fg;
+                                        font-size: Tokens.fs-12;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+
+                                    dl-touch := TouchArea {
+                                        clicked => {
+                                            root.download-item(idx);
+                                        }
+                                    }
+                                }
+
+                                if item.downloaded : Text {
+                                    text: "✓";
+                                    color: Tokens.status-seeding;
+                                    font-size: Tokens.fs-14;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+
+                        item-touch := TouchArea {
+                            clicked => {
+                                root.mark-item-read(idx);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Empty state
+            if root.items.length == 0 && !root.refreshing : VerticalLayout {
+                vertical-stretch: 1;
+                alignment: center;
+
+                Text {
+                    text: root.feeds.length == 0 ? "Add an RSS feed to get started" : "No items in selected feed";
+                    color: Tokens.fg-2;
+                    font-size: Tokens.fs-16;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: "Paste a feed URL in the sidebar and press +";
+                    color: Tokens.fg-2;
+                    font-size: Tokens.fs-12;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+    }
+}
