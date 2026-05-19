@@ -621,6 +621,12 @@ async fn handle_gui_command(
         GuiCommand::ResumeAll => {
             handle_resume_all(session, weak).await;
         }
+        GuiCommand::OpenTorrentFile { path } => {
+            handle_open_torrent_file(path, session, weak).await;
+        }
+        GuiCommand::OpenMagnet { uri } => {
+            handle_open_magnet(&uri, session, weak).await;
+        }
     }
 
     let elapsed = start.elapsed();
@@ -1785,6 +1791,71 @@ async fn handle_resume_all(
     }
     let msg = format!("Resumed {resumed} torrent(s)");
     show_toast(weak, &msg, false);
+}
+
+async fn handle_open_torrent_file(
+    path: std::path::PathBuf,
+    session: &irontide::session::SessionHandle,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    let display = path
+        .file_name()
+        .map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned());
+
+    let bytes = match tokio::fs::read(&path).await {
+        Ok(b) => b,
+        Err(e) => {
+            let msg = format!("Failed to read {display}: {e}");
+            show_toast(weak, &msg, true);
+            return;
+        }
+    };
+
+    match irontide::AddTorrentParams::from_bytes(bytes)
+        .add_to(session)
+        .await
+    {
+        Ok(_) => {
+            let msg = format!("Added: {display}");
+            show_toast(weak, &msg, false);
+        }
+        Err(e) => {
+            let msg = format!("Failed to add {display}: {e}");
+            show_toast(weak, &msg, true);
+        }
+    }
+}
+
+async fn handle_open_magnet(
+    uri: &str,
+    session: &irontide::session::SessionHandle,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    let magnet = match irontide::core::Magnet::parse(uri) {
+        Ok(m) => m,
+        Err(e) => {
+            let msg = format!("Invalid magnet URI: {e}");
+            show_toast(weak, &msg, true);
+            return;
+        }
+    };
+    let name = magnet
+        .display_name
+        .clone()
+        .unwrap_or_else(|| "magnet".to_owned());
+    match irontide::AddTorrentParams::from_magnet(magnet)
+        .add_to(session)
+        .await
+    {
+        Ok(_) => {
+            let msg = format!("Added: {name}");
+            show_toast(weak, &msg, false);
+        }
+        Err(e) => {
+            let msg = format!("Failed to add {name}: {e}");
+            show_toast(weak, &msg, true);
+        }
+    }
 }
 
 #[cfg(test)]

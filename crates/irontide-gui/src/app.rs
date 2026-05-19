@@ -282,6 +282,14 @@ pub enum GuiCommand {
     PauseAll,
     /// M193: resume every torrent in the session (tray menu action).
     ResumeAll,
+    /// M195: add a torrent from a file path received via IPC or CLI arg.
+    OpenTorrentFile {
+        path: std::path::PathBuf,
+    },
+    /// M195: add a torrent from a magnet URI received via IPC or CLI arg.
+    OpenMagnet {
+        uri: String,
+    },
     /// M180: set per-torrent DL/UL rate limits.
     SetTorrentRateLimit {
         /// Hex-encoded info-hash string.
