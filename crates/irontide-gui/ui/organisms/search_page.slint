@@ -1,0 +1,251 @@
+import { Tokens } from "../tokens.slint";
+
+export struct SearchResultRow {
+    name: string,
+    magnet-url: string,
+    size: string,
+    seeds: int,
+    leechers: int,
+    source: string,
+}
+
+export component SearchPage inherits Rectangle {
+    in property <string> query;
+    in property <[SearchResultRow]> results;
+    in property <int> result-count: 0;
+    in property <bool> searching: false;
+    in property <[string]> plugin-names;
+
+    callback search-requested(string);
+    callback add-result(string);
+
+    background: Tokens.bg-0;
+
+    VerticalLayout {
+        padding: Tokens.sp-4;
+        spacing: Tokens.sp-3;
+
+        // Search bar
+        HorizontalLayout {
+            spacing: Tokens.sp-2;
+
+            Rectangle {
+                horizontal-stretch: 1;
+                height: Tokens.sp-9;
+                border-radius: Tokens.r-md;
+                background: Tokens.bg-1;
+                border-width: 1px;
+                border-color: Tokens.border-1;
+
+                search-input := TextInput {
+                    x: Tokens.sp-2;
+                    y: 0;
+                    width: parent.width - Tokens.sp-4;
+                    height: parent.height;
+                    color: Tokens.fg-0;
+                    font-size: Tokens.fs-14;
+                    text: root.query;
+                    accepted => {
+                        root.search-requested(self.text);
+                    }
+                }
+            }
+
+            Rectangle {
+                width: Tokens.sp-10 + Tokens.sp-6;
+                height: Tokens.sp-9;
+                border-radius: Tokens.r-md;
+                background: search-btn.has-hover ? Tokens.accent-hover : Tokens.accent;
+
+                Text {
+                    text: root.searching ? "Searching..." : "Search";
+                    color: Tokens.accent-fg;
+                    font-size: Tokens.fs-13;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                search-btn := TouchArea {
+                    clicked => {
+                        root.search-requested(search-input.text);
+                    }
+                }
+            }
+        }
+
+        // Results header
+        if result-count > 0 : Text {
+            text: result-count == 1 ? "1 result" : "\{result-count} results";
+            color: Tokens.fg-2;
+            font-size: Tokens.fs-12;
+        }
+
+        // Column headers
+        if result-count > 0 : Rectangle {
+            height: Tokens.sp-7;
+            background: Tokens.bg-1;
+            border-radius: Tokens.r-sm;
+
+            HorizontalLayout {
+                padding-left: Tokens.sp-2;
+                padding-right: Tokens.sp-2;
+                spacing: Tokens.sp-2;
+
+                Text {
+                    horizontal-stretch: 4;
+                    text: "Name";
+                    color: Tokens.fg-2;
+                    font-size: Tokens.fs-12;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+                Text {
+                    width: Tokens.sp-10 + Tokens.sp-4;
+                    text: "Size";
+                    color: Tokens.fg-2;
+                    font-size: Tokens.fs-12;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    horizontal-alignment: right;
+                }
+                Text {
+                    width: Tokens.sp-9;
+                    text: "S";
+                    color: Tokens.fg-2;
+                    font-size: Tokens.fs-12;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    horizontal-alignment: right;
+                }
+                Text {
+                    width: Tokens.sp-9;
+                    text: "L";
+                    color: Tokens.fg-2;
+                    font-size: Tokens.fs-12;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    horizontal-alignment: right;
+                }
+                Text {
+                    width: Tokens.sp-10;
+                    text: "Source";
+                    color: Tokens.fg-2;
+                    font-size: Tokens.fs-12;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+                // Spacer for the Add button column
+                Rectangle {
+                    width: Tokens.sp-10;
+                }
+            }
+        }
+
+        // Results list
+        Flickable {
+            vertical-stretch: 1;
+
+            VerticalLayout {
+                spacing: 1px;
+
+                for row[idx] in root.results : Rectangle {
+                    height: Tokens.sp-9;
+                    background: row-touch.has-hover ? Tokens.bg-hover : (mod(idx, 2) == 0 ? Tokens.bg-0 : Tokens.bg-1);
+
+                    HorizontalLayout {
+                        padding-left: Tokens.sp-2;
+                        padding-right: Tokens.sp-2;
+                        spacing: Tokens.sp-2;
+
+                        Text {
+                            horizontal-stretch: 4;
+                            text: row.name;
+                            color: Tokens.fg-0;
+                            font-size: Tokens.fs-13;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        Text {
+                            width: Tokens.sp-10 + Tokens.sp-4;
+                            text: row.size;
+                            color: Tokens.fg-1;
+                            font-size: Tokens.fs-12;
+                            vertical-alignment: center;
+                            horizontal-alignment: right;
+                        }
+                        Text {
+                            width: Tokens.sp-9;
+                            text: "\{row.seeds}";
+                            color: row.seeds > 0 ? Tokens.status-seeding : Tokens.fg-2;
+                            font-size: Tokens.fs-12;
+                            vertical-alignment: center;
+                            horizontal-alignment: right;
+                        }
+                        Text {
+                            width: Tokens.sp-9;
+                            text: "\{row.leechers}";
+                            color: Tokens.fg-2;
+                            font-size: Tokens.fs-12;
+                            vertical-alignment: center;
+                            horizontal-alignment: right;
+                        }
+                        Text {
+                            width: Tokens.sp-10;
+                            text: row.source;
+                            color: Tokens.fg-2;
+                            font-size: Tokens.fs-12;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+
+                        // Add button
+                        Rectangle {
+                            width: Tokens.sp-10;
+                            height: Tokens.sp-7;
+
+                            Rectangle {
+                                border-radius: Tokens.r-sm;
+                                background: add-touch.has-hover ? Tokens.accent-hover : Tokens.accent;
+
+                                Text {
+                                    text: "Add";
+                                    color: Tokens.accent-fg;
+                                    font-size: Tokens.fs-12;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+
+                                add-touch := TouchArea {
+                                    clicked => {
+                                        root.add-result(row.magnet-url);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    row-touch := TouchArea {}
+                }
+            }
+        }
+
+        // Empty state
+        if result-count == 0 && !root.searching : VerticalLayout {
+            vertical-stretch: 1;
+            alignment: center;
+
+            Text {
+                text: "Search for torrents";
+                color: Tokens.fg-2;
+                font-size: Tokens.fs-16;
+                horizontal-alignment: center;
+            }
+            Text {
+                text: "Configure search plugins in ~/.config/irontide/plugins/search/";
+                color: Tokens.fg-2;
+                font-size: Tokens.fs-12;
+                horizontal-alignment: center;
+            }
+        }
+    }
+}

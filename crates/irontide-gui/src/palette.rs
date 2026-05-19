@@ -31,6 +31,7 @@ pub enum PaletteCommandId {
     NavInactive,
     NavErrored,
     // Tools
+    ToggleSearch,
     OpenPreferences,
     SelectAll,
     // Settings
@@ -179,6 +180,12 @@ pub static COMMANDS: &[PaletteCommand] = &[
     },
     // Tools
     PaletteCommand {
+        id: PaletteCommandId::ToggleSearch,
+        label: "Search Torrents",
+        category: PaletteCategory::Tools,
+        hotkey_hint: "",
+    },
+    PaletteCommand {
         id: PaletteCommandId::SelectAll,
         label: "Select All",
         category: PaletteCategory::Tools,
@@ -287,6 +294,7 @@ pub enum DispatchAction {
     ShowAddMagnet,
     ShowAddTorrent,
     ShowCreateTorrent,
+    ToggleSearch,
     SendCommand(crate::app::GuiCommand),
     SetPredicate(crate::sidebar::SidebarPredicate),
     OpenPreferences,
@@ -354,6 +362,7 @@ pub fn dispatch(id: PaletteCommandId, selected: &[String]) -> DispatchAction {
         PaletteCommandId::NavErrored => {
             DispatchAction::SetPredicate(SidebarPredicate::Library(LibraryFilter::Errored))
         }
+        PaletteCommandId::ToggleSearch => DispatchAction::ToggleSearch,
         PaletteCommandId::OpenPreferences => DispatchAction::OpenPreferences,
         PaletteCommandId::SelectAll => DispatchAction::SelectAll,
         PaletteCommandId::Quit => DispatchAction::Quit,

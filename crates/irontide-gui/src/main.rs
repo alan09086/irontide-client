@@ -11,6 +11,7 @@ mod poll;
 mod prefs;
 mod sidebar;
 mod sidebar_view;
+mod search;
 mod single_instance;
 mod skin;
 mod skin_tokens;
@@ -1027,6 +1028,12 @@ fn main() -> Result<(), error::GuiError> {
                         win.set_show_create_torrent_dialog(true);
                     });
                 }
+                palette::DispatchAction::ToggleSearch => {
+                    let _ = weak2.upgrade_in_event_loop(|win| {
+                        let current = win.get_show_search_page();
+                        win.set_show_search_page(!current);
+                    });
+                }
                 palette::DispatchAction::SendCommand(gui_cmd) => {
                     if let Some(tx) = cmd_tx {
                         let _ = tx.send(gui_cmd);
@@ -1139,6 +1146,35 @@ fn main() -> Result<(), error::GuiError> {
             let defaults = crate::prefs::PreferencesState::default();
             defaults.populate_slint_tab(tab.as_str(), &win);
             win.set_pref_dirty(true);
+        });
+    }
+
+    // 6j. Wire search callbacks (M196).
+    {
+        let cb_state = state.clone();
+        main_window.on_search_requested(move |query| {
+            let query_str = query.to_string();
+            if query_str.trim().is_empty() {
+                return;
+            }
+            let cmd_tx = cb_state.lock().cmd_tx.clone();
+            if let Some(tx) = cmd_tx {
+                let _ = tx.send(app::GuiCommand::SearchQuery {
+                    query: query_str,
+                    plugin_name: None,
+                });
+            }
+        });
+    }
+    {
+        let cb_state = state.clone();
+        main_window.on_search_add_result(move |magnet_url| {
+            let cmd_tx = cb_state.lock().cmd_tx.clone();
+            if let Some(tx) = cmd_tx {
+                let _ = tx.send(app::GuiCommand::SearchAddResult {
+                    magnet_url: magnet_url.to_string(),
+                });
+            }
         });
     }
 
