@@ -18,6 +18,7 @@ mod ip_filter_page;
 mod logs_stats_page;
 mod bandwidth_intent;
 mod phone_pair;
+mod update_checker;
 mod category_suggest;
 mod search;
 mod single_instance;
@@ -1696,6 +1697,17 @@ fn main() -> Result<(), error::GuiError> {
         );
         _ipc_timer = timer;
     }
+
+    // 8b. Spawn update checker (M209).
+    update_checker::spawn_update_checker(main_window.as_weak());
+    main_window.on_dismiss_update({
+        let weak = main_window.as_weak();
+        move || {
+            if let Some(win) = weak.upgrade() {
+                win.set_update_available(false);
+            }
+        }
+    });
 
     // 9. Run Slint event loop (blocks until window is closed).
     main_window.run()?;

@@ -431,6 +431,13 @@ export component MainWindow inherits Window {
     in-out property <string> phone-pair-status-text: "Ready";
     callback phone-pair-refresh();
 
+    // ── Update notification (M209) ──
+    in-out property <bool> update-available: false;
+    in-out property <string> update-version: "";
+    in-out property <string> update-url: "";
+    in-out property <string> update-message: "";
+    callback dismiss-update();
+
     // ── Modifier tracking ──
     in-out property <bool> shift-held: false;
     in-out property <bool> ctrl-held: false;
@@ -948,6 +955,48 @@ export component MainWindow inherits Window {
                         port-text: root.phone-pair-port-text;
                         status-text: root.phone-pair-status-text;
                         refresh-requested => { root.phone-pair-refresh(); }
+                    }
+
+                    // M209: Update notification banner
+                    if root.update-available : Rectangle {
+                        background: Tokens.accent;
+                        border-radius: Tokens.r-sm;
+                        height: 36px;
+                        vertical-stretch: 0;
+
+                        HorizontalLayout {
+                            padding-left: Tokens.sp-4;
+                            padding-right: Tokens.sp-4;
+                            spacing: Tokens.sp-3;
+                            alignment: center;
+
+                            Text {
+                                text: root.update-message;
+                                font-size: Tokens.fs-12;
+                                color: white;
+                                vertical-alignment: center;
+                            }
+
+                            dismiss-ta := TouchArea {
+                                width: 60px;
+                                mouse-cursor: pointer;
+                                clicked => { root.dismiss-update(); }
+
+                                Rectangle {
+                                    background: dismiss-ta.has-hover ? #ffffff40 : transparent;
+                                    border-radius: Tokens.r-sm;
+
+                                    Text {
+                                        text: "Dismiss";
+                                        font-size: Tokens.fs-11;
+                                        color: white;
+                                        font-weight: 600;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     if !root.show-search-page && !root.show-rss-page && !root.show-scheduler-page && !root.show-ip-filter-page && !root.show-logs-stats-page && !root.show-bandwidth-intent-page && !root.show-phone-pair-page : TorrentListView {
