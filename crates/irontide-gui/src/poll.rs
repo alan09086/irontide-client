@@ -1082,6 +1082,7 @@ mod tests {
             all_time_download: 0,
             user_seed_mode: false,
             super_seeding: false,
+            user_forced: false,
             checking_progress: 0.0,
         }
     }

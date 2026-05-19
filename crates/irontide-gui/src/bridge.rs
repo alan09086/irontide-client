@@ -601,6 +601,19 @@ async fn handle_gui_command(
             .await;
             show_toast(weak, &msg, false);
         }
+        GuiCommand::ForceResumeTorrents { hashes } => {
+            let msg = batch_action(&hashes, session, "Force started", |s, id| {
+                Box::pin(s.force_resume_torrent(id))
+            })
+            .await;
+            show_toast(weak, &msg, false);
+        }
+        GuiCommand::MoveTorrentStorage { info_hash, new_path } => {
+            handle_move_torrent_storage(&info_hash, &new_path, session, weak).await;
+        }
+        GuiCommand::SetTorrentSeedRatio { info_hash, limit } => {
+            handle_set_torrent_seed_ratio(&info_hash, limit, session, weak).await;
+        }
         GuiCommand::SetDefaultDownloadDir { dir } => {
             handle_set_default_download_dir(&dir, session, weak).await;
         }
@@ -1203,6 +1216,47 @@ async fn handle_set_sequential_download(
         Err(e) => {
             show_toast(weak, &format!("Sequential toggle failed: {e}"), true);
         }
+    }
+}
+
+async fn handle_move_torrent_storage(
+    info_hash: &str,
+    new_path: &str,
+    session: &irontide::session::SessionHandle,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    let Ok(id) = irontide::core::Id20::from_hex(info_hash) else {
+        show_toast(weak, &format!("Bad info-hash: {info_hash}"), true);
+        return;
+    };
+    match session
+        .move_torrent_storage(id, std::path::PathBuf::from(new_path))
+        .await
+    {
+        Ok(()) => show_toast(weak, &format!("Moved to {new_path}"), false),
+        Err(e) => show_toast(weak, &format!("Move failed: {e}"), true),
+    }
+}
+
+async fn handle_set_torrent_seed_ratio(
+    info_hash: &str,
+    limit: Option<f64>,
+    session: &irontide::session::SessionHandle,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    let Ok(id) = irontide::core::Id20::from_hex(info_hash) else {
+        show_toast(weak, &format!("Bad info-hash: {info_hash}"), true);
+        return;
+    };
+    match session.set_torrent_seed_ratio(id, limit).await {
+        Ok(()) => {
+            let msg = limit.map_or_else(
+                || "Seed ratio: using session default".to_owned(),
+                |r| format!("Seed ratio limit set to {r:.1}"),
+            );
+            show_toast(weak, &msg, false);
+        }
+        Err(e) => show_toast(weak, &format!("Set ratio failed: {e}"), true),
     }
 }
 

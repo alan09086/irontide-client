@@ -214,6 +214,44 @@ export component ContextMenu {
                         clicked => { root.context-action(7); }
                     }
                 }
+
+                // Item 8: Force Start (bypass queue)
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: force-start-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+
+                    Text {
+                        text: "Force Start";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        x: Tokens.sp-4;
+                    }
+
+                    force-start-touch := TouchArea {
+                        clicked => { root.context-action(8); }
+                    }
+                }
+
+                // Item 9: Move Storage
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: move-storage-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+
+                    Text {
+                        text: "Move Storage...";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        x: Tokens.sp-4;
+                    }
+
+                    move-storage-touch := TouchArea {
+                        clicked => { root.context-action(9); }
+                    }
+                }
             }
         }
     }
