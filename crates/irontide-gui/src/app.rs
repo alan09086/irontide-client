@@ -363,6 +363,8 @@ pub enum GuiCommand {
     IntentApplyPreset { index: usize },
     /// M203: set detected line speeds (Kbps).
     IntentSetDetectedSpeeds { dl_kbps: u64, ul_kbps: u64 },
+    /// M204: refresh phone pair QR (re-detect IP).
+    PhonePairRefresh,
     /// M180: set per-torrent DL/UL rate limits.
     SetTorrentRateLimit {
         /// Hex-encoded info-hash string.

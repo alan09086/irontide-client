@@ -745,6 +745,9 @@ async fn handle_gui_command(
         GuiCommand::IntentSetDetectedSpeeds { dl_kbps, ul_kbps } => {
             handle_intent_set_detected_speeds(dl_kbps, ul_kbps, weak);
         }
+        GuiCommand::PhonePairRefresh => {
+            push_phone_pair_state(weak);
+        }
     }
 
     let elapsed = start.elapsed();
@@ -2712,6 +2715,27 @@ pub fn push_bandwidth_intent_state(weak: &slint::Weak<crate::MainWindow>) {
         win.set_intent_effective_ul_text(effective_ul.into());
         let model = std::rc::Rc::new(slint::VecModel::from(presets));
         win.set_intent_presets(slint::ModelRc::from(model));
+    });
+}
+
+// ── Phone Pair QR (M204) ───────────────────────────────────────────────────
+
+pub fn push_phone_pair_state(weak: &slint::Weak<crate::MainWindow>) {
+    let weak = weak.clone();
+    let _ = weak.upgrade_in_event_loop(move |win| {
+        let port_str = win.get_phone_pair_port_text();
+        let port: u16 = port_str.to_string().parse().unwrap_or(9080);
+        let info = crate::phone_pair::generate_pair_info(port);
+        let status = if info.local_ip == "127.0.0.1" {
+            "No network detected \u{2014} QR will only work locally"
+        } else {
+            "Ready \u{2014} scan from your phone"
+        };
+        win.set_phone_pair_qr_image(info.qr_image);
+        win.set_phone_pair_url_text(info.url.into());
+        win.set_phone_pair_ip_text(info.local_ip.into());
+        win.set_phone_pair_port_text(info.port.to_string().into());
+        win.set_phone_pair_status_text(status.into());
     });
 }
 

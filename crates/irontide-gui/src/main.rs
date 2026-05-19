@@ -17,6 +17,7 @@ mod ip_filter_page;
 #[allow(dead_code)]
 mod logs_stats_page;
 mod bandwidth_intent;
+mod phone_pair;
 mod category_suggest;
 mod search;
 mod single_instance;
@@ -157,6 +158,7 @@ fn main() -> Result<(), error::GuiError> {
         } else {
             api_config.port.unwrap_or(9080)
         };
+        main_window.set_phone_pair_port_text(st.prefs.webui_port.to_string().into());
     }
 
     // 6. Wire menu callbacks.
@@ -1050,6 +1052,7 @@ fn main() -> Result<(), error::GuiError> {
                             win.set_show_ip_filter_page(false);
                             win.set_show_logs_stats_page(false);
                             win.set_show_bandwidth_intent_page(false);
+                            win.set_show_phone_pair_page(false);
                         }
                     });
                 }
@@ -1063,6 +1066,7 @@ fn main() -> Result<(), error::GuiError> {
                             win.set_show_ip_filter_page(false);
                             win.set_show_logs_stats_page(false);
                             win.set_show_bandwidth_intent_page(false);
+                            win.set_show_phone_pair_page(false);
                         }
                     });
                 }
@@ -1077,6 +1081,7 @@ fn main() -> Result<(), error::GuiError> {
                             win.set_show_ip_filter_page(false);
                             win.set_show_logs_stats_page(false);
                             win.set_show_bandwidth_intent_page(false);
+                            win.set_show_phone_pair_page(false);
                             crate::bridge::push_scheduler_state(&sched_weak);
                         }
                     });
@@ -1092,6 +1097,7 @@ fn main() -> Result<(), error::GuiError> {
                             win.set_show_scheduler_page(false);
                             win.set_show_logs_stats_page(false);
                             win.set_show_bandwidth_intent_page(false);
+                            win.set_show_phone_pair_page(false);
                             crate::bridge::push_ip_filter_state(&filter_weak);
                         }
                     });
@@ -1107,6 +1113,7 @@ fn main() -> Result<(), error::GuiError> {
                             win.set_show_scheduler_page(false);
                             win.set_show_ip_filter_page(false);
                             win.set_show_bandwidth_intent_page(false);
+                            win.set_show_phone_pair_page(false);
                             crate::bridge::push_logs_stats_state(&logs_weak);
                         }
                     });
@@ -1122,7 +1129,24 @@ fn main() -> Result<(), error::GuiError> {
                             win.set_show_scheduler_page(false);
                             win.set_show_ip_filter_page(false);
                             win.set_show_logs_stats_page(false);
+                            win.set_show_phone_pair_page(false);
                             crate::bridge::push_bandwidth_intent_state(&intent_weak);
+                        }
+                    });
+                }
+                palette::DispatchAction::TogglePhonePair => {
+                    let pair_weak = weak2.clone();
+                    let _ = weak2.upgrade_in_event_loop(move |win| {
+                        let current = win.get_show_phone_pair_page();
+                        win.set_show_phone_pair_page(!current);
+                        if !current {
+                            win.set_show_search_page(false);
+                            win.set_show_rss_page(false);
+                            win.set_show_scheduler_page(false);
+                            win.set_show_ip_filter_page(false);
+                            win.set_show_logs_stats_page(false);
+                            win.set_show_bandwidth_intent_page(false);
+                            crate::bridge::push_phone_pair_state(&pair_weak);
                         }
                     });
                 }
@@ -1420,6 +1444,17 @@ fn main() -> Result<(), error::GuiError> {
                 let dl_kbps = dl_text.trim().parse::<u64>().unwrap_or(0);
                 let ul_kbps = ul_text.trim().parse::<u64>().unwrap_or(0);
                 let _ = tx.send(app::GuiCommand::IntentSetDetectedSpeeds { dl_kbps, ul_kbps });
+            }
+        });
+    }
+
+    // 6l-3. Wire Phone Pair callback (M204).
+    {
+        let cb_state = state.clone();
+        main_window.on_phone_pair_refresh(move || {
+            let cmd_tx = cb_state.lock().cmd_tx.clone();
+            if let Some(tx) = cmd_tx {
+                let _ = tx.send(app::GuiCommand::PhonePairRefresh);
             }
         });
     }

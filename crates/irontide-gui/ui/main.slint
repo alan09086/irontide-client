@@ -32,6 +32,7 @@ import { SchedulerPage, SchedulerCell } from "organisms/scheduler_page.slint";
 import { IpFilterPage, IpFilterRuleRow, BannedPeerRow } from "organisms/ip_filter_page.slint";
 import { LogsStatsPage, LogRow, StatCardData, TransferBar } from "organisms/logs_stats_page.slint";
 import { BandwidthIntentPage, IntentPresetRow } from "organisms/bandwidth_intent_page.slint";
+import { PhonePairPage } from "organisms/phone_pair_page.slint";
 
 export { Tokens, Shadow, SidebarRow, TorrentRow, FileTreeRow, PaletteItem, PaletteCategory, SearchResultRow, RssFeedRow, RssItemRow, RssRuleRow, SchedulerCell, IpFilterRuleRow, BannedPeerRow, LogRow, StatCardData, TransferBar, IntentPresetRow }
 
@@ -420,6 +421,15 @@ export component MainWindow inherits Window {
     callback intent-set-mode(int);
     callback intent-apply-preset(int);
     callback intent-set-detected-speeds(string, string);
+
+    // ── Phone Pair (M204) ──
+    in-out property <bool> show-phone-pair-page: false;
+    in-out property <image> phone-pair-qr-image;
+    in-out property <string> phone-pair-url-text: "";
+    in-out property <string> phone-pair-ip-text: "";
+    in-out property <string> phone-pair-port-text: "9080";
+    in-out property <string> phone-pair-status-text: "Ready";
+    callback phone-pair-refresh();
 
     // ── Modifier tracking ──
     in-out property <bool> shift-held: false;
@@ -930,7 +940,17 @@ export component MainWindow inherits Window {
                         set-detected-speeds(dl, ul) => { root.intent-set-detected-speeds(dl, ul); }
                     }
 
-                    if !root.show-search-page && !root.show-rss-page && !root.show-scheduler-page && !root.show-ip-filter-page && !root.show-logs-stats-page && !root.show-bandwidth-intent-page : TorrentListView {
+                    if root.show-phone-pair-page : PhonePairPage {
+                        vertical-stretch: 1;
+                        qr-image: root.phone-pair-qr-image;
+                        url-text: root.phone-pair-url-text;
+                        ip-text: root.phone-pair-ip-text;
+                        port-text: root.phone-pair-port-text;
+                        status-text: root.phone-pair-status-text;
+                        refresh-requested => { root.phone-pair-refresh(); }
+                    }
+
+                    if !root.show-search-page && !root.show-rss-page && !root.show-scheduler-page && !root.show-ip-filter-page && !root.show-logs-stats-page && !root.show-bandwidth-intent-page && !root.show-phone-pair-page : TorrentListView {
                         vertical-stretch: 2;
                         session-ready: root.session-ready;
                         error-text: root.error-text;
@@ -956,7 +976,7 @@ export component MainWindow inherits Window {
                         column-visibility-toggled(c) => { root.column-visibility-toggled(c); }
                     }
 
-                    if root.session-ready && root.error-text == "" && !root.show-search-page && !root.show-rss-page && !root.show-scheduler-page && !root.show-ip-filter-page && !root.show-logs-stats-page && !root.show-bandwidth-intent-page: Rectangle {
+                    if root.session-ready && root.error-text == "" && !root.show-search-page && !root.show-rss-page && !root.show-scheduler-page && !root.show-ip-filter-page && !root.show-logs-stats-page && !root.show-bandwidth-intent-page && !root.show-phone-pair-page: Rectangle {
                         vertical-stretch: 1;
                         min-height: Tokens.sp-10 * 5;
                         background: Tokens.bg-1;
