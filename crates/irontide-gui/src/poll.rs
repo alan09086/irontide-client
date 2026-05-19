@@ -248,6 +248,9 @@ pub async fn poll_loop(
         // Compute status bar values.
         let (agg_down, agg_up) = aggregate_rates(&sorted);
         let total_torrents = sorted.len() as i32;
+
+        // M193: per-state counts for system tray icon derivation.
+        let (downloading_count, seeding_count, error_count) = count_states(&sorted);
         let dht_nodes = sess_stats.dht_nodes as i32;
 
         let status_down = if agg_down > 0 {
@@ -543,6 +546,9 @@ pub async fn poll_loop(
             win.set_status_total_torrents(total_torrents);
             win.set_status_dht_nodes(dht_nodes);
             win.set_status_listen_port(listen_port);
+            win.set_status_downloading_count(downloading_count);
+            win.set_status_seeding_count(seeding_count);
+            win.set_status_error_count(error_count);
             win.set_sort_column(sort_col);
             win.set_sort_ascending(sort_asc);
 
@@ -1029,6 +1035,28 @@ pub fn aggregate_rates(summaries: &[TorrentSummary]) -> (u64, u64) {
     let down: u64 = summaries.iter().map(|s| s.download_rate).sum();
     let up: u64 = summaries.iter().map(|s| s.upload_rate).sum();
     (down, up)
+}
+
+#[must_use]
+pub fn count_states(summaries: &[TorrentSummary]) -> (i32, i32, i32) {
+    let mut downloading = 0i32;
+    let mut seeding = 0i32;
+    let mut error = 0i32;
+    for s in summaries {
+        match s.state {
+            TorrentState::Downloading | TorrentState::FetchingMetadata | TorrentState::Checking => {
+                downloading += 1;
+            }
+            TorrentState::Seeding | TorrentState::Complete | TorrentState::Sharing => {
+                seeding += 1;
+            }
+            TorrentState::Stopped => {
+                error += 1;
+            }
+            TorrentState::Paused | TorrentState::Queued => {}
+        }
+    }
+    (downloading, seeding, error)
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────

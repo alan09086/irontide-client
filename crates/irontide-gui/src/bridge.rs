@@ -604,6 +604,12 @@ async fn handle_gui_command(
         GuiCommand::CreateTorrent { state } => {
             handle_create_torrent(state, weak);
         }
+        GuiCommand::PauseAll => {
+            handle_pause_all(session, weak).await;
+        }
+        GuiCommand::ResumeAll => {
+            handle_resume_all(session, weak).await;
+        }
     }
 
     let elapsed = start.elapsed();
@@ -1727,6 +1733,47 @@ fn handle_create_torrent(
             }
         }
     });
+}
+
+async fn handle_pause_all(
+    session: &irontide::session::SessionHandle,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    let Ok(summaries) = session.list_torrent_summaries().await else {
+        return;
+    };
+    let mut paused = 0u32;
+    for s in &summaries {
+        if s.state != irontide::session::TorrentState::Paused
+            && let Ok(h) = irontide::core::Id20::from_hex(&s.info_hash)
+        {
+            let _ = session.pause_torrent(h).await;
+            paused += 1;
+        }
+    }
+    let msg = format!("Paused {paused} torrent(s)");
+    show_toast(weak, &msg, false);
+}
+
+async fn handle_resume_all(
+    session: &irontide::session::SessionHandle,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    let Ok(summaries) = session.list_torrent_summaries().await else {
+        return;
+    };
+    let mut resumed = 0u32;
+    for s in &summaries {
+        if (s.state == irontide::session::TorrentState::Paused
+            || s.state == irontide::session::TorrentState::Queued)
+            && let Ok(h) = irontide::core::Id20::from_hex(&s.info_hash)
+        {
+            let _ = session.resume_torrent(h).await;
+            resumed += 1;
+        }
+    }
+    let msg = format!("Resumed {resumed} torrent(s)");
+    show_toast(weak, &msg, false);
 }
 
 #[cfg(test)]
