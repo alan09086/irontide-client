@@ -291,6 +291,22 @@ pub struct SidebarConfig {
 /// max_download_rate_bps = 0
 /// max_peers_per_torrent = 200
 /// ```
+/// M194: a directory to watch for new `.torrent` files.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WatchedFolder {
+    pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub download_dir: Option<String>,
+    #[serde(default)]
+    pub add_paused: bool,
+    #[serde(default = "default_true")]
+    pub remove_after_add: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ConfigFile {
     /// Core session parameters.
@@ -305,6 +321,9 @@ pub struct ConfigFile {
     /// GUI column layout and visibility state.
     #[serde(default, skip_serializing_if = "section_is_default")]
     pub gui: GuiConfig,
+    /// M194: directories to watch for `.torrent` files.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub watched_folders: Vec<WatchedFolder>,
 }
 
 /// Returns `true` when every field in a section is `None`, allowing
@@ -405,6 +424,7 @@ impl ConfigFile {
                 max_active_uploads: Some(settings.active_seeds),
             },
             gui: GuiConfig::default(),
+            watched_folders: Vec::new(),
         }
     }
 }
@@ -1109,6 +1129,7 @@ max_peers_per_torrent = 50
                 max_active_uploads: Some(10),
             },
             gui: GuiConfig::default(),
+            watched_folders: Vec::new(),
         };
 
         let serialized = toml::to_string_pretty(&original).expect("serialize");

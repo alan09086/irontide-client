@@ -19,6 +19,7 @@ use crate::app::{AppPhase, AppState, GuiCommand};
 pub fn spawn_session_thread(
     settings: irontide::session::Settings,
     api_config: irontide_config::ApiConfig,
+    watched_folders: Vec<irontide_config::WatchedFolder>,
     weak: slint::Weak<crate::MainWindow>,
     shutdown_rx: tokio::sync::oneshot::Receiver<()>,
     state: Arc<Mutex<AppState>>,
@@ -28,7 +29,7 @@ pub fn spawn_session_thread(
         .spawn(move || {
             let rt = irontide_config::build_runtime(&settings);
             rt.block_on(async {
-                run_session(settings, api_config, weak, shutdown_rx, state).await;
+                run_session(settings, api_config, watched_folders, weak, shutdown_rx, state).await;
             });
             rt.shutdown_timeout(std::time::Duration::from_secs(1));
         })
@@ -38,6 +39,7 @@ pub fn spawn_session_thread(
 async fn run_session(
     settings: irontide::session::Settings,
     api_config: irontide_config::ApiConfig,
+    watched_folders: Vec<irontide_config::WatchedFolder>,
     weak: slint::Weak<crate::MainWindow>,
     shutdown_rx: tokio::sync::oneshot::Receiver<()>,
     state: Arc<Mutex<AppState>>,
@@ -120,6 +122,15 @@ async fn run_session(
         win.set_status_text("Ready".into());
         win.set_default_download_dir(default_download_dir.into());
     });
+
+    // M194: start filesystem watcher for auto-add folders.
+    let (watch_tx, watch_rx) = tokio::sync::mpsc::unbounded_channel();
+    let _watcher = crate::watcher::FolderWatcher::start(&watched_folders, watch_tx);
+    let _watch_task = tokio::spawn(crate::watcher::process_watch_events(
+        watch_rx,
+        session.clone(),
+        weak.clone(),
+    ));
 
     // Start poll loop and wait for shutdown or commands.
     let poll_handle = tokio::spawn(crate::poll::poll_loop(
