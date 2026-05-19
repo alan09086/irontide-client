@@ -660,6 +660,18 @@ async fn handle_gui_command(
         } => {
             handle_rss_mark_item_read(index, selected_feed, weak);
         }
+        GuiCommand::SchedulerToggleEnabled => {
+            handle_scheduler_toggle_enabled(weak);
+        }
+        GuiCommand::SchedulerCellClicked { day, hour } => {
+            handle_scheduler_cell_clicked(day, hour, weak);
+        }
+        GuiCommand::SchedulerApplyPreset { name } => {
+            handle_scheduler_apply_preset(&name, weak);
+        }
+        GuiCommand::SchedulerLimitedRateChanged { rate_kib } => {
+            handle_scheduler_limited_rate_changed(rate_kib, weak);
+        }
     }
 
     let elapsed = start.elapsed();
@@ -2311,6 +2323,76 @@ fn push_rss_state(
         win.set_rss_items(slint::ModelRc::from(item_model));
         let rule_model = std::rc::Rc::new(slint::VecModel::from(rule_rows));
         win.set_rss_rules(slint::ModelRc::from(rule_model));
+    });
+}
+
+// ── Bandwidth Scheduler handlers (M198) ─────────────────────────────────────
+
+fn handle_scheduler_toggle_enabled(weak: &slint::Weak<crate::MainWindow>) {
+    let mut schedule = crate::scheduler::load_schedule();
+    schedule.enabled = !schedule.enabled;
+    if let Err(e) = crate::scheduler::save_schedule(&schedule) {
+        tracing::warn!("failed to save schedule: {e}");
+    }
+    push_scheduler_state(weak);
+}
+
+fn handle_scheduler_cell_clicked(
+    day: usize,
+    hour: usize,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    let mut schedule = crate::scheduler::load_schedule();
+    schedule.toggle_cell(day, hour);
+    if let Err(e) = crate::scheduler::save_schedule(&schedule) {
+        tracing::warn!("failed to save schedule: {e}");
+    }
+    push_scheduler_state(weak);
+}
+
+fn handle_scheduler_apply_preset(name: &str, weak: &slint::Weak<crate::MainWindow>) {
+    let schedule = match name {
+        "always_on" => crate::scheduler::BandwidthSchedule::preset_always_on(),
+        "night_only" => crate::scheduler::BandwidthSchedule::preset_night_only(),
+        "work_limited" => crate::scheduler::BandwidthSchedule::preset_work_hours_limited(),
+        _ => return,
+    };
+    if let Err(e) = crate::scheduler::save_schedule(&schedule) {
+        tracing::warn!("failed to save schedule: {e}");
+    }
+    push_scheduler_state(weak);
+}
+
+fn handle_scheduler_limited_rate_changed(
+    rate_kib: u32,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    let mut schedule = crate::scheduler::load_schedule();
+    schedule.limited_rate_kib = rate_kib.max(1);
+    if let Err(e) = crate::scheduler::save_schedule(&schedule) {
+        tracing::warn!("failed to save schedule: {e}");
+    }
+    push_scheduler_state(weak);
+}
+
+pub fn push_scheduler_state(weak: &slint::Weak<crate::MainWindow>) {
+    let schedule = crate::scheduler::load_schedule();
+    let flat = schedule.to_flat_grid();
+    let enabled = schedule.enabled;
+    let limited_rate = i32::try_from(schedule.limited_rate_kib).unwrap_or(512);
+
+    let cells: Vec<crate::SchedulerCell> = flat
+        .into_iter()
+        .map(|s| crate::SchedulerCell {
+            state: i32::from(s),
+        })
+        .collect();
+
+    let _ = weak.upgrade_in_event_loop(move |win| {
+        win.set_scheduler_enabled(enabled);
+        win.set_scheduler_limited_rate_kib(limited_rate);
+        let model = std::rc::Rc::new(slint::VecModel::from(cells));
+        win.set_scheduler_cells(slint::ModelRc::from(model));
     });
 }
 

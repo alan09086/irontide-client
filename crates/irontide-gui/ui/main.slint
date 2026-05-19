@@ -28,8 +28,9 @@ import { FilePriorityPopup } from "molecules/file_priority_popup.slint";
 import { CommandPalette, PaletteItem, PaletteCategory } from "organisms/command_palette.slint";
 import { SearchPage, SearchResultRow } from "organisms/search_page.slint";
 import { RssPage, RssFeedRow, RssItemRow, RssRuleRow } from "organisms/rss_page.slint";
+import { SchedulerPage, SchedulerCell } from "organisms/scheduler_page.slint";
 
-export { Tokens, Shadow, SidebarRow, TorrentRow, FileTreeRow, PaletteItem, PaletteCategory, SearchResultRow, RssFeedRow, RssItemRow, RssRuleRow }
+export { Tokens, Shadow, SidebarRow, TorrentRow, FileTreeRow, PaletteItem, PaletteCategory, SearchResultRow, RssFeedRow, RssItemRow, RssRuleRow, SchedulerCell }
 
 component MenuButton {
     in property <string> text;
@@ -367,6 +368,16 @@ export component MainWindow inherits Window {
     callback rss-feed-selected(int);
     callback rss-download-item(int);
     callback rss-mark-item-read(int);
+
+    // ── Bandwidth Scheduler (M198) ──
+    in-out property <bool> show-scheduler-page: false;
+    in-out property <bool> scheduler-enabled: false;
+    in-out property <[SchedulerCell]> scheduler-cells;
+    in-out property <int> scheduler-limited-rate-kib: 512;
+    callback scheduler-toggle-enabled();
+    callback scheduler-cell-clicked(int, int);
+    callback scheduler-apply-preset(string);
+    callback scheduler-limited-rate-changed(int);
 
     // ── Modifier tracking ──
     in-out property <bool> shift-held: false;
@@ -823,7 +834,18 @@ export component MainWindow inherits Window {
                         mark-item-read(idx) => { root.rss-mark-item-read(idx); }
                     }
 
-                    if !root.show-search-page && !root.show-rss-page : TorrentListView {
+                    if root.show-scheduler-page : SchedulerPage {
+                        vertical-stretch: 1;
+                        enabled: root.scheduler-enabled;
+                        cells: root.scheduler-cells;
+                        limited-rate-kib: root.scheduler-limited-rate-kib;
+                        toggle-enabled() => { root.scheduler-toggle-enabled(); }
+                        cell-clicked(day, hour) => { root.scheduler-cell-clicked(day, hour); }
+                        apply-preset(name) => { root.scheduler-apply-preset(name); }
+                        limited-rate-changed(rate) => { root.scheduler-limited-rate-changed(rate); }
+                    }
+
+                    if !root.show-search-page && !root.show-rss-page && !root.show-scheduler-page : TorrentListView {
                         vertical-stretch: 2;
                         session-ready: root.session-ready;
                         error-text: root.error-text;
@@ -849,7 +871,7 @@ export component MainWindow inherits Window {
                         column-visibility-toggled(c) => { root.column-visibility-toggled(c); }
                     }
 
-                    if root.session-ready && root.error-text == "" && !root.show-search-page && !root.show-rss-page: Rectangle {
+                    if root.session-ready && root.error-text == "" && !root.show-search-page && !root.show-rss-page && !root.show-scheduler-page: Rectangle {
                         vertical-stretch: 1;
                         min-height: Tokens.sp-10 * 5;
                         background: Tokens.bg-1;

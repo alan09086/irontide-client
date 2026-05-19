@@ -33,6 +33,7 @@ pub enum PaletteCommandId {
     // Tools
     ToggleSearch,
     ToggleRss,
+    ToggleScheduler,
     OpenPreferences,
     SelectAll,
     // Settings
@@ -193,6 +194,12 @@ pub static COMMANDS: &[PaletteCommand] = &[
         hotkey_hint: "",
     },
     PaletteCommand {
+        id: PaletteCommandId::ToggleScheduler,
+        label: "Bandwidth Scheduler",
+        category: PaletteCategory::Tools,
+        hotkey_hint: "",
+    },
+    PaletteCommand {
         id: PaletteCommandId::SelectAll,
         label: "Select All",
         category: PaletteCategory::Tools,
@@ -303,6 +310,7 @@ pub enum DispatchAction {
     ShowCreateTorrent,
     ToggleSearch,
     ToggleRss,
+    ToggleScheduler,
     SendCommand(crate::app::GuiCommand),
     SetPredicate(crate::sidebar::SidebarPredicate),
     OpenPreferences,
@@ -372,6 +380,7 @@ pub fn dispatch(id: PaletteCommandId, selected: &[String]) -> DispatchAction {
         }
         PaletteCommandId::ToggleSearch => DispatchAction::ToggleSearch,
         PaletteCommandId::ToggleRss => DispatchAction::ToggleRss,
+        PaletteCommandId::ToggleScheduler => DispatchAction::ToggleScheduler,
         PaletteCommandId::OpenPreferences => DispatchAction::OpenPreferences,
         PaletteCommandId::SelectAll => DispatchAction::SelectAll,
         PaletteCommandId::Quit => DispatchAction::Quit,
