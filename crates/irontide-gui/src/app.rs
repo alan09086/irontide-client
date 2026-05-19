@@ -343,6 +343,12 @@ pub enum GuiCommand {
     IpFilterImportFile,
     /// M199: toggle IP filter enabled.
     IpFilterToggleEnabled,
+    /// M200: change logs/stats active tab.
+    LogsTabChanged { tab: i32 },
+    /// M200: clear the log buffer.
+    LogsClear,
+    /// M200: set log filter level (0=all, 1=warn, 2=error).
+    LogsSetFilter { level: i32 },
     /// M180: set per-torrent DL/UL rate limits.
     SetTorrentRateLimit {
         /// Hex-encoded info-hash string.

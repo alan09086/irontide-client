@@ -690,6 +690,15 @@ async fn handle_gui_command(
         GuiCommand::IpFilterToggleEnabled => {
             handle_ip_filter_toggle_enabled(session, weak).await;
         }
+        GuiCommand::LogsTabChanged { tab } => {
+            handle_logs_tab_changed(tab, weak);
+        }
+        GuiCommand::LogsClear => {
+            handle_logs_clear(weak);
+        }
+        GuiCommand::LogsSetFilter { level } => {
+            handle_logs_set_filter(level, weak);
+        }
     }
 
     let elapsed = start.elapsed();
@@ -2584,6 +2593,159 @@ pub fn push_scheduler_state(weak: &slint::Weak<crate::MainWindow>) {
         win.set_scheduler_limited_rate_kib(limited_rate);
         let model = std::rc::Rc::new(slint::VecModel::from(cells));
         win.set_scheduler_cells(slint::ModelRc::from(model));
+    });
+}
+
+// ── Logs + Statistics (M200) ────────────────────────────────────────────────
+
+static LOG_BUFFER: std::sync::LazyLock<crate::logs_stats_page::LogBuffer> =
+    std::sync::LazyLock::new(crate::logs_stats_page::LogBuffer::new);
+
+#[allow(dead_code)]
+pub fn log_buffer() -> &'static crate::logs_stats_page::LogBuffer {
+    &LOG_BUFFER
+}
+
+fn handle_logs_tab_changed(tab: i32, weak: &slint::Weak<crate::MainWindow>) {
+    let weak = weak.clone();
+    let _ = weak.upgrade_in_event_loop(move |win| {
+        win.set_logs_active_tab(tab);
+    });
+}
+
+fn handle_logs_clear(weak: &slint::Weak<crate::MainWindow>) {
+    LOG_BUFFER.clear();
+    let weak = weak.clone();
+    let _ = weak.upgrade_in_event_loop(move |win| {
+        let model = std::rc::Rc::new(slint::VecModel::<crate::LogRow>::default());
+        win.set_log_entries(slint::ModelRc::from(model));
+        win.set_log_count(0);
+    });
+}
+
+fn handle_logs_set_filter(level: i32, weak: &slint::Weak<crate::MainWindow>) {
+    let weak = weak.clone();
+    let min_level = match level {
+        1 => crate::logs_stats_page::LogLevel::Warning,
+        2 => crate::logs_stats_page::LogLevel::Error,
+        _ => crate::logs_stats_page::LogLevel::Info,
+    };
+    let entries = LOG_BUFFER.snapshot_filtered(min_level);
+    let rows: Vec<crate::LogRow> = entries
+        .iter()
+        .map(|e| crate::LogRow {
+            timestamp: e.format_timestamp().into(),
+            level: i32::from(e.level.as_u8()),
+            level_label: e.level.label().into(),
+            category: e.category.clone().into(),
+            message: e.message.clone().into(),
+        })
+        .collect();
+    let count = i32::try_from(rows.len()).unwrap_or(0);
+    let _ = weak.upgrade_in_event_loop(move |win| {
+        win.set_log_filter_level(level);
+        let model = std::rc::Rc::new(slint::VecModel::from(rows));
+        win.set_log_entries(slint::ModelRc::from(model));
+        win.set_log_count(count);
+    });
+}
+
+pub fn push_logs_stats_state(weak: &slint::Weak<crate::MainWindow>) {
+    let entries = LOG_BUFFER.snapshot();
+    let rows: Vec<crate::LogRow> = entries
+        .iter()
+        .map(|e| crate::LogRow {
+            timestamp: e.format_timestamp().into(),
+            level: i32::from(e.level.as_u8()),
+            level_label: e.level.label().into(),
+            category: e.category.clone().into(),
+            message: e.message.clone().into(),
+        })
+        .collect();
+    let count = i32::try_from(rows.len()).unwrap_or(0);
+    let weak = weak.clone();
+    let _ = weak.upgrade_in_event_loop(move |win| {
+        let model = std::rc::Rc::new(slint::VecModel::from(rows));
+        win.set_log_entries(slint::ModelRc::from(model));
+        win.set_log_count(count);
+        win.set_log_filter_level(0);
+    });
+}
+
+#[allow(dead_code)]
+pub async fn push_logs_stats_state_with_session(
+    session: &irontide::session::SessionHandle,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    let entries = LOG_BUFFER.snapshot();
+    let rows: Vec<crate::LogRow> = entries
+        .iter()
+        .map(|e| crate::LogRow {
+            timestamp: e.format_timestamp().into(),
+            level: i32::from(e.level.as_u8()),
+            level_label: e.level.label().into(),
+            category: e.category.clone().into(),
+            message: e.message.clone().into(),
+        })
+        .collect();
+    let log_count = i32::try_from(rows.len()).unwrap_or(0);
+
+    let stats = session.session_stats().await.ok();
+    let torrents = session.list_torrents().await.unwrap_or_default();
+    let total_torrents = torrents.len();
+    let (active, total_dl_rate, total_ul_rate, total_peers) = {
+        let mut active = 0usize;
+        let mut dl = 0u64;
+        let mut ul = 0u64;
+        let mut peers = 0usize;
+        for id in &torrents {
+            if let Ok(s) = session.torrent_stats(*id).await {
+                if s.download_rate > 0 || s.upload_rate > 0 {
+                    active += 1;
+                }
+                dl += s.download_rate;
+                ul += s.upload_rate;
+                peers += s.num_peers;
+            }
+        }
+        (active, dl, ul, peers)
+    };
+
+    let total_downloaded = stats.as_ref().map_or(0, |s| s.total_downloaded);
+    let total_uploaded = stats.as_ref().map_or(0, |s| s.total_uploaded);
+    let dht_nodes = stats.as_ref().map_or(0, |s| s.dht_nodes);
+
+    let uptime_secs = session.counters().uptime_secs();
+
+    let cards = crate::logs_stats_page::build_stat_cards(
+        &crate::logs_stats_page::SessionSnapshot {
+            total_torrents,
+            active_torrents: active,
+            dl_rate: total_dl_rate,
+            ul_rate: total_ul_rate,
+            total_downloaded,
+            total_uploaded,
+            dht_nodes,
+            total_peers,
+            uptime_secs,
+        },
+    );
+
+    let card_rows: Vec<crate::StatCardData> = cards
+        .into_iter()
+        .map(|c| crate::StatCardData {
+            label: c.label.into(),
+            value: c.value.into(),
+        })
+        .collect();
+
+    let weak = weak.clone();
+    let _ = weak.upgrade_in_event_loop(move |win| {
+        let log_model = std::rc::Rc::new(slint::VecModel::from(rows));
+        win.set_log_entries(slint::ModelRc::from(log_model));
+        win.set_log_count(log_count);
+        let card_model = std::rc::Rc::new(slint::VecModel::from(card_rows));
+        win.set_stat_cards(slint::ModelRc::from(card_model));
     });
 }
 

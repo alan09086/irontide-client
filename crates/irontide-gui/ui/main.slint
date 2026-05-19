@@ -30,8 +30,9 @@ import { SearchPage, SearchResultRow } from "organisms/search_page.slint";
 import { RssPage, RssFeedRow, RssItemRow, RssRuleRow } from "organisms/rss_page.slint";
 import { SchedulerPage, SchedulerCell } from "organisms/scheduler_page.slint";
 import { IpFilterPage, IpFilterRuleRow, BannedPeerRow } from "organisms/ip_filter_page.slint";
+import { LogsStatsPage, LogRow, StatCardData, TransferBar } from "organisms/logs_stats_page.slint";
 
-export { Tokens, Shadow, SidebarRow, TorrentRow, FileTreeRow, PaletteItem, PaletteCategory, SearchResultRow, RssFeedRow, RssItemRow, RssRuleRow, SchedulerCell, IpFilterRuleRow, BannedPeerRow }
+export { Tokens, Shadow, SidebarRow, TorrentRow, FileTreeRow, PaletteItem, PaletteCategory, SearchResultRow, RssFeedRow, RssItemRow, RssRuleRow, SchedulerCell, IpFilterRuleRow, BannedPeerRow, LogRow, StatCardData, TransferBar }
 
 component MenuButton {
     in property <string> text;
@@ -392,6 +393,18 @@ export component MainWindow inherits Window {
     callback ip-filter-unban-peer(string);
     callback ip-filter-import-file();
     callback ip-filter-toggle-enabled();
+
+    // ── Logs + Statistics (M200) ──
+    in-out property <bool> show-logs-stats-page: false;
+    in-out property <[LogRow]> log-entries;
+    in-out property <[StatCardData]> stat-cards;
+    in-out property <[TransferBar]> transfer-bars;
+    in-out property <int> log-count: 0;
+    in-out property <int> logs-active-tab: 0;
+    in-out property <int> log-filter-level: 0;
+    callback logs-tab-changed(int);
+    callback logs-clear();
+    callback logs-set-filter(int);
 
     // ── Modifier tracking ──
     in-out property <bool> shift-held: false;
@@ -873,7 +886,20 @@ export component MainWindow inherits Window {
                         toggle-filter-enabled() => { root.ip-filter-toggle-enabled(); }
                     }
 
-                    if !root.show-search-page && !root.show-rss-page && !root.show-scheduler-page && !root.show-ip-filter-page : TorrentListView {
+                    if root.show-logs-stats-page : LogsStatsPage {
+                        vertical-stretch: 1;
+                        log-entries: root.log-entries;
+                        stat-cards: root.stat-cards;
+                        transfer-bars: root.transfer-bars;
+                        log-count: root.log-count;
+                        active-tab: root.logs-active-tab;
+                        log-filter-level: root.log-filter-level;
+                        tab-changed(idx) => { root.logs-tab-changed(idx); }
+                        clear-logs() => { root.logs-clear(); }
+                        set-log-filter(level) => { root.logs-set-filter(level); }
+                    }
+
+                    if !root.show-search-page && !root.show-rss-page && !root.show-scheduler-page && !root.show-ip-filter-page && !root.show-logs-stats-page : TorrentListView {
                         vertical-stretch: 2;
                         session-ready: root.session-ready;
                         error-text: root.error-text;
@@ -899,7 +925,7 @@ export component MainWindow inherits Window {
                         column-visibility-toggled(c) => { root.column-visibility-toggled(c); }
                     }
 
-                    if root.session-ready && root.error-text == "" && !root.show-search-page && !root.show-rss-page && !root.show-scheduler-page && !root.show-ip-filter-page: Rectangle {
+                    if root.session-ready && root.error-text == "" && !root.show-search-page && !root.show-rss-page && !root.show-scheduler-page && !root.show-ip-filter-page && !root.show-logs-stats-page: Rectangle {
                         vertical-stretch: 1;
                         min-height: Tokens.sp-10 * 5;
                         background: Tokens.bg-1;

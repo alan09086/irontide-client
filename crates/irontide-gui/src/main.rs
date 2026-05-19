@@ -14,6 +14,8 @@ mod sidebar_view;
 mod rss;
 mod scheduler;
 mod ip_filter_page;
+#[allow(dead_code)]
+mod logs_stats_page;
 mod search;
 mod single_instance;
 mod skin;
@@ -1039,6 +1041,7 @@ fn main() -> Result<(), error::GuiError> {
                             win.set_show_rss_page(false);
                             win.set_show_scheduler_page(false);
                             win.set_show_ip_filter_page(false);
+                            win.set_show_logs_stats_page(false);
                         }
                     });
                 }
@@ -1050,6 +1053,7 @@ fn main() -> Result<(), error::GuiError> {
                             win.set_show_search_page(false);
                             win.set_show_scheduler_page(false);
                             win.set_show_ip_filter_page(false);
+                            win.set_show_logs_stats_page(false);
                         }
                     });
                 }
@@ -1062,6 +1066,7 @@ fn main() -> Result<(), error::GuiError> {
                             win.set_show_search_page(false);
                             win.set_show_rss_page(false);
                             win.set_show_ip_filter_page(false);
+                            win.set_show_logs_stats_page(false);
                             crate::bridge::push_scheduler_state(&sched_weak);
                         }
                     });
@@ -1075,7 +1080,22 @@ fn main() -> Result<(), error::GuiError> {
                             win.set_show_search_page(false);
                             win.set_show_rss_page(false);
                             win.set_show_scheduler_page(false);
+                            win.set_show_logs_stats_page(false);
                             crate::bridge::push_ip_filter_state(&filter_weak);
+                        }
+                    });
+                }
+                palette::DispatchAction::ToggleLogsStats => {
+                    let logs_weak = weak2.clone();
+                    let _ = weak2.upgrade_in_event_loop(move |win| {
+                        let current = win.get_show_logs_stats_page();
+                        win.set_show_logs_stats_page(!current);
+                        if !current {
+                            win.set_show_search_page(false);
+                            win.set_show_rss_page(false);
+                            win.set_show_scheduler_page(false);
+                            win.set_show_ip_filter_page(false);
+                            crate::bridge::push_logs_stats_state(&logs_weak);
                         }
                     });
                 }
@@ -1403,6 +1423,35 @@ fn main() -> Result<(), error::GuiError> {
             let cmd_tx = cb_state.lock().cmd_tx.clone();
             if let Some(tx) = cmd_tx {
                 let _ = tx.send(app::GuiCommand::IpFilterToggleEnabled);
+            }
+        });
+    }
+
+    // 6n. Logs + Statistics callbacks (M200).
+    {
+        let cb_state = state.clone();
+        main_window.on_logs_tab_changed(move |tab| {
+            let cmd_tx = cb_state.lock().cmd_tx.clone();
+            if let Some(tx) = cmd_tx {
+                let _ = tx.send(app::GuiCommand::LogsTabChanged { tab });
+            }
+        });
+    }
+    {
+        let cb_state = state.clone();
+        main_window.on_logs_clear(move || {
+            let cmd_tx = cb_state.lock().cmd_tx.clone();
+            if let Some(tx) = cmd_tx {
+                let _ = tx.send(app::GuiCommand::LogsClear);
+            }
+        });
+    }
+    {
+        let cb_state = state.clone();
+        main_window.on_logs_set_filter(move |level| {
+            let cmd_tx = cb_state.lock().cmd_tx.clone();
+            if let Some(tx) = cmd_tx {
+                let _ = tx.send(app::GuiCommand::LogsSetFilter { level });
             }
         });
     }

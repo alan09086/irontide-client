@@ -1,0 +1,344 @@
+import { Tokens } from "../tokens.slint";
+
+export struct LogRow {
+    timestamp: string,
+    level: int,
+    level-label: string,
+    category: string,
+    message: string,
+}
+
+export struct StatCardData {
+    label: string,
+    value: string,
+}
+
+export struct TransferBar {
+    downloaded: float,
+    uploaded: float,
+}
+
+export component LogsStatsPage inherits Rectangle {
+    in property <[LogRow]> log-entries;
+    in property <[StatCardData]> stat-cards;
+    in property <[TransferBar]> transfer-bars;
+    in property <int> log-count: 0;
+    in property <int> active-tab: 0;
+    in property <int> log-filter-level: 0;
+
+    callback tab-changed(int);
+    callback clear-logs();
+    callback set-log-filter(int);
+
+    background: Tokens.bg-0;
+
+    VerticalLayout {
+        padding: Tokens.sp-3;
+        spacing: Tokens.sp-3;
+
+        // Header
+        HorizontalLayout {
+            spacing: Tokens.sp-2;
+
+            Text {
+                horizontal-stretch: 1;
+                text: "Logs & Statistics";
+                color: Tokens.fg-0;
+                font-size: Tokens.fs-16;
+                font-weight: 700;
+                vertical-alignment: center;
+            }
+
+            Text {
+                text: log-count > 0 ? "\{log-count} entries" : "No entries";
+                color: Tokens.fg-2;
+                font-size: Tokens.fs-12;
+                vertical-alignment: center;
+            }
+        }
+
+        // Tab bar
+        HorizontalLayout {
+            spacing: Tokens.sp-1;
+
+            for tab-item[idx] in [
+                { text: "Logs" },
+                { text: "Statistics" },
+                { text: "Transfer History" },
+            ] : Rectangle {
+                height: Tokens.sp-8;
+                horizontal-stretch: 1;
+                border-radius: Tokens.r-sm;
+                background: idx == root.active-tab ? Tokens.accent : Tokens.bg-2;
+
+                Text {
+                    text: tab-item.text;
+                    color: idx == root.active-tab ? Tokens.bg-0 : Tokens.fg-1;
+                    font-size: Tokens.fs-12;
+                    font-weight: idx == root.active-tab ? 600 : 400;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                TouchArea {
+                    clicked => { root.tab-changed(idx); }
+                }
+            }
+        }
+
+        // Tab content
+        if root.active-tab == 0 : VerticalLayout {
+            spacing: Tokens.sp-2;
+
+            // Filter row
+            HorizontalLayout {
+                spacing: Tokens.sp-1;
+
+                for filter-item[fidx] in [
+                    { text: "All", level: 0 },
+                    { text: "Warnings", level: 1 },
+                    { text: "Errors", level: 2 },
+                ] : Rectangle {
+                    height: Tokens.sp-6;
+                    width: Tokens.sp-10 + Tokens.sp-6;
+                    border-radius: Tokens.r-sm;
+                    background: fidx == root.log-filter-level ? Tokens.accent : Tokens.bg-1;
+
+                    Text {
+                        text: filter-item.text;
+                        color: fidx == root.log-filter-level ? Tokens.bg-0 : Tokens.fg-2;
+                        font-size: Tokens.fs-11;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    TouchArea {
+                        clicked => { root.set-log-filter(fidx); }
+                    }
+                }
+
+                Rectangle { horizontal-stretch: 1; }
+
+                // Clear button
+                Rectangle {
+                    height: Tokens.sp-6;
+                    width: Tokens.sp-10 + Tokens.sp-4;
+                    border-radius: Tokens.r-sm;
+                    background: clear-ta.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+
+                    Text {
+                        text: "Clear";
+                        color: Tokens.fg-2;
+                        font-size: Tokens.fs-11;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    clear-ta := TouchArea {
+                        clicked => { root.clear-logs(); }
+                    }
+                }
+            }
+
+            // Log entries (monospace)
+            Rectangle {
+                vertical-stretch: 1;
+                background: Tokens.bg-1;
+                border-radius: Tokens.r-sm;
+                clip: true;
+
+                Flickable {
+                    viewport-width: self.width;
+
+                    VerticalLayout {
+                        padding: Tokens.sp-2;
+                        spacing: 1px;
+
+                        for entry[eidx] in root.log-entries : Rectangle {
+                            height: Tokens.sp-5;
+                            background: mod(eidx, 2) == 0 ? transparent : Tokens.bg-0;
+
+                            HorizontalLayout {
+                                padding-left: Tokens.sp-1;
+                                spacing: Tokens.sp-2;
+
+                                Text {
+                                    width: Tokens.sp-10 + Tokens.sp-4;
+                                    text: entry.timestamp;
+                                    color: Tokens.fg-2;
+                                    font-size: Tokens.fs-11;
+                                    font-family: "monospace";
+                                    vertical-alignment: center;
+                                }
+
+                                Rectangle {
+                                    width: Tokens.sp-8 + Tokens.sp-2;
+                                    border-radius: Tokens.r-sm;
+                                    background: entry.level == 2 ? Tokens.status-error :
+                                               entry.level == 1 ? Tokens.status-checking :
+                                               Tokens.bg-2;
+
+                                    Text {
+                                        text: entry.level-label;
+                                        color: entry.level >= 1 ? Tokens.bg-0 : Tokens.fg-2;
+                                        font-size: Tokens.fs-10;
+                                        font-weight: 600;
+                                        font-family: "monospace";
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
+
+                                Text {
+                                    width: Tokens.sp-10 + Tokens.sp-6;
+                                    text: entry.category;
+                                    color: Tokens.accent;
+                                    font-size: Tokens.fs-11;
+                                    font-family: "monospace";
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+
+                                Text {
+                                    horizontal-stretch: 1;
+                                    text: entry.message;
+                                    color: Tokens.fg-0;
+                                    font-size: Tokens.fs-11;
+                                    font-family: "monospace";
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Statistics tab
+        if root.active-tab == 1 : VerticalLayout {
+            spacing: Tokens.sp-3;
+            vertical-stretch: 1;
+
+            // Stat cards grid — 2 rows × 5 columns
+            HorizontalLayout {
+                spacing: Tokens.sp-2;
+
+                for card[cidx] in root.stat-cards : Rectangle {
+                    horizontal-stretch: 1;
+                    height: Tokens.sp-10 + Tokens.sp-6;
+                    background: Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+
+                    VerticalLayout {
+                        padding: Tokens.sp-2;
+                        spacing: Tokens.sp-1;
+                        alignment: center;
+
+                        Text {
+                            text: card.value;
+                            color: Tokens.fg-0;
+                            font-size: Tokens.fs-16;
+                            font-weight: 700;
+                            horizontal-alignment: center;
+                        }
+
+                        Text {
+                            text: card.label;
+                            color: Tokens.fg-2;
+                            font-size: Tokens.fs-11;
+                            horizontal-alignment: center;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Transfer History tab
+        if root.active-tab == 2 : VerticalLayout {
+            spacing: Tokens.sp-2;
+            vertical-stretch: 1;
+
+            // Legend
+            HorizontalLayout {
+                spacing: Tokens.sp-3;
+                alignment: center;
+
+                HorizontalLayout {
+                    spacing: Tokens.sp-1;
+                    Rectangle {
+                        width: Tokens.sp-3;
+                        height: Tokens.sp-3;
+                        border-radius: Tokens.r-sm;
+                        background: Tokens.status-downloading;
+                    }
+                    Text {
+                        text: "Downloaded";
+                        color: Tokens.fg-2;
+                        font-size: Tokens.fs-11;
+                        vertical-alignment: center;
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: Tokens.sp-1;
+                    Rectangle {
+                        width: Tokens.sp-3;
+                        height: Tokens.sp-3;
+                        border-radius: Tokens.r-sm;
+                        background: Tokens.status-seeding;
+                    }
+                    Text {
+                        text: "Uploaded";
+                        color: Tokens.fg-2;
+                        font-size: Tokens.fs-11;
+                        vertical-alignment: center;
+                    }
+                }
+
+                Text {
+                    text: "90-day history";
+                    color: Tokens.fg-2;
+                    font-size: Tokens.fs-11;
+                    vertical-alignment: center;
+                }
+            }
+
+            // Bar chart
+            Rectangle {
+                vertical-stretch: 1;
+                background: Tokens.bg-1;
+                border-radius: Tokens.r-sm;
+                clip: true;
+
+                HorizontalLayout {
+                    padding: Tokens.sp-2;
+                    spacing: 1px;
+                    alignment: end;
+
+                    for bar[bidx] in root.transfer-bars : Rectangle {
+                        horizontal-stretch: 1;
+
+                        // Downloaded bar (blue)
+                        Rectangle {
+                            y: parent.height - self.height;
+                            width: 100%;
+                            height: bar.downloaded * (parent.height - Tokens.sp-2);
+                            background: Tokens.status-downloading;
+                            opacity: 0.7;
+                        }
+
+                        // Uploaded bar (green, overlaid)
+                        Rectangle {
+                            y: parent.height - self.height;
+                            width: 100%;
+                            height: bar.uploaded * (parent.height - Tokens.sp-2);
+                            background: Tokens.status-seeding;
+                            opacity: 0.5;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
