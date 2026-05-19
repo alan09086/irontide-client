@@ -211,7 +211,7 @@ fn main() {
             no_dht,
             workers,
             no_pin_cores,
-            global_config: global_config.clone(),
+            global_config,
             resume_dir,
             diagnostics,
         }) {

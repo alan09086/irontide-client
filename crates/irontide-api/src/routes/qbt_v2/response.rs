@@ -30,14 +30,14 @@ impl QbtResponse {
     /// Convenience for "empty success" with no cookie.
     #[must_use]
     pub fn ok() -> Self {
-        QbtResponse::Ok { set_cookie: None }
+        Self::Ok { set_cookie: None }
     }
 }
 
 impl IntoResponse for QbtResponse {
     fn into_response(self) -> Response {
         match self {
-            QbtResponse::PlainText(body) => {
+            Self::PlainText(body) => {
                 let mut headers = HeaderMap::new();
                 headers.insert(
                     header::CONTENT_TYPE,
@@ -45,11 +45,11 @@ impl IntoResponse for QbtResponse {
                 );
                 (StatusCode::OK, headers, body).into_response()
             }
-            QbtResponse::Json(value) => {
+            Self::Json(value) => {
                 // axum::Json handles Content-Type: application/json
                 (StatusCode::OK, axum::Json(value)).into_response()
             }
-            QbtResponse::Ok { set_cookie } => {
+            Self::Ok { set_cookie } => {
                 let mut headers = HeaderMap::new();
                 headers.insert(
                     header::CONTENT_TYPE,
@@ -88,7 +88,7 @@ pub enum QbtError {
 impl IntoResponse for QbtError {
     fn into_response(self) -> Response {
         match self {
-            QbtError::Forbidden => {
+            Self::Forbidden => {
                 let mut headers = HeaderMap::new();
                 headers.insert(
                     header::CONTENT_TYPE,
@@ -96,7 +96,7 @@ impl IntoResponse for QbtError {
                 );
                 (StatusCode::FORBIDDEN, headers, "Fails.").into_response()
             }
-            QbtError::BadRequest(msg) => {
+            Self::BadRequest(msg) => {
                 let mut headers = HeaderMap::new();
                 headers.insert(
                     header::CONTENT_TYPE,
@@ -104,8 +104,8 @@ impl IntoResponse for QbtError {
                 );
                 (StatusCode::BAD_REQUEST, headers, msg).into_response()
             }
-            QbtError::NotFound => StatusCode::NOT_FOUND.into_response(),
-            QbtError::Conflict(msg) => {
+            Self::NotFound => StatusCode::NOT_FOUND.into_response(),
+            Self::Conflict(msg) => {
                 let mut headers = HeaderMap::new();
                 headers.insert(
                     header::CONTENT_TYPE,
@@ -113,7 +113,7 @@ impl IntoResponse for QbtError {
                 );
                 (StatusCode::CONFLICT, headers, msg).into_response()
             }
-            QbtError::Internal(msg) => {
+            Self::Internal(msg) => {
                 let mut headers = HeaderMap::new();
                 headers.insert(
                     header::CONTENT_TYPE,

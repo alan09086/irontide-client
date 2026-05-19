@@ -1004,7 +1004,7 @@ async fn gather_delete_info(
                 // Fallback: try the session's current download_dir.
                 match session.settings().await {
                     Ok(s) => {
-                        let abs = s.download_dir.clone();
+                        let abs = s.download_dir;
                         abs.canonicalize().unwrap_or(abs)
                     }
                     Err(_) => save_path,

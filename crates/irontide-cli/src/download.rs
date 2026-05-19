@@ -275,7 +275,7 @@ pub async fn run(opts: DownloadOpts<'_>) -> anyhow::Result<()> {
     {
         let cancelled = cancelled.clone();
         let force_quit = Arc::new(AtomicBool::new(false));
-        let fq = force_quit.clone();
+        let fq = force_quit;
 
         tokio::spawn(async move {
             // Register both SIGINT and SIGTERM

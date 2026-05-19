@@ -181,7 +181,7 @@ impl ColumnConfig {
             if !parsed.is_empty() {
                 // Ensure every known column is present (append any that are
                 // missing from the saved order so we never lose a column).
-                let mut full_order = parsed.clone();
+                let mut full_order = parsed;
                 for col in DEFAULT_ORDER {
                     if !full_order.contains(&col) {
                         full_order.push(col);
@@ -278,7 +278,7 @@ impl ColumnConfig {
             .iter()
             .position(|c| *c == col)
             .and_then(|i| self.widths.get(i).copied())
-            .unwrap_or(col.default_width())
+            .unwrap_or_else(|| col.default_width())
     }
 
     /// Toggle the visibility of `col`.

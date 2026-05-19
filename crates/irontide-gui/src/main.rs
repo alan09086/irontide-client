@@ -297,7 +297,7 @@ fn main() -> Result<(), error::GuiError> {
             if let Ok(magnet) = irontide::core::Magnet::parse(uri_str.trim()) {
                 let name = magnet
                     .display_name
-                    .clone()
+                    
                     .unwrap_or_else(|| "Unknown (magnet)".to_owned());
                 let preview = app::AddTorrentPreview {
                     name: name.clone(),
@@ -1108,7 +1108,7 @@ fn main() -> Result<(), error::GuiError> {
                     cb_state2.lock().set_predicate(pred);
                 }
                 palette::DispatchAction::OpenPreferences => {
-                    let cb_state3 = cb_state2.clone();
+                    let cb_state3 = cb_state2;
                     let _ = weak2.upgrade_in_event_loop(move |win| {
                         let st = cb_state3.lock();
                         st.prefs.populate_slint(&win);

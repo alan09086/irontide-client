@@ -434,7 +434,7 @@ pub enum SidebarPredicate {
     Tracker(TrackerBucket),
     /// Logical AND of two predicates (right-associative; stack via repeated
     /// [`SidebarPredicate::and`]).
-    And(Box<SidebarPredicate>, Box<SidebarPredicate>),
+    And(Box<Self>, Box<Self>),
 }
 
 impl SidebarPredicate {
@@ -1060,10 +1060,10 @@ mod tests {
         let errored = row(TorrentState::Downloading, 0.5).with_error("oh no");
 
         let rows = vec![
-            downloading.clone(),
-            seeding.clone(),
-            paused.clone(),
-            errored.clone(),
+            downloading,
+            seeding,
+            paused,
+            errored,
         ];
         let c = library_counts(&rows);
         assert_eq!(c[&LibraryFilter::All], 4);
@@ -1237,7 +1237,7 @@ mod tests {
         // r1 transitions Downloading → Paused with rate dropping to 0.
         // After: All=2 (unchanged), Downloading 1→0, Paused 1→2,
         // Active 1→0, Inactive 0→0, Seeding/Completed/Errored unchanged.
-        let mut r1_paused = r1.clone();
+        let mut r1_paused = r1;
         r1_paused.state = TorrentState::Paused;
         r1_paused.download_rate = 0;
         let changes = idx.update(&[r1_paused, r2]);
@@ -1286,7 +1286,7 @@ mod tests {
         // Tick 2: one categorised torrent appears.
         let mut r = row(TorrentState::Downloading, 0.5);
         r.category = Some("Linux".into());
-        let changes = idx.update(&[r.clone()]);
+        let changes = idx.update(&[r]);
         assert!(changes.iter().any(|c| matches!(
             c,
             SectionChange::Added {

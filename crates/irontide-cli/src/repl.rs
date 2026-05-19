@@ -196,7 +196,7 @@ pub(crate) fn run(opts: &ShellOpts) -> anyhow::Result<()> {
         .build()?;
 
     let url = ApiClient::resolve_url(opts.api_url.as_deref());
-    let client = Arc::new(ApiClient::new(url.clone()));
+    let client = Arc::new(ApiClient::new(url));
 
     // ── background prompt-refresh task ────────────────────────────────
     let cached = Arc::new(Mutex::new(CachedState::initial()));

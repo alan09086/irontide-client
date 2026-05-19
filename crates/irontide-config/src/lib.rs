@@ -26,7 +26,7 @@ use irontide_session::Settings;
 // ── TOML section structs ────────────────────────────────────────────
 
 /// `[session]` — core session parameters.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionConfig {
     /// Default download directory.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -58,7 +58,7 @@ pub struct SessionConfig {
 }
 
 /// `[api]` — HTTP API settings.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ApiConfig {
     /// HTTP API bind address (e.g. "127.0.0.1" or "0.0.0.0").
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -69,7 +69,7 @@ pub struct ApiConfig {
 }
 
 /// `[limits]` — rate limits, peer caps, and queue management.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LimitsConfig {
     /// Global download rate limit in bytes/sec (0 = unlimited).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -292,7 +292,7 @@ pub struct SidebarConfig {
 /// max_peers_per_torrent = 200
 /// ```
 /// M194: a directory to watch for new `.torrent` files.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WatchedFolder {
     pub path: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]

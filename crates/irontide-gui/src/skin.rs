@@ -533,19 +533,19 @@ impl SkinSettings {
     /// default.
     #[must_use]
     pub fn from_gui_config(gui: &irontide_config::GuiConfig) -> Self {
-        let skin = gui.skin.as_deref().map_or(Skin::default(), |s| {
+        let skin = gui.skin.as_deref().map_or_else(Skin::default, |s| {
             s.parse::<Skin>().unwrap_or_else(|_| {
                 tracing::warn!(invalid = s, "unknown skin in config, using default");
                 Skin::default()
             })
         });
-        let theme = gui.theme.as_deref().map_or(Theme::default(), |s| {
+        let theme = gui.theme.as_deref().map_or_else(Theme::default, |s| {
             s.parse::<Theme>().unwrap_or_else(|_| {
                 tracing::warn!(invalid = s, "unknown theme in config, using default");
                 Theme::default()
             })
         });
-        let density = gui.density.as_deref().map_or(Density::default(), |s| {
+        let density = gui.density.as_deref().map_or_else(Density::default, |s| {
             s.parse::<Density>().unwrap_or_else(|_| {
                 tracing::warn!(invalid = s, "unknown density in config, using default");
                 Density::default()
@@ -554,7 +554,7 @@ impl SkinSettings {
         let radius = gui
             .radius_preset
             .as_deref()
-            .map_or(RadiusPreset::default(), |s| {
+            .map_or_else(RadiusPreset::default, |s| {
                 s.parse::<RadiusPreset>().unwrap_or_else(|_| {
                     tracing::warn!(
                         invalid = s,

@@ -43,7 +43,7 @@ pub async fn version(State(state): State<QbtState>) -> Result<QbtResponse, QbtEr
         .await
         .map_err(|e| QbtError::Internal(format!("read settings: {e}")))?;
     Ok(QbtResponse::PlainText(
-        settings.qbt_compat.spoof_app_version.clone(),
+        settings.qbt_compat.spoof_app_version,
     ))
 }
 
@@ -57,7 +57,7 @@ pub async fn webapi_version(State(state): State<QbtState>) -> Result<QbtResponse
         .await
         .map_err(|e| QbtError::Internal(format!("read settings: {e}")))?;
     Ok(QbtResponse::PlainText(
-        settings.qbt_compat.spoof_webapi_version.clone(),
+        settings.qbt_compat.spoof_webapi_version,
     ))
 }
 

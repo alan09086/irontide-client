@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 /// Application lifecycle phases.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AppPhase {
     Loading,
     Ready,
@@ -9,7 +9,7 @@ pub enum AppPhase {
 }
 
 /// Menu actions from the File menu.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuAction {
     AddMagnet,
     AddTorrentFile,
@@ -364,7 +364,7 @@ pub enum GuiCommand {
 ///
 /// Mirrors the `MenuAction` pattern with `from_index` for Slint callback
 /// integration. Indices must remain stable across releases.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ContextAction {
     /// Pause the selected torrent(s).
     Pause,
@@ -836,7 +836,7 @@ impl AppState {
 ///   fetching metadata or checking.
 /// - Resume Download: enabled when at least one is in seed mode.
 /// - Recheck: enabled when none are fetching metadata or checking.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContextMenuState {
     /// Whether the "Pause" action should be enabled.
     pub can_pause: bool,

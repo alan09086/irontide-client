@@ -33,7 +33,7 @@ pub enum QbtEncryption {
 
 impl From<QbtEncryption> for u8 {
     fn from(e: QbtEncryption) -> Self {
-        e as u8
+        e as Self
     }
 }
 
@@ -41,9 +41,9 @@ impl TryFrom<u8> for QbtEncryption {
     type Error = &'static str;
     fn try_from(v: u8) -> Result<Self, Self::Error> {
         match v {
-            0 => Ok(QbtEncryption::Prefer),
-            1 => Ok(QbtEncryption::Force),
-            2 => Ok(QbtEncryption::Disable),
+            0 => Ok(Self::Prefer),
+            1 => Ok(Self::Force),
+            2 => Ok(Self::Disable),
             _ => Err("invalid qBt encryption mode"),
         }
     }
