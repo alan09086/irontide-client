@@ -513,6 +513,7 @@ export component MainWindow inherits Window {
     callback preferences-apply-requested();
     callback preferences-cancel-requested();
     callback preferences-ok-requested();
+    callback preferences-reset-tab(string);
     callback preferences-browse-download-dir();
     callback preferences-browse-incomplete-dir();
     callback preferences-browse-watched-folder();
@@ -1082,6 +1083,7 @@ export component MainWindow inherits Window {
         apply-requested => { root.preferences-apply-requested(); }
         cancel-requested => { root.preferences-cancel-requested(); }
         ok-requested => { root.preferences-ok-requested(); }
+        reset-tab(tab) => { root.preferences-reset-tab(tab); }
         browse-download-dir => { root.preferences-browse-download-dir(); }
         browse-incomplete-dir => { root.preferences-browse-incomplete-dir(); }
         browse-watched-folder => { root.preferences-browse-watched-folder(); }
