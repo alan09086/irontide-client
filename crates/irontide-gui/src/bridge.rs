@@ -174,11 +174,13 @@ pub fn handle_menu_action(
         }
         crate::app::MenuAction::AddMagnet => {
             let _ = weak.upgrade_in_event_loop(|win| {
-                win.set_show_add_magnet_dialog(true);
+                win.set_add_torrent_tab("magnet".into());
+                win.set_show_add_torrent_dialog(true);
             });
         }
         crate::app::MenuAction::AddTorrentFile => {
             let _ = weak.upgrade_in_event_loop(|win| {
+                win.set_add_torrent_tab("file".into());
                 win.set_show_add_torrent_dialog(true);
             });
         }
@@ -275,11 +277,15 @@ pub fn handle_browse_pref_folder(
 /// Handle a "Browse..." button click for selecting a `.torrent` file.
 ///
 /// Spawns `rfd::FileDialog` on a separate thread (GTK blocks). On
-/// selection, reads and parses the torrent file to extract name, total
-/// size, and file count, then pushes the results to the main window
-/// properties so the add-torrent dialog can display them.
-pub fn handle_browse_torrent_file(weak: &slint::Weak<crate::MainWindow>) {
+/// selection, reads and parses the torrent file, builds a full preview
+/// (name, size, files, trackers, `created_by`), stores it on `AppState`,
+/// and pushes the results to the main window.
+pub fn handle_browse_torrent_file(
+    weak: &slint::Weak<crate::MainWindow>,
+    state: &std::sync::Arc<parking_lot::Mutex<crate::app::AppState>>,
+) {
     let weak = weak.clone();
+    let state = state.clone();
     std::thread::spawn(move || {
         let file = rfd::FileDialog::new()
             .add_filter("Torrent", &["torrent"])
@@ -290,14 +296,25 @@ pub fn handle_browse_torrent_file(weak: &slint::Weak<crate::MainWindow>) {
             match std::fs::read(&path) {
                 Ok(data) => match irontide::core::torrent_from_bytes_any(&data) {
                     Ok(meta) => {
-                        let (name, total_size, file_count) = extract_torrent_info(&meta);
-                        let size_str = crate::format::format_size(total_size);
-                        let count = i32::try_from(file_count).unwrap_or(i32::MAX);
+                        let preview = build_preview_from_meta(&meta, &path_str);
+                        let name: String = preview.name.clone();
+                        let size_str = crate::format::format_size(preview.total_size);
+                        let count = i32::try_from(preview.file_count).unwrap_or(i32::MAX);
+                        let trackers = preview.trackers.clone();
+                        let created_by = preview.created_by.clone().unwrap_or_default();
+                        let file_rows = build_sendable_file_rows(&preview);
+
+                        state.lock().add_torrent_preview = Some(preview);
+
                         let _ = weak.upgrade_in_event_loop(move |win| {
                             win.set_add_torrent_file_path(path_str.into());
-                            win.set_add_torrent_name(name.into());
-                            win.set_add_torrent_size(size_str.into());
-                            win.set_add_torrent_file_count(count);
+                            win.set_add_torrent_preview_name(name.into());
+                            win.set_add_torrent_preview_size(size_str.into());
+                            win.set_add_torrent_preview_file_count(count);
+                            win.set_add_torrent_preview_trackers(trackers.into());
+                            win.set_add_torrent_preview_created_by(created_by.into());
+                            let model = slint::ModelRc::new(slint::VecModel::from(file_rows));
+                            win.set_add_torrent_preview_files(model);
                         });
                     }
                     Err(e) => {
@@ -309,6 +326,144 @@ pub fn handle_browse_torrent_file(weak: &slint::Weak<crate::MainWindow>) {
                 }
             }
         }
+    });
+}
+
+/// Build an `AddTorrentPreview` from parsed torrent metadata.
+fn build_preview_from_meta(
+    meta: &irontide::core::TorrentMeta,
+    path_str: &str,
+) -> crate::app::AddTorrentPreview {
+    let (name, total_size, file_count) = extract_torrent_info(meta);
+
+    let (created_by, trackers, files) = match meta {
+        irontide::core::TorrentMeta::V1(v1) => {
+            let cb = v1.created_by.clone();
+            let tr = extract_trackers_v1(v1);
+            let fs = v1
+                .info
+                .files()
+                .iter()
+                .map(|f| crate::app::PreviewFileEntry {
+                    name: f.path.join("/"),
+                    size: f.length,
+                    is_folder: false,
+                    depth: 0,
+                })
+                .collect::<Vec<_>>();
+            (cb, tr, fs)
+        }
+        irontide::core::TorrentMeta::V2(v2) => {
+            let cb = v2.created_by.clone();
+            let tr = extract_trackers_v2(v2);
+            let fs = v2
+                .info
+                .files()
+                .iter()
+                .map(|f| crate::app::PreviewFileEntry {
+                    name: f.path.join("/"),
+                    size: f.attr.length,
+                    is_folder: false,
+                    depth: 0,
+                })
+                .collect::<Vec<_>>();
+            (cb, tr, fs)
+        }
+        irontide::core::TorrentMeta::Hybrid(v1, _v2) => {
+            let cb = v1.created_by.clone();
+            let tr = extract_trackers_v1(v1);
+            let fs = v1
+                .info
+                .files()
+                .iter()
+                .map(|f| crate::app::PreviewFileEntry {
+                    name: f.path.join("/"),
+                    size: f.length,
+                    is_folder: false,
+                    depth: 0,
+                })
+                .collect::<Vec<_>>();
+            (cb, tr, fs)
+        }
+    };
+
+    let file_selected = vec![true; files.len()];
+
+    crate::app::AddTorrentPreview {
+        name,
+        total_size,
+        file_count,
+        created_by,
+        trackers,
+        files,
+        file_selected,
+        source: crate::app::AddTorrentSource::File(path_str.to_owned()),
+    }
+}
+
+/// Extract tracker URLs from a v2 torrent as a comma-separated string.
+fn extract_trackers_v2(v2: &irontide::core::TorrentMetaV2) -> String {
+    let mut urls = Vec::new();
+    if let Some(ref ann) = v2.announce {
+        urls.push(ann.clone());
+    }
+    if let Some(ref tiers) = v2.announce_list {
+        for tier in tiers {
+            for url in tier {
+                if !urls.contains(url) {
+                    urls.push(url.clone());
+                }
+            }
+        }
+    }
+    urls.join(", ")
+}
+
+/// Extract tracker URLs from a v1 torrent as a comma-separated string.
+fn extract_trackers_v1(v1: &irontide::core::TorrentMetaV1) -> String {
+    let mut urls = Vec::new();
+    if let Some(ref ann) = v1.announce {
+        urls.push(ann.clone());
+    }
+    if let Some(ref tiers) = v1.announce_list {
+        for tier in tiers {
+            for url in tier {
+                if !urls.contains(url) {
+                    urls.push(url.clone());
+                }
+            }
+        }
+    }
+    urls.join(", ")
+}
+
+/// Build a `Vec<AddTorrentFileRow>` from a preview (Send-safe).
+fn build_sendable_file_rows(
+    preview: &crate::app::AddTorrentPreview,
+) -> Vec<crate::AddTorrentFileRow> {
+    preview
+        .files
+        .iter()
+        .zip(preview.file_selected.iter())
+        .map(|(f, sel)| crate::AddTorrentFileRow {
+            name: f.name.clone().into(),
+            size: crate::format::format_size(f.size).into(),
+            is_folder: f.is_folder,
+            depth: i32::try_from(f.depth).unwrap_or(0),
+            selected: *sel,
+        })
+        .collect()
+}
+
+/// Push updated file selection state from the preview to the Slint model.
+pub fn push_add_torrent_preview_files(
+    weak: &slint::Weak<crate::MainWindow>,
+    preview: &crate::app::AddTorrentPreview,
+) {
+    let rows = build_sendable_file_rows(preview);
+    let _ = weak.upgrade_in_event_loop(move |win| {
+        let model = slint::ModelRc::new(slint::VecModel::from(rows));
+        win.set_add_torrent_preview_files(model);
     });
 }
 
@@ -433,6 +588,14 @@ async fn handle_gui_command(
                 let _ = session.force_reannounce(id).await;
             }
         }
+        GuiCommand::AddTorrentFromPreview {
+            preview,
+            download_dir,
+            start_paused,
+            skip_checking,
+        } => {
+            handle_add_torrent_from_preview(preview, download_dir, start_paused, skip_checking, session, weak).await;
+        }
     }
 
     let elapsed = start.elapsed();
@@ -544,14 +707,96 @@ async fn handle_add_torrent_file(
             // Clear file-selection state in the dialog.
             let _ = weak.upgrade_in_event_loop(|win| {
                 win.set_add_torrent_file_path(slint::SharedString::new());
-                win.set_add_torrent_name(slint::SharedString::new());
-                win.set_add_torrent_size(slint::SharedString::new());
-                win.set_add_torrent_file_count(0);
+                win.set_add_torrent_preview_name(slint::SharedString::new());
+                win.set_add_torrent_preview_size(slint::SharedString::new());
+                win.set_add_torrent_preview_file_count(0);
             });
             show_toast(weak, &format!("Added: {filename}"), false);
         }
         Err(e) => {
             show_toast(weak, &format!("Failed to add torrent: {e}"), true);
+        }
+    }
+}
+
+/// M191: add a torrent from the unified dialog's parsed preview.
+async fn handle_add_torrent_from_preview(
+    preview: crate::app::AddTorrentPreview,
+    download_dir: Option<String>,
+    start_paused: bool,
+    skip_checking: bool,
+    session: &irontide::session::SessionHandle,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    let display_name = preview.name.clone();
+    let skipped_files: Vec<usize> = preview
+        .file_selected
+        .iter()
+        .enumerate()
+        .filter(|(_, sel)| !**sel)
+        .map(|(i, _)| i)
+        .collect();
+
+    let result = match preview.source {
+        crate::app::AddTorrentSource::File(ref path) => {
+            let data = match std::fs::read(path) {
+                Ok(d) => d,
+                Err(e) => {
+                    show_toast(weak, &format!("Failed to read file: {e}"), true);
+                    return;
+                }
+            };
+            let mut params = irontide::AddTorrentParams::from_bytes(data);
+            if let Some(dir) = download_dir {
+                params = params.download_dir(dir);
+            }
+            if start_paused {
+                params = params.paused(true);
+            }
+            if skip_checking {
+                params = params.skip_checking(true);
+            }
+            params.add_to(session).await
+        }
+        crate::app::AddTorrentSource::Magnet(ref uri) => {
+            let magnet = match irontide::core::Magnet::parse(uri) {
+                Ok(m) => m,
+                Err(e) => {
+                    show_toast(weak, &format!("Invalid magnet: {e}"), true);
+                    return;
+                }
+            };
+            let mut params = irontide::AddTorrentParams::from_magnet(magnet);
+            if let Some(dir) = download_dir {
+                params = params.download_dir(dir);
+            }
+            if start_paused {
+                params = params.paused(true);
+            }
+            if skip_checking {
+                params = params.skip_checking(true);
+            }
+            params.add_to(session).await
+        }
+    };
+
+    match result {
+        Ok(id) => {
+            for &idx in &skipped_files {
+                let _ = session
+                    .set_file_priority(id, idx, irontide::core::FilePriority::Skip)
+                    .await;
+            }
+            let _ = weak.upgrade_in_event_loop(|win| {
+                win.set_show_add_torrent_dialog(false);
+                win.set_add_torrent_preview_name(slint::SharedString::new());
+                win.set_add_torrent_preview_size(slint::SharedString::new());
+                win.set_add_torrent_preview_file_count(0);
+            });
+            show_toast(weak, &format!("Added: {display_name}"), false);
+        }
+        Err(e) => {
+            show_toast(weak, &format!("Failed to add: {e}"), true);
         }
     }
 }

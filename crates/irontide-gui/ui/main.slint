@@ -6,8 +6,7 @@
 
 import { Tokens, Shadow } from "tokens.slint";
 import { StatusBar } from "widgets/status_bar.slint";
-import { AddMagnetDialog } from "widgets/add_magnet_dialog.slint";
-import { AddTorrentDialog } from "widgets/add_torrent_dialog.slint";
+import { AddTorrentDialog, AddTorrentFileRow } from "organisms/add_torrent_dialog.slint";
 import { ContextMenu } from "widgets/context_menu.slint";
 import { ConfirmDeleteDialog } from "widgets/confirm_delete_dialog.slint";
 import { PreferencesDialog } from "organisms/preferences_dialog.slint";
@@ -338,18 +337,27 @@ export component MainWindow inherits Window {
     in-out property <length> col-size-width: Tokens.col-default-rate;
     in-out property <length> col-ratio-width: Tokens.col-default-ratio;
 
-    // ── Add Magnet Dialog ──
-    in-out property <bool> show-add-magnet-dialog: false;
-    callback add-magnet-confirmed(string, string);
-    callback browse-magnet-download-dir();
-
-    // ── Add Torrent Dialog ──
+    // ── Add Torrent Dialog (M191 unified) ──
     in-out property <bool> show-add-torrent-dialog: false;
+    in-out property <string> add-torrent-tab: "file";
     in-out property <string> add-torrent-file-path: "";
-    in-out property <string> add-torrent-name: "";
-    in-out property <string> add-torrent-size: "";
-    in-out property <int> add-torrent-file-count: 0;
-    callback add-torrent-confirmed(string, string);
+    in-out property <string> add-torrent-preview-name: "";
+    in-out property <string> add-torrent-preview-size: "";
+    in-out property <int> add-torrent-preview-file-count: 0;
+    in-out property <string> add-torrent-preview-created-by: "";
+    in-out property <string> add-torrent-preview-trackers: "";
+    in-out property <[AddTorrentFileRow]> add-torrent-preview-files: [];
+    in-out property <bool> add-torrent-start-paused: false;
+    in-out property <bool> add-torrent-skip-checking: false;
+    callback add-torrent-confirmed(string);  // download_dir
+    callback add-torrent-tab-changed(string);
+    callback add-torrent-magnet-changed(string);
+    callback add-torrent-url-changed(string);
+    callback add-torrent-file-toggled(int);
+    callback add-torrent-select-all-files();
+    callback add-torrent-deselect-all-files();
+    callback add-torrent-toggle-paused();
+    callback add-torrent-toggle-skip-checking();
     callback browse-torrent-file();
     callback browse-torrent-download-dir();
 
@@ -574,7 +582,7 @@ export component MainWindow inherits Window {
             // The Tweaks overlay is treated as modal too — it absorbs
             // its own keys above, so any leftover key event with
             // root.show-tweaks should not trigger sidebar shortcuts.
-            if !root.show-add-magnet-dialog && !root.show-add-torrent-dialog && !root.show-delete-dialog && !root.show-context-menu && !root.show-preferences-dialog && !root.show-command-palette {
+            if !root.show-add-torrent-dialog && !root.show-delete-dialog && !root.show-context-menu && !root.show-preferences-dialog && !root.show-command-palette {
                 // v0.187.3 / Bug 2.2: accept BOTH the literal space character
                 // AND `Key.Space` — Slint forwards one or the other depending
                 // on IME state on Linux. Dogfood reported "Spacebar toggles
@@ -632,10 +640,6 @@ export component MainWindow inherits Window {
                 }
                 if root.show-delete-dialog {
                     root.show-delete-dialog = false;
-                    return accept;
-                }
-                if root.show-add-magnet-dialog {
-                    root.show-add-magnet-dialog = false;
                     return accept;
                 }
                 if root.show-add-torrent-dialog {
@@ -838,45 +842,37 @@ export component MainWindow inherits Window {
         }
     }
 
-    // Add Magnet Dialog overlay
-    AddMagnetDialog {
-        show: root.show-add-magnet-dialog;
-        default-dir: root.default-download-dir;
-        width: root.width;
-        height: root.height;
-        add-confirmed(uri, dir) => {
-            root.show-add-magnet-dialog = false;
-            root.add-magnet-confirmed(uri, dir);
-        }
-        cancel => {
-            root.show-add-magnet-dialog = false;
-        }
-        browse-download-dir => {
-            root.browse-magnet-download-dir();
-        }
-    }
-
-    // Add Torrent File Dialog overlay
+    // Add Torrent Dialog overlay (M191 unified — File/Magnet/URL tabs)
     AddTorrentDialog {
         show: root.show-add-torrent-dialog;
         default-dir: root.default-download-dir;
-        torrent-name: root.add-torrent-name;
-        torrent-size: root.add-torrent-size;
-        torrent-file-count: root.add-torrent-file-count;
+        active-tab: root.add-torrent-tab;
         selected-file-path: root.add-torrent-file-path;
+        preview-name: root.add-torrent-preview-name;
+        preview-size: root.add-torrent-preview-size;
+        preview-file-count: root.add-torrent-preview-file-count;
+        preview-created-by: root.add-torrent-preview-created-by;
+        preview-trackers: root.add-torrent-preview-trackers;
+        preview-files: root.add-torrent-preview-files;
+        start-paused: root.add-torrent-start-paused;
+        skip-checking: root.add-torrent-skip-checking;
         width: root.width;
         height: root.height;
-        add-confirmed(path, dir) => {
+        add-confirmed(dir) => {
             root.show-add-torrent-dialog = false;
-            root.add-torrent-confirmed(path, dir);
+            root.add-torrent-confirmed(dir);
         }
         cancel => {
             root.show-add-torrent-dialog = false;
-            root.add-torrent-file-path = "";
-            root.add-torrent-name = "";
-            root.add-torrent-size = "";
-            root.add-torrent-file-count = 0;
         }
+        tab-changed(tab) => { root.add-torrent-tab-changed(tab); }
+        magnet-uri-changed(uri) => { root.add-torrent-magnet-changed(uri); }
+        url-changed(url) => { root.add-torrent-url-changed(url); }
+        file-toggled(idx) => { root.add-torrent-file-toggled(idx); }
+        select-all-files => { root.add-torrent-select-all-files(); }
+        deselect-all-files => { root.add-torrent-deselect-all-files(); }
+        toggle-start-paused => { root.add-torrent-toggle-paused(); }
+        toggle-skip-checking => { root.add-torrent-toggle-skip-checking(); }
         browse-torrent-file => { root.browse-torrent-file(); }
         browse-download-dir => { root.browse-torrent-download-dir(); }
     }
@@ -924,9 +920,8 @@ export component MainWindow inherits Window {
     // level of MainWindow is itself the z-order from back to front.
     // The required order here is:
     //
-    //   1. AddMagnetDialog
-    //   2. AddTorrentDialog
-    //   3. ContextMenu
+    //   1. AddTorrentDialog (M191 unified)
+    //   2. ContextMenu
     //   4. ConfirmDeleteDialog
     //   5. FilePriorityPopup (M178)
     //   6. CommandPalette (M183)
