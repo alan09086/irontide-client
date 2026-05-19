@@ -365,6 +365,26 @@ pub enum GuiCommand {
     IntentSetDetectedSpeeds { dl_kbps: u64, ul_kbps: u64 },
     /// M204: refresh phone pair QR (re-detect IP).
     PhonePairRefresh,
+    /// M211: force-resume one or more torrents (bypass queue limits).
+    ForceResumeTorrents {
+        /// Hex-encoded info-hash strings.
+        hashes: Vec<String>,
+    },
+    /// M211: move a torrent's download directory.
+    MoveTorrentStorage {
+        /// Hex-encoded info-hash string.
+        info_hash: String,
+        /// New download directory path.
+        new_path: String,
+    },
+    /// M211: set per-torrent seed ratio override (`None` = session default).
+    #[allow(dead_code, reason = "M211: detail-pane ratio input wired in future polish")]
+    SetTorrentSeedRatio {
+        /// Hex-encoded info-hash string.
+        info_hash: String,
+        /// Ratio limit (e.g. 2.0), or `None` to clear the override.
+        limit: Option<f64>,
+    },
     /// M180: set per-torrent DL/UL rate limits.
     SetTorrentRateLimit {
         /// Hex-encoded info-hash string.
@@ -398,6 +418,10 @@ pub enum ContextAction {
     Recheck,
     /// Force all trackers to re-announce.
     ForceReannounce,
+    /// Force-start (bypass queue limits).
+    ForceStart,
+    /// Move download directory.
+    MoveStorage,
 }
 
 impl ContextAction {
@@ -413,6 +437,8 @@ impl ContextAction {
             5 => Some(Self::RemoveAndDelete),
             6 => Some(Self::Recheck),
             7 => Some(Self::ForceReannounce),
+            8 => Some(Self::ForceStart),
+            9 => Some(Self::MoveStorage),
             _ => None,
         }
     }
@@ -1074,12 +1100,20 @@ mod tests {
             ContextAction::from_index(7),
             Some(ContextAction::ForceReannounce)
         );
+        assert_eq!(
+            ContextAction::from_index(8),
+            Some(ContextAction::ForceStart)
+        );
+        assert_eq!(
+            ContextAction::from_index(9),
+            Some(ContextAction::MoveStorage)
+        );
     }
 
     #[test]
     fn context_action_from_index_invalid() {
         assert_eq!(ContextAction::from_index(-1), None);
-        assert_eq!(ContextAction::from_index(8), None);
+        assert_eq!(ContextAction::from_index(10), None);
         assert_eq!(ContextAction::from_index(100), None);
     }
 

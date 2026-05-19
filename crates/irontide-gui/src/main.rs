@@ -585,6 +585,21 @@ fn main() -> Result<(), error::GuiError> {
                 },
                 ContextAction::Recheck => app::GuiCommand::ForceRecheck { hashes },
                 ContextAction::ForceReannounce => app::GuiCommand::ForceReannounce { hashes },
+                ContextAction::ForceStart => app::GuiCommand::ForceResumeTorrents { hashes },
+                ContextAction::MoveStorage => {
+                    if let Some(hash) = hashes.into_iter().next() {
+                        if let Some(dir) = rfd::FileDialog::new().pick_folder() {
+                            app::GuiCommand::MoveTorrentStorage {
+                                info_hash: hash,
+                                new_path: dir.to_string_lossy().into_owned(),
+                            }
+                        } else {
+                            return;
+                        }
+                    } else {
+                        return;
+                    }
+                }
                 // Handled by the confirmation dialog above; unreachable here.
                 ContextAction::Remove | ContextAction::RemoveAndDelete => return,
             };
