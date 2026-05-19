@@ -1,0 +1,197 @@
+import { Tokens } from "../tokens.slint";
+
+export component PhonePairPage inherits Rectangle {
+    in property <image> qr-image;
+    in property <string> url-text: "";
+    in property <string> ip-text: "";
+    in property <string> port-text: "";
+    in property <string> status-text: "Ready";
+
+    callback refresh-requested();
+
+    background: Tokens.bg-0;
+
+    VerticalLayout {
+        padding: Tokens.sp-5;
+        spacing: Tokens.sp-4;
+
+        Text {
+            text: "Pair to Phone";
+            font-size: Tokens.fs-18;
+            font-weight: 600;
+            color: Tokens.fg-0;
+        }
+
+        Text {
+            text: "Scan this QR code from your phone's browser to access the Web UI remotely.";
+            font-size: Tokens.fs-12;
+            color: Tokens.fg-2;
+            wrap: word-wrap;
+        }
+
+        HorizontalLayout {
+            spacing: Tokens.sp-7;
+            vertical-stretch: 1;
+
+            Rectangle {
+                background: white;
+                border-radius: Tokens.r-md;
+                width: 280px;
+                height: 280px;
+                horizontal-stretch: 0;
+
+                Image {
+                    source: root.qr-image;
+                    width: 260px;
+                    height: 260px;
+                    image-fit: contain;
+                    image-rendering: pixelated;
+                }
+            }
+
+            VerticalLayout {
+                spacing: Tokens.sp-3;
+                horizontal-stretch: 1;
+                alignment: start;
+
+                Rectangle {
+                    background: Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+                    height: url-col.preferred-height + Tokens.sp-4 * 2;
+
+                    url-col := VerticalLayout {
+                        padding: Tokens.sp-4;
+                        spacing: Tokens.sp-1;
+
+                        Text {
+                            text: "URL";
+                            font-size: Tokens.fs-10;
+                            color: Tokens.fg-2;
+                            font-weight: 600;
+                        }
+
+                        Text {
+                            text: root.url-text;
+                            font-size: Tokens.fs-13;
+                            color: Tokens.accent;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: Tokens.sp-3;
+
+                    Rectangle {
+                        background: Tokens.bg-1;
+                        border-radius: Tokens.r-sm;
+                        horizontal-stretch: 1;
+                        height: ip-col.preferred-height + Tokens.sp-4 * 2;
+
+                        ip-col := VerticalLayout {
+                            padding: Tokens.sp-4;
+                            spacing: Tokens.sp-1;
+
+                            Text {
+                                text: "Local IP";
+                                font-size: Tokens.fs-10;
+                                color: Tokens.fg-2;
+                                font-weight: 600;
+                            }
+
+                            Text {
+                                text: root.ip-text;
+                                font-size: Tokens.fs-13;
+                                color: Tokens.fg-0;
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        background: Tokens.bg-1;
+                        border-radius: Tokens.r-sm;
+                        horizontal-stretch: 1;
+                        height: port-col.preferred-height + Tokens.sp-4 * 2;
+
+                        port-col := VerticalLayout {
+                            padding: Tokens.sp-4;
+                            spacing: Tokens.sp-1;
+
+                            Text {
+                                text: "Port";
+                                font-size: Tokens.fs-10;
+                                color: Tokens.fg-2;
+                                font-weight: 600;
+                            }
+
+                            Text {
+                                text: root.port-text;
+                                font-size: Tokens.fs-13;
+                                color: Tokens.fg-0;
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    background: Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+                    height: status-col.preferred-height + Tokens.sp-4 * 2;
+
+                    status-col := VerticalLayout {
+                        padding: Tokens.sp-4;
+                        spacing: Tokens.sp-1;
+
+                        Text {
+                            text: "Status";
+                            font-size: Tokens.fs-10;
+                            color: Tokens.fg-2;
+                            font-weight: 600;
+                        }
+
+                        Text {
+                            text: root.status-text;
+                            font-size: Tokens.fs-13;
+                            color: Tokens.fg-0;
+                        }
+                    }
+                }
+
+                Rectangle {
+                    background: Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+                    height: 36px;
+                    width: 120px;
+
+                    refresh-ta := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.refresh-requested();
+                        }
+
+                        Rectangle {
+                            background: refresh-ta.has-hover ? Tokens.bg-2 : Tokens.bg-1;
+                            border-radius: Tokens.r-sm;
+
+                            Text {
+                                text: "Refresh";
+                                font-size: Tokens.fs-12;
+                                color: Tokens.accent;
+                                font-weight: 600;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    text: "Both devices must be on the same local network.";
+                    font-size: Tokens.fs-10;
+                    color: Tokens.fg-2;
+                    wrap: word-wrap;
+                }
+            }
+        }
+    }
+}

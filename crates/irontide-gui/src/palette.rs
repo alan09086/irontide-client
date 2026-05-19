@@ -37,6 +37,7 @@ pub enum PaletteCommandId {
     ToggleIpFilter,
     ToggleLogsStats,
     ToggleBandwidthIntent,
+    TogglePhonePair,
     OpenPreferences,
     SelectAll,
     // Settings
@@ -221,6 +222,12 @@ pub static COMMANDS: &[PaletteCommand] = &[
         hotkey_hint: "",
     },
     PaletteCommand {
+        id: PaletteCommandId::TogglePhonePair,
+        label: "Pair to Phone",
+        category: PaletteCategory::Tools,
+        hotkey_hint: "",
+    },
+    PaletteCommand {
         id: PaletteCommandId::SelectAll,
         label: "Select All",
         category: PaletteCategory::Tools,
@@ -335,6 +342,7 @@ pub enum DispatchAction {
     ToggleIpFilter,
     ToggleLogsStats,
     ToggleBandwidthIntent,
+    TogglePhonePair,
     SendCommand(crate::app::GuiCommand),
     SetPredicate(crate::sidebar::SidebarPredicate),
     OpenPreferences,
@@ -408,6 +416,7 @@ pub fn dispatch(id: PaletteCommandId, selected: &[String]) -> DispatchAction {
         PaletteCommandId::ToggleIpFilter => DispatchAction::ToggleIpFilter,
         PaletteCommandId::ToggleLogsStats => DispatchAction::ToggleLogsStats,
         PaletteCommandId::ToggleBandwidthIntent => DispatchAction::ToggleBandwidthIntent,
+        PaletteCommandId::TogglePhonePair => DispatchAction::TogglePhonePair,
         PaletteCommandId::OpenPreferences => DispatchAction::OpenPreferences,
         PaletteCommandId::SelectAll => DispatchAction::SelectAll,
         PaletteCommandId::Quit => DispatchAction::Quit,
