@@ -27,8 +27,9 @@ import { DetailPane, FileTreeRow, PeerRow, TrackerRow, WebSeedRow } from "organi
 import { FilePriorityPopup } from "molecules/file_priority_popup.slint";
 import { CommandPalette, PaletteItem, PaletteCategory } from "organisms/command_palette.slint";
 import { SearchPage, SearchResultRow } from "organisms/search_page.slint";
+import { RssPage, RssFeedRow, RssItemRow, RssRuleRow } from "organisms/rss_page.slint";
 
-export { Tokens, Shadow, SidebarRow, TorrentRow, FileTreeRow, PaletteItem, PaletteCategory, SearchResultRow }
+export { Tokens, Shadow, SidebarRow, TorrentRow, FileTreeRow, PaletteItem, PaletteCategory, SearchResultRow, RssFeedRow, RssItemRow, RssRuleRow }
 
 component MenuButton {
     in property <string> text;
@@ -351,6 +352,21 @@ export component MainWindow inherits Window {
     in-out property <bool> search-loading: false;
     callback search-requested(string);
     callback search-add-result(string);
+
+    // ── RSS (M197) ──
+    in-out property <bool> show-rss-page: false;
+    in-out property <[RssFeedRow]> rss-feeds;
+    in-out property <[RssItemRow]> rss-items;
+    in-out property <[RssRuleRow]> rss-rules;
+    in-out property <int> rss-selected-feed-index: -1;
+    in-out property <bool> rss-refreshing: false;
+    callback rss-add-feed(string);
+    callback rss-remove-feed(int);
+    callback rss-refresh-feeds();
+    callback rss-toggle-feed-enabled(int);
+    callback rss-feed-selected(int);
+    callback rss-download-item(int);
+    callback rss-mark-item-read(int);
 
     // ── Modifier tracking ──
     in-out property <bool> shift-held: false;
@@ -791,7 +807,23 @@ export component MainWindow inherits Window {
                         add-result(url) => { root.search-add-result(url); }
                     }
 
-                    if !root.show-search-page : TorrentListView {
+                    if root.show-rss-page : RssPage {
+                        vertical-stretch: 1;
+                        feeds: root.rss-feeds;
+                        items: root.rss-items;
+                        rules: root.rss-rules;
+                        selected-feed-index: root.rss-selected-feed-index;
+                        refreshing: root.rss-refreshing;
+                        add-feed-requested(url) => { root.rss-add-feed(url); }
+                        remove-feed-requested(idx) => { root.rss-remove-feed(idx); }
+                        refresh-feeds-requested() => { root.rss-refresh-feeds(); }
+                        toggle-feed-enabled(idx) => { root.rss-toggle-feed-enabled(idx); }
+                        feed-selected(idx) => { root.rss-feed-selected(idx); }
+                        download-item(idx) => { root.rss-download-item(idx); }
+                        mark-item-read(idx) => { root.rss-mark-item-read(idx); }
+                    }
+
+                    if !root.show-search-page && !root.show-rss-page : TorrentListView {
                         vertical-stretch: 2;
                         session-ready: root.session-ready;
                         error-text: root.error-text;
@@ -817,7 +849,7 @@ export component MainWindow inherits Window {
                         column-visibility-toggled(c) => { root.column-visibility-toggled(c); }
                     }
 
-                    if root.session-ready && root.error-text == "" && !root.show-search-page: Rectangle {
+                    if root.session-ready && root.error-text == "" && !root.show-search-page && !root.show-rss-page: Rectangle {
                         vertical-stretch: 1;
                         min-height: Tokens.sp-10 * 5;
                         background: Tokens.bg-1;
