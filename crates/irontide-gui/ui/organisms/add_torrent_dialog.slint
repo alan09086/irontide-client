@@ -1,0 +1,533 @@
+import { Tokens } from "../tokens.slint";
+import { PillRow } from "../molecules/pill_row.slint";
+
+export struct AddTorrentFileRow {
+    name: string,
+    size: string,
+    is-folder: bool,
+    depth: int,
+    selected: bool,
+}
+
+export component AddTorrentDialog {
+    in property <bool> show;
+    in property <string> default-dir;
+    in property <string> active-tab: "file";
+
+    // Preview data pushed from Rust
+    in property <string> preview-name: "";
+    in property <string> preview-size: "";
+    in property <int> preview-file-count: 0;
+    in property <string> preview-created-by: "";
+    in property <string> preview-trackers: "";
+    in property <[AddTorrentFileRow]> preview-files: [];
+
+    // File tab state
+    in property <string> selected-file-path: "";
+
+    // Options
+    in property <bool> start-paused: false;
+    in property <bool> skip-checking: false;
+    in property <[string]> categories: [];
+    in property <string> selected-category: "";
+
+    // Callbacks
+    callback add-confirmed(string);  // download_dir
+    callback cancel();
+    callback tab-changed(string);
+    callback browse-torrent-file();
+    callback browse-download-dir();
+    callback magnet-uri-changed(string);
+    callback url-changed(string);
+    callback toggle-start-paused();
+    callback toggle-skip-checking();
+    callback file-toggled(int);        // file index
+    callback select-all-files();
+    callback deselect-all-files();
+    callback category-changed(string);
+
+    if root.show: Rectangle {
+        background: Tokens.bg-0.with-alpha(80%);
+
+        backdrop-touch := TouchArea {
+            clicked => { root.cancel(); }
+        }
+
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: min(parent.width - Tokens.sp-10, Tokens.sp-10 * 18);
+            height: min(parent.height - Tokens.sp-10, dialog-layout.preferred-height + Tokens.sp-9);
+            background: Tokens.bg-2;
+            border-color: Tokens.border-1;
+            border-width: Tokens.border-width-thin;
+            border-radius: Tokens.r-lg;
+
+            TouchArea { }
+
+            dialog-layout := VerticalLayout {
+                padding: Tokens.sp-6;
+                spacing: Tokens.sp-5;
+
+                // Title
+                Text {
+                    text: "Add Torrent";
+                    color: Tokens.fg-0;
+                    font-size: Tokens.fs-16;
+                    font-weight: 700;
+                }
+
+                // Tab bar
+                PillRow {
+                    label: "";
+                    options: ["File", "Magnet", "URL"];
+                    selected: root.active-tab == "file" ? "File"
+                            : root.active-tab == "magnet" ? "Magnet"
+                            : "URL";
+                    option-clicked(opt) => {
+                        if (opt == "File") {
+                            root.tab-changed("file");
+                        } else if (opt == "Magnet") {
+                            root.tab-changed("magnet");
+                        } else {
+                            root.tab-changed("url");
+                        }
+                    }
+                }
+
+                // ── File tab ──
+                if root.active-tab == "file": VerticalLayout {
+                    spacing: Tokens.sp-2;
+                    Text { text: "Torrent file:"; color: Tokens.fg-0; font-size: Tokens.fs-13; }
+                    HorizontalLayout {
+                        spacing: Tokens.sp-4;
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            height: Tokens.chrome-h - Tokens.sp-2;
+                            background: Tokens.bg-inset;
+                            border-color: Tokens.border-2;
+                            border-width: Tokens.border-width-thin;
+                            border-radius: Tokens.r-md;
+
+                            Text {
+                                x: Tokens.sp-4;
+                                color: root.selected-file-path == "" ? Tokens.fg-3 : Tokens.fg-0;
+                                font-size: Tokens.fs-13;
+                                vertical-alignment: center;
+                                overflow: elide;
+                                text: root.selected-file-path == "" ? "(no file selected)" : root.selected-file-path;
+                                width: parent.width - Tokens.sp-6;
+                            }
+                        }
+                        Rectangle {
+                            width: Tokens.sp-10 * 2;
+                            height: Tokens.chrome-h - Tokens.sp-2;
+                            background: browse-file-touch.has-hover ? Tokens.bg-hover : Tokens.accent;
+                            border-radius: Tokens.r-md;
+
+                            Text {
+                                text: "Browse...";
+                                color: Tokens.accent-fg;
+                                font-size: Tokens.fs-13;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                            browse-file-touch := TouchArea {
+                                clicked => { root.browse-torrent-file(); }
+                            }
+                        }
+                    }
+                }
+
+                // ── Magnet tab ──
+                if root.active-tab == "magnet": VerticalLayout {
+                    spacing: Tokens.sp-2;
+                    Text { text: "Magnet URI:"; color: Tokens.fg-0; font-size: Tokens.fs-13; }
+                    Rectangle {
+                        height: Tokens.chrome-h - Tokens.sp-2;
+                        background: Tokens.bg-inset;
+                        border-color: Tokens.border-2;
+                        border-width: Tokens.border-width-thin;
+                        border-radius: Tokens.r-md;
+
+                        magnet-input := TextInput {
+                            x: Tokens.sp-4;
+                            y: 0;
+                            width: parent.width - Tokens.sp-6;
+                            height: parent.height;
+                            color: Tokens.fg-0;
+                            font-size: Tokens.fs-13;
+                            accepted => { root.magnet-uri-changed(self.text); }
+                            edited => { root.magnet-uri-changed(self.text); }
+                        }
+                        if magnet-input.text == "": Text {
+                            x: Tokens.sp-4;
+                            color: Tokens.fg-3;
+                            font-size: Tokens.fs-13;
+                            text: "magnet:?xt=urn:btih:...";
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                // ── URL tab ──
+                if root.active-tab == "url": VerticalLayout {
+                    spacing: Tokens.sp-2;
+                    Text { text: "Torrent URL:"; color: Tokens.fg-0; font-size: Tokens.fs-13; }
+                    Rectangle {
+                        height: Tokens.chrome-h - Tokens.sp-2;
+                        background: Tokens.bg-inset;
+                        border-color: Tokens.border-2;
+                        border-width: Tokens.border-width-thin;
+                        border-radius: Tokens.r-md;
+
+                        url-input := TextInput {
+                            x: Tokens.sp-4;
+                            y: 0;
+                            width: parent.width - Tokens.sp-6;
+                            height: parent.height;
+                            color: Tokens.fg-0;
+                            font-size: Tokens.fs-13;
+                            accepted => { root.url-changed(self.text); }
+                        }
+                        if url-input.text == "": Text {
+                            x: Tokens.sp-4;
+                            color: Tokens.fg-3;
+                            font-size: Tokens.fs-13;
+                            text: "https://example.com/file.torrent";
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                // ── Preview card ──
+                if root.preview-name != "": Rectangle {
+                    background: Tokens.bg-0;
+                    border-color: Tokens.border-1;
+                    border-width: Tokens.border-width-thin;
+                    border-radius: Tokens.r-md;
+                    height: min(preview-layout.preferred-height + Tokens.sp-6, Tokens.sp-10 * 6);
+
+                    preview-layout := VerticalLayout {
+                        padding: Tokens.sp-4;
+                        spacing: Tokens.sp-2;
+
+                        Text {
+                            text: root.preview-name;
+                            color: Tokens.fg-0;
+                            font-size: Tokens.fs-13;
+                            font-weight: 700;
+                            overflow: elide;
+                        }
+
+                        HorizontalLayout {
+                            spacing: Tokens.sp-6;
+                            Text {
+                                text: "Size: " + root.preview-size;
+                                color: Tokens.fg-2;
+                                font-size: Tokens.fs-12;
+                            }
+                            Text {
+                                text: root.preview-file-count + " files";
+                                color: Tokens.fg-2;
+                                font-size: Tokens.fs-12;
+                            }
+                            if root.preview-created-by != "": Text {
+                                text: root.preview-created-by;
+                                color: Tokens.fg-3;
+                                font-size: Tokens.fs-12;
+                                overflow: elide;
+                            }
+                        }
+
+                        if root.preview-trackers != "": Text {
+                            text: root.preview-trackers;
+                            color: Tokens.fg-3;
+                            font-size: Tokens.fs-11;
+                            overflow: elide;
+                        }
+
+                        // File list (scrollable)
+                        if root.preview-files.length > 0: VerticalLayout {
+                            spacing: Tokens.sp-1;
+                            padding-top: Tokens.sp-2;
+
+                            HorizontalLayout {
+                                spacing: Tokens.sp-4;
+                                Text {
+                                    text: "Files";
+                                    color: Tokens.fg-2;
+                                    font-size: Tokens.fs-12;
+                                    font-weight: 600;
+                                    horizontal-stretch: 1;
+                                }
+                                Rectangle {
+                                    width: sel-all-text.preferred-width + Tokens.sp-4;
+                                    height: Tokens.sp-6;
+                                    border-radius: Tokens.r-sm;
+                                    background: sel-all-touch.has-hover ? Tokens.bg-hover : transparent;
+
+                                    sel-all-text := Text {
+                                        text: "All";
+                                        color: Tokens.accent;
+                                        font-size: Tokens.fs-11;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                    sel-all-touch := TouchArea {
+                                        clicked => { root.select-all-files(); }
+                                    }
+                                }
+                                Rectangle {
+                                    width: sel-none-text.preferred-width + Tokens.sp-4;
+                                    height: Tokens.sp-6;
+                                    border-radius: Tokens.r-sm;
+                                    background: sel-none-touch.has-hover ? Tokens.bg-hover : transparent;
+
+                                    sel-none-text := Text {
+                                        text: "None";
+                                        color: Tokens.accent;
+                                        font-size: Tokens.fs-11;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                    sel-none-touch := TouchArea {
+                                        clicked => { root.deselect-all-files(); }
+                                    }
+                                }
+                            }
+
+                            Flickable {
+                                height: min(Tokens.sp-10 * 3, file-list-layout.preferred-height);
+                                viewport-height: file-list-layout.preferred-height;
+
+                                file-list-layout := VerticalLayout {
+                                    for file[idx] in root.preview-files: HorizontalLayout {
+                                        spacing: Tokens.sp-2;
+                                        height: Tokens.sp-6;
+
+                                        // Indent
+                                        Rectangle {
+                                            width: file.depth * Tokens.sp-4;
+                                        }
+
+                                        // Checkbox
+                                        Rectangle {
+                                            width: Tokens.sp-5;
+                                            height: Tokens.sp-5;
+                                            border-radius: Tokens.r-sm;
+                                            border-width: Tokens.border-width-thin;
+                                            border-color: file.selected ? Tokens.accent : Tokens.border-2;
+                                            background: file.selected ? Tokens.accent : transparent;
+
+                                            if file.selected: Text {
+                                                text: "✓";
+                                                color: Tokens.accent-fg;
+                                                font-size: Tokens.fs-11;
+                                                horizontal-alignment: center;
+                                                vertical-alignment: center;
+                                            }
+
+                                            check-touch := TouchArea {
+                                                clicked => { root.file-toggled(idx); }
+                                            }
+                                        }
+
+                                        // File/folder icon
+                                        Text {
+                                            text: file.is-folder ? "📁" : "📄";
+                                            font-size: Tokens.fs-11;
+                                            vertical-alignment: center;
+                                        }
+
+                                        // Name
+                                        Text {
+                                            text: file.name;
+                                            color: file.selected ? Tokens.fg-0 : Tokens.fg-3;
+                                            font-size: Tokens.fs-11;
+                                            overflow: elide;
+                                            horizontal-stretch: 1;
+                                            vertical-alignment: center;
+                                        }
+
+                                        // Size
+                                        Text {
+                                            text: file.size;
+                                            color: Tokens.fg-3;
+                                            font-size: Tokens.fs-11;
+                                            horizontal-alignment: right;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── Options row ──
+                HorizontalLayout {
+                    spacing: Tokens.sp-6;
+
+                    // Download directory
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        spacing: Tokens.sp-2;
+                        Text { text: "Download to:"; color: Tokens.fg-0; font-size: Tokens.fs-13; }
+                        HorizontalLayout {
+                            spacing: Tokens.sp-4;
+                            Rectangle {
+                                horizontal-stretch: 1;
+                                height: Tokens.chrome-h - Tokens.sp-2;
+                                background: Tokens.bg-inset;
+                                border-color: Tokens.border-2;
+                                border-width: Tokens.border-width-thin;
+                                border-radius: Tokens.r-md;
+
+                                dir-input := TextInput {
+                                    x: Tokens.sp-4;
+                                    y: 0;
+                                    width: parent.width - Tokens.sp-6;
+                                    height: parent.height;
+                                    color: Tokens.fg-0;
+                                    font-size: Tokens.fs-13;
+                                    text: root.default-dir;
+                                }
+                            }
+                            Rectangle {
+                                width: Tokens.sp-10 * 2;
+                                height: Tokens.chrome-h - Tokens.sp-2;
+                                background: browse-dir-touch.has-hover ? Tokens.bg-hover : Tokens.accent;
+                                border-radius: Tokens.r-md;
+
+                                Text {
+                                    text: "Browse...";
+                                    color: Tokens.accent-fg;
+                                    font-size: Tokens.fs-13;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                                browse-dir-touch := TouchArea {
+                                    clicked => { root.browse-download-dir(); }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Checkboxes row
+                HorizontalLayout {
+                    spacing: Tokens.sp-6;
+
+                    // Start paused
+                    HorizontalLayout {
+                        spacing: Tokens.sp-2;
+                        Rectangle {
+                            width: Tokens.sp-5;
+                            height: Tokens.sp-5;
+                            border-radius: Tokens.r-sm;
+                            border-width: Tokens.border-width-thin;
+                            border-color: root.start-paused ? Tokens.accent : Tokens.border-2;
+                            background: root.start-paused ? Tokens.accent : transparent;
+
+                            if root.start-paused: Text {
+                                text: "✓";
+                                color: Tokens.accent-fg;
+                                font-size: Tokens.fs-11;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+
+                            paused-touch := TouchArea {
+                                clicked => { root.toggle-start-paused(); }
+                            }
+                        }
+                        Text {
+                            text: "Start paused";
+                            color: Tokens.fg-1;
+                            font-size: Tokens.fs-12;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    // Skip hash check
+                    HorizontalLayout {
+                        spacing: Tokens.sp-2;
+                        Rectangle {
+                            width: Tokens.sp-5;
+                            height: Tokens.sp-5;
+                            border-radius: Tokens.r-sm;
+                            border-width: Tokens.border-width-thin;
+                            border-color: root.skip-checking ? Tokens.accent : Tokens.border-2;
+                            background: root.skip-checking ? Tokens.accent : transparent;
+
+                            if root.skip-checking: Text {
+                                text: "✓";
+                                color: Tokens.accent-fg;
+                                font-size: Tokens.fs-11;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+
+                            skip-touch := TouchArea {
+                                clicked => { root.toggle-skip-checking(); }
+                            }
+                        }
+                        Text {
+                            text: "Skip hash check";
+                            color: Tokens.fg-1;
+                            font-size: Tokens.fs-12;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                // Buttons row
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: Tokens.sp-4;
+
+                    Rectangle {
+                        width: Tokens.sp-10 * 2;
+                        height: Tokens.chrome-h - Tokens.sp-2;
+                        background: cancel-touch.has-hover ? Tokens.bg-hover : Tokens.accent;
+                        border-radius: Tokens.r-md;
+
+                        Text {
+                            text: "Cancel";
+                            color: Tokens.accent-fg;
+                            font-size: Tokens.fs-13;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        cancel-touch := TouchArea {
+                            clicked => { root.cancel(); }
+                        }
+                    }
+
+                    Rectangle {
+                        width: Tokens.sp-10 * 2;
+                        height: Tokens.chrome-h - Tokens.sp-2;
+                        background: root.preview-name == ""
+                            ? Tokens.accent
+                            : (add-touch.has-hover ? Tokens.bg-hover : Tokens.status-seeding);
+                        border-radius: Tokens.r-md;
+                        opacity: root.preview-name == "" ? 0.5 : 1.0;
+
+                        Text {
+                            text: "Add";
+                            color: Tokens.accent-fg;
+                            font-size: Tokens.fs-13;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        add-touch := TouchArea {
+                            enabled: root.preview-name != "";
+                            clicked => { root.add-confirmed(dir-input.text); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

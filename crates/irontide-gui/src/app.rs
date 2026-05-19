@@ -93,6 +93,35 @@ pub struct EnginePrefs {
     pub enable_bep40_eviction: Option<bool>,
 }
 
+/// Source of a torrent being added via the unified dialog.
+#[derive(Debug, Clone)]
+pub enum AddTorrentSource {
+    File(String),
+    Magnet(String),
+}
+
+/// File entry for the add-torrent preview.
+#[derive(Debug, Clone)]
+pub struct PreviewFileEntry {
+    pub name: String,
+    pub size: u64,
+    pub is_folder: bool,
+    pub depth: usize,
+}
+
+/// Preview of torrent metadata shown in the unified add-torrent dialog.
+#[derive(Debug, Clone)]
+pub struct AddTorrentPreview {
+    pub name: String,
+    pub total_size: u64,
+    pub file_count: usize,
+    pub created_by: Option<String>,
+    pub trackers: String,
+    pub files: Vec<PreviewFileEntry>,
+    pub file_selected: Vec<bool>,
+    pub source: AddTorrentSource,
+}
+
 /// Commands sent from the Slint UI thread to the async session thread.
 ///
 /// The GUI callbacks are synchronous (main thread), but `SessionHandle` methods
@@ -100,14 +129,16 @@ pub struct EnginePrefs {
 /// unbounded mpsc channel.
 #[derive(Debug)]
 pub enum GuiCommand {
-    /// Add a torrent from a magnet URI.
+    /// Add a torrent from a magnet URI (legacy path, kept for backward compat).
+    #[allow(dead_code)]
     AddMagnet {
         /// The magnet URI string.
         uri: String,
         /// Optional override for the download directory.
         download_dir: Option<String>,
     },
-    /// Add a torrent from a `.torrent` file path.
+    /// Add a torrent from a `.torrent` file path (legacy path, kept for backward compat).
+    #[allow(dead_code)]
     AddTorrentFile {
         /// Filesystem path to the `.torrent` file.
         path: String,
@@ -183,6 +214,13 @@ pub enum GuiCommand {
     },
     /// M185: apply changed session-level settings from the Preferences dialog.
     ApplySettings { engine_prefs: Box<EnginePrefs> },
+    /// M191: add a torrent from the unified dialog's parsed preview.
+    AddTorrentFromPreview {
+        preview: AddTorrentPreview,
+        download_dir: Option<String>,
+        start_paused: bool,
+        skip_checking: bool,
+    },
     /// M180: set per-torrent DL/UL rate limits.
     SetTorrentRateLimit {
         /// Hex-encoded info-hash string.
@@ -354,6 +392,14 @@ pub struct AppState {
     pub prefs: crate::prefs::PreferencesState,
     /// M184: whether preferences have been applied this session (gates persist).
     pub prefs_dirty: bool,
+    /// M191: parsed torrent preview for the unified add-torrent dialog.
+    pub add_torrent_preview: Option<AddTorrentPreview>,
+    /// M191: active tab in the add-torrent dialog ("file"/"magnet"/"url").
+    pub add_torrent_tab: String,
+    /// M191: "start paused" toggle state in the add-torrent dialog.
+    pub add_torrent_start_paused: bool,
+    /// M191: "skip hash check" toggle state in the add-torrent dialog.
+    pub add_torrent_skip_checking: bool,
 }
 
 impl AppState {
@@ -391,6 +437,10 @@ impl AppState {
             palette_recent: Vec::new(),
             prefs: crate::prefs::PreferencesState::default(),
             prefs_dirty: false,
+            add_torrent_preview: None,
+            add_torrent_tab: String::from("file"),
+            add_torrent_start_paused: false,
+            add_torrent_skip_checking: false,
         }
     }
 
@@ -1334,5 +1384,135 @@ mod tests {
         // touch the tab field.
         state.selection_click("aaa");
         assert_eq!(state.detail_active_tab, "Content");
+    }
+
+    // ── M191: AddTorrentPreview + dialog state ─────────────────────────
+
+    #[test]
+    fn add_torrent_preview_file_selected_toggle() {
+        let mut preview = AddTorrentPreview {
+            name: "test".into(),
+            total_size: 100,
+            file_count: 3,
+            created_by: None,
+            trackers: String::new(),
+            files: vec![
+                PreviewFileEntry {
+                    name: "a.txt".into(),
+                    size: 30,
+                    is_folder: false,
+                    depth: 0,
+                },
+                PreviewFileEntry {
+                    name: "b.txt".into(),
+                    size: 40,
+                    is_folder: false,
+                    depth: 0,
+                },
+                PreviewFileEntry {
+                    name: "c.txt".into(),
+                    size: 30,
+                    is_folder: false,
+                    depth: 0,
+                },
+            ],
+            file_selected: vec![true, true, true],
+            source: AddTorrentSource::File("/tmp/test.torrent".into()),
+        };
+        assert!(preview.file_selected.iter().all(|&s| s));
+        preview.file_selected[1] = false;
+        assert!(!preview.file_selected[1]);
+        assert!(preview.file_selected[0]);
+        assert!(preview.file_selected[2]);
+    }
+
+    #[test]
+    fn add_torrent_preview_select_all_deselect_all() {
+        let mut preview = AddTorrentPreview {
+            name: "test".into(),
+            total_size: 100,
+            file_count: 2,
+            created_by: None,
+            trackers: String::new(),
+            files: vec![
+                PreviewFileEntry {
+                    name: "a.txt".into(),
+                    size: 50,
+                    is_folder: false,
+                    depth: 0,
+                },
+                PreviewFileEntry {
+                    name: "b.txt".into(),
+                    size: 50,
+                    is_folder: false,
+                    depth: 0,
+                },
+            ],
+            file_selected: vec![true, true],
+            source: AddTorrentSource::File("/tmp/test.torrent".into()),
+        };
+        preview.file_selected.fill(false);
+        assert!(preview.file_selected.iter().all(|&s| !s));
+        preview.file_selected.fill(true);
+        assert!(preview.file_selected.iter().all(|&s| s));
+    }
+
+    #[test]
+    fn add_torrent_dialog_state_defaults() {
+        let state = fresh_state();
+        assert!(state.add_torrent_preview.is_none());
+        assert_eq!(state.add_torrent_tab, "file");
+        assert!(!state.add_torrent_start_paused);
+        assert!(!state.add_torrent_skip_checking);
+    }
+
+    #[test]
+    fn add_torrent_dialog_toggle_paused() {
+        let mut state = fresh_state();
+        state.add_torrent_start_paused = !state.add_torrent_start_paused;
+        assert!(state.add_torrent_start_paused);
+        state.add_torrent_start_paused = !state.add_torrent_start_paused;
+        assert!(!state.add_torrent_start_paused);
+    }
+
+    #[test]
+    fn add_torrent_preview_magnet_source_has_no_files() {
+        let preview = AddTorrentPreview {
+            name: "Ubuntu ISO".into(),
+            total_size: 0,
+            file_count: 0,
+            created_by: None,
+            trackers: String::new(),
+            files: Vec::new(),
+            file_selected: Vec::new(),
+            source: AddTorrentSource::Magnet("magnet:?xt=urn:btih:abc".into()),
+        };
+        assert!(preview.files.is_empty());
+        assert!(preview.file_selected.is_empty());
+    }
+
+    #[test]
+    fn gui_command_add_torrent_from_preview_constructs() {
+        let preview = AddTorrentPreview {
+            name: "test".into(),
+            total_size: 1024,
+            file_count: 1,
+            created_by: Some("IronTide".into()),
+            trackers: "http://tracker.example.com/announce".into(),
+            files: vec![PreviewFileEntry {
+                name: "test.bin".into(),
+                size: 1024,
+                is_folder: false,
+                depth: 0,
+            }],
+            file_selected: vec![true],
+            source: AddTorrentSource::File("/tmp/test.torrent".into()),
+        };
+        let _cmd = GuiCommand::AddTorrentFromPreview {
+            preview,
+            download_dir: Some("/tmp/dl".into()),
+            start_paused: true,
+            skip_checking: false,
+        };
     }
 }

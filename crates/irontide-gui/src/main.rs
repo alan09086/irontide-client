@@ -209,62 +209,160 @@ fn main() -> Result<(), error::GuiError> {
         });
     }
 
-    // 6d. Wire add-magnet dialog callbacks.
+    // 6d. Wire unified add-torrent dialog callbacks (M191).
     {
         let cb_state = state.clone();
-        main_window.on_add_magnet_confirmed(move |uri, dir| {
-            let cmd_tx = {
+        main_window.on_add_torrent_confirmed(move |dir| {
+            let (cmd_tx, preview, start_paused, skip_checking) = {
                 let st = cb_state.lock();
-                st.cmd_tx.clone()
+                (
+                    st.cmd_tx.clone(),
+                    st.add_torrent_preview.clone(),
+                    st.add_torrent_start_paused,
+                    st.add_torrent_skip_checking,
+                )
             };
-            if let Some(tx) = cmd_tx {
+            if let (Some(tx), Some(preview)) = (cmd_tx, preview) {
                 let download_dir = if dir.is_empty() {
                     None
                 } else {
                     Some(dir.to_string())
                 };
-                let _ = tx.send(app::GuiCommand::AddMagnet {
-                    uri: uri.to_string(),
+                let _ = tx.send(app::GuiCommand::AddTorrentFromPreview {
+                    preview,
                     download_dir,
+                    start_paused,
+                    skip_checking,
                 });
             }
         });
     }
 
     {
-        let weak = main_window.as_weak();
         let cb_state = state.clone();
-        main_window.on_browse_magnet_download_dir(move || {
-            bridge::handle_browse_download_dir(&weak, &cb_state);
+        main_window.on_add_torrent_tab_changed(move |tab| {
+            let mut st = cb_state.lock();
+            st.add_torrent_tab = tab.to_string();
         });
     }
 
-    // 6e. Wire add-torrent dialog callbacks.
     {
         let cb_state = state.clone();
-        main_window.on_add_torrent_confirmed(move |path, dir| {
-            let cmd_tx = {
-                let st = cb_state.lock();
-                st.cmd_tx.clone()
-            };
-            if let Some(tx) = cmd_tx {
-                let download_dir = if dir.is_empty() {
-                    None
-                } else {
-                    Some(dir.to_string())
+        let weak = main_window.as_weak();
+        main_window.on_add_torrent_magnet_changed(move |uri| {
+            let uri_str = uri.to_string();
+            if uri_str.trim().is_empty() {
+                cb_state.lock().add_torrent_preview = None;
+                let _ = weak.upgrade_in_event_loop(|win| {
+                    win.set_add_torrent_preview_name(slint::SharedString::new());
+                    win.set_add_torrent_preview_size(slint::SharedString::new());
+                    win.set_add_torrent_preview_file_count(0);
+                });
+                return;
+            }
+            if let Ok(magnet) = irontide::core::Magnet::parse(uri_str.trim()) {
+                let name = magnet
+                    .display_name
+                    .clone()
+                    .unwrap_or_else(|| "Unknown (magnet)".to_owned());
+                let preview = app::AddTorrentPreview {
+                    name: name.clone(),
+                    total_size: 0,
+                    file_count: 0,
+                    created_by: None,
+                    trackers: String::new(),
+                    files: Vec::new(),
+                    file_selected: Vec::new(),
+                    source: app::AddTorrentSource::Magnet(uri_str),
                 };
-                let _ = tx.send(app::GuiCommand::AddTorrentFile {
-                    path: path.to_string(),
-                    download_dir,
+                cb_state.lock().add_torrent_preview = Some(preview);
+                let _ = weak.upgrade_in_event_loop(move |win| {
+                    win.set_add_torrent_preview_name(name.into());
+                    win.set_add_torrent_preview_size("Unknown until metadata received".into());
+                    win.set_add_torrent_preview_file_count(0);
+                });
+            } else {
+                cb_state.lock().add_torrent_preview = None;
+                let _ = weak.upgrade_in_event_loop(|win| {
+                    win.set_add_torrent_preview_name("Invalid magnet URI".into());
+                    win.set_add_torrent_preview_size(slint::SharedString::new());
+                    win.set_add_torrent_preview_file_count(0);
                 });
             }
         });
     }
 
     {
+        let cb_state = state.clone();
+        main_window.on_add_torrent_toggle_paused(move || {
+            let mut st = cb_state.lock();
+            st.add_torrent_start_paused = !st.add_torrent_start_paused;
+        });
+    }
+
+    {
+        let cb_state = state.clone();
+        main_window.on_add_torrent_toggle_skip_checking(move || {
+            let mut st = cb_state.lock();
+            st.add_torrent_skip_checking = !st.add_torrent_skip_checking;
+        });
+    }
+
+    {
+        let cb_state = state.clone();
         let weak = main_window.as_weak();
+        main_window.on_add_torrent_file_toggled(move |idx| {
+            let mut st = cb_state.lock();
+            if let Some(ref mut preview) = st.add_torrent_preview {
+                let index = usize::try_from(idx).unwrap_or(usize::MAX);
+                if let Some(sel) = preview.file_selected.get_mut(index) {
+                    *sel = !*sel;
+                }
+                bridge::push_add_torrent_preview_files(&weak, preview);
+            }
+        });
+    }
+
+    {
+        let cb_state = state.clone();
+        let weak = main_window.as_weak();
+        main_window.on_add_torrent_select_all_files(move || {
+            let mut st = cb_state.lock();
+            if let Some(ref mut preview) = st.add_torrent_preview {
+                preview.file_selected.fill(true);
+                bridge::push_add_torrent_preview_files(&weak, preview);
+            }
+        });
+    }
+
+    {
+        let cb_state = state.clone();
+        let weak = main_window.as_weak();
+        main_window.on_add_torrent_deselect_all_files(move || {
+            let mut st = cb_state.lock();
+            if let Some(ref mut preview) = st.add_torrent_preview {
+                preview.file_selected.fill(false);
+                bridge::push_add_torrent_preview_files(&weak, preview);
+            }
+        });
+    }
+
+    {
+        let cb_state = state.clone();
+        main_window.on_add_torrent_url_changed(move |_url| {
+            let _cmd_tx = {
+                let st = cb_state.lock();
+                st.cmd_tx.clone()
+            };
+            // URL fetch deferred — placeholder for now
+        });
+    }
+
+    {
+        let weak = main_window.as_weak();
+        let cb_state = state.clone();
         main_window.on_browse_torrent_file(move || {
-            bridge::handle_browse_torrent_file(&weak);
+            bridge::handle_browse_torrent_file(&weak, &cb_state);
         });
     }
 
@@ -820,11 +918,13 @@ fn main() -> Result<(), error::GuiError> {
             match action {
                 palette::DispatchAction::ShowAddMagnet => {
                     let _ = weak2.upgrade_in_event_loop(|win| {
-                        win.set_show_add_magnet_dialog(true);
+                        win.set_add_torrent_tab("magnet".into());
+                        win.set_show_add_torrent_dialog(true);
                     });
                 }
                 palette::DispatchAction::ShowAddTorrent => {
                     let _ = weak2.upgrade_in_event_loop(|win| {
+                        win.set_add_torrent_tab("file".into());
                         win.set_show_add_torrent_dialog(true);
                     });
                 }
