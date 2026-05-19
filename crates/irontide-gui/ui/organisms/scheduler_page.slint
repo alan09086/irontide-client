@@ -1,0 +1,489 @@
+import { Tokens } from "../tokens.slint";
+
+export struct SchedulerCell {
+    state: int,
+}
+
+export component SchedulerPage inherits Rectangle {
+    in property <bool> enabled: false;
+    in property <[SchedulerCell]> cells;
+    in property <int> limited-rate-kib: 512;
+
+    callback toggle-enabled();
+    callback cell-clicked(int, int);
+    callback apply-preset(string);
+    callback limited-rate-changed(int);
+
+    background: Tokens.bg-0;
+
+    VerticalLayout {
+        padding: Tokens.sp-3;
+        spacing: Tokens.sp-3;
+
+        // Header
+        HorizontalLayout {
+            spacing: Tokens.sp-2;
+
+            Text {
+                horizontal-stretch: 1;
+                text: "Bandwidth Scheduler";
+                color: Tokens.fg-0;
+                font-size: Tokens.fs-16;
+                font-weight: 700;
+                vertical-alignment: center;
+            }
+
+            // Enable toggle
+            Rectangle {
+                width: Tokens.sp-10 + Tokens.sp-4;
+                height: Tokens.sp-7;
+                border-radius: Tokens.r-sm;
+                background: enable-touch.has-hover
+                    ? Tokens.bg-hover
+                    : (root.enabled ? Tokens.accent : Tokens.bg-1);
+                border-width: 1px;
+                border-color: Tokens.border-1;
+
+                Text {
+                    text: root.enabled ? "Enabled" : "Disabled";
+                    color: root.enabled ? Tokens.accent-fg : Tokens.fg-2;
+                    font-size: Tokens.fs-12;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                enable-touch := TouchArea {
+                    clicked => {
+                        root.toggle-enabled();
+                    }
+                }
+            }
+        }
+
+        // Preset buttons
+        HorizontalLayout {
+            spacing: Tokens.sp-2;
+
+            Text {
+                text: "Presets:";
+                color: Tokens.fg-2;
+                font-size: Tokens.fs-12;
+                vertical-alignment: center;
+            }
+
+            Rectangle {
+                width: Tokens.sp-10 + Tokens.sp-8;
+                height: Tokens.sp-7;
+                border-radius: Tokens.r-sm;
+                background: preset-full-touch.has-hover ? Tokens.accent-hover : Tokens.bg-1;
+                border-width: 1px;
+                border-color: Tokens.border-1;
+
+                Text {
+                    text: "Always On";
+                    color: Tokens.fg-0;
+                    font-size: Tokens.fs-12;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                preset-full-touch := TouchArea {
+                    clicked => {
+                        root.apply-preset("always_on");
+                    }
+                }
+            }
+
+            Rectangle {
+                width: Tokens.sp-10 + Tokens.sp-8;
+                height: Tokens.sp-7;
+                border-radius: Tokens.r-sm;
+                background: preset-night-touch.has-hover ? Tokens.accent-hover : Tokens.bg-1;
+                border-width: 1px;
+                border-color: Tokens.border-1;
+
+                Text {
+                    text: "Night Only";
+                    color: Tokens.fg-0;
+                    font-size: Tokens.fs-12;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                preset-night-touch := TouchArea {
+                    clicked => {
+                        root.apply-preset("night_only");
+                    }
+                }
+            }
+
+            Rectangle {
+                width: Tokens.sp-10 + Tokens.sp-10;
+                height: Tokens.sp-7;
+                border-radius: Tokens.r-sm;
+                background: preset-work-touch.has-hover ? Tokens.accent-hover : Tokens.bg-1;
+                border-width: 1px;
+                border-color: Tokens.border-1;
+
+                Text {
+                    text: "Work Limited";
+                    color: Tokens.fg-0;
+                    font-size: Tokens.fs-12;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                preset-work-touch := TouchArea {
+                    clicked => {
+                        root.apply-preset("work_limited");
+                    }
+                }
+            }
+
+            Rectangle { horizontal-stretch: 1; }
+
+            // Limited rate control
+            Text {
+                text: "Limited rate:";
+                color: Tokens.fg-2;
+                font-size: Tokens.fs-12;
+                vertical-alignment: center;
+            }
+
+            Rectangle {
+                width: Tokens.sp-10 + Tokens.sp-4;
+                height: Tokens.sp-7;
+                border-radius: Tokens.r-sm;
+                background: Tokens.bg-0;
+                border-width: 1px;
+                border-color: Tokens.border-1;
+
+                rate-input := TextInput {
+                    x: Tokens.sp-1;
+                    y: 0;
+                    width: parent.width - Tokens.sp-2;
+                    height: parent.height;
+                    color: Tokens.fg-0;
+                    font-size: Tokens.fs-12;
+                    text: root.limited-rate-kib;
+                    accepted => {
+                        root.limited-rate-changed(self.text.to-float());
+                    }
+                }
+            }
+
+            Text {
+                text: "KiB/s";
+                color: Tokens.fg-2;
+                font-size: Tokens.fs-12;
+                vertical-alignment: center;
+            }
+        }
+
+        // Legend
+        HorizontalLayout {
+            spacing: Tokens.sp-3;
+
+            HorizontalLayout {
+                spacing: Tokens.sp-1;
+                Rectangle {
+                    width: Tokens.sp-4;
+                    height: Tokens.sp-4;
+                    border-radius: 2px;
+                    background: Tokens.status-seeding;
+                }
+                Text {
+                    text: "Full speed";
+                    color: Tokens.fg-2;
+                    font-size: Tokens.fs-11;
+                    vertical-alignment: center;
+                }
+            }
+
+            HorizontalLayout {
+                spacing: Tokens.sp-1;
+                Rectangle {
+                    width: Tokens.sp-4;
+                    height: Tokens.sp-4;
+                    border-radius: 2px;
+                    background: Tokens.status-downloading;
+                }
+                Text {
+                    text: "Limited";
+                    color: Tokens.fg-2;
+                    font-size: Tokens.fs-11;
+                    vertical-alignment: center;
+                }
+            }
+
+            HorizontalLayout {
+                spacing: Tokens.sp-1;
+                Rectangle {
+                    width: Tokens.sp-4;
+                    height: Tokens.sp-4;
+                    border-radius: 2px;
+                    background: Tokens.bg-hover;
+                }
+                Text {
+                    text: "Off";
+                    color: Tokens.fg-2;
+                    font-size: Tokens.fs-11;
+                    vertical-alignment: center;
+                }
+            }
+
+            Rectangle { horizontal-stretch: 1; }
+        }
+
+        // Grid
+        Rectangle {
+            vertical-stretch: 1;
+            background: Tokens.bg-1;
+            border-radius: Tokens.r-md;
+            border-width: 1px;
+            border-color: Tokens.border-1;
+
+            VerticalLayout {
+                padding: Tokens.sp-2;
+                spacing: 1px;
+
+                // Hour headers
+                HorizontalLayout {
+                    spacing: 1px;
+                    Rectangle { width: 40px; }
+
+                    for hour in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23] : Rectangle {
+                        horizontal-stretch: 1;
+                        height: 20px;
+
+                        Text {
+                            text: hour;
+                            color: Tokens.fg-2;
+                            font-size: Tokens.fs-11;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                // Day 0 = Monday
+                HorizontalLayout {
+                    spacing: 1px;
+                    Rectangle {
+                        width: 40px;
+                        Text { text: "Mon"; color: Tokens.fg-1; font-size: Tokens.fs-12; vertical-alignment: center; }
+                    }
+                    for hour in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23] : Rectangle {
+                        horizontal-stretch: 1;
+                        height: 28px;
+                        border-radius: 2px;
+                        background: {
+                            if (root.cells.length > hour) {
+                                if (root.cells[hour].state == 1) {
+                                    Tokens.status-downloading
+                                } else if (root.cells[hour].state == 2) {
+                                    Tokens.bg-hover
+                                } else {
+                                    Tokens.status-seeding
+                                }
+                            } else {
+                                Tokens.status-seeding
+                            }
+                        }
+                        TouchArea {
+                            clicked => { root.cell-clicked(0, hour); }
+                        }
+                    }
+                }
+
+                // Day 1 = Tuesday
+                HorizontalLayout {
+                    spacing: 1px;
+                    Rectangle {
+                        width: 40px;
+                        Text { text: "Tue"; color: Tokens.fg-1; font-size: Tokens.fs-12; vertical-alignment: center; }
+                    }
+                    for hour in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23] : Rectangle {
+                        horizontal-stretch: 1;
+                        height: 28px;
+                        border-radius: 2px;
+                        background: {
+                            if (root.cells.length > 24 + hour) {
+                                if (root.cells[24 + hour].state == 1) {
+                                    Tokens.status-downloading
+                                } else if (root.cells[24 + hour].state == 2) {
+                                    Tokens.bg-hover
+                                } else {
+                                    Tokens.status-seeding
+                                }
+                            } else {
+                                Tokens.status-seeding
+                            }
+                        }
+                        TouchArea {
+                            clicked => { root.cell-clicked(1, hour); }
+                        }
+                    }
+                }
+
+                // Day 2 = Wednesday
+                HorizontalLayout {
+                    spacing: 1px;
+                    Rectangle {
+                        width: 40px;
+                        Text { text: "Wed"; color: Tokens.fg-1; font-size: Tokens.fs-12; vertical-alignment: center; }
+                    }
+                    for hour in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23] : Rectangle {
+                        horizontal-stretch: 1;
+                        height: 28px;
+                        border-radius: 2px;
+                        background: {
+                            if (root.cells.length > 48 + hour) {
+                                if (root.cells[48 + hour].state == 1) {
+                                    Tokens.status-downloading
+                                } else if (root.cells[48 + hour].state == 2) {
+                                    Tokens.bg-hover
+                                } else {
+                                    Tokens.status-seeding
+                                }
+                            } else {
+                                Tokens.status-seeding
+                            }
+                        }
+                        TouchArea {
+                            clicked => { root.cell-clicked(2, hour); }
+                        }
+                    }
+                }
+
+                // Day 3 = Thursday
+                HorizontalLayout {
+                    spacing: 1px;
+                    Rectangle {
+                        width: 40px;
+                        Text { text: "Thu"; color: Tokens.fg-1; font-size: Tokens.fs-12; vertical-alignment: center; }
+                    }
+                    for hour in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23] : Rectangle {
+                        horizontal-stretch: 1;
+                        height: 28px;
+                        border-radius: 2px;
+                        background: {
+                            if (root.cells.length > 72 + hour) {
+                                if (root.cells[72 + hour].state == 1) {
+                                    Tokens.status-downloading
+                                } else if (root.cells[72 + hour].state == 2) {
+                                    Tokens.bg-hover
+                                } else {
+                                    Tokens.status-seeding
+                                }
+                            } else {
+                                Tokens.status-seeding
+                            }
+                        }
+                        TouchArea {
+                            clicked => { root.cell-clicked(3, hour); }
+                        }
+                    }
+                }
+
+                // Day 4 = Friday
+                HorizontalLayout {
+                    spacing: 1px;
+                    Rectangle {
+                        width: 40px;
+                        Text { text: "Fri"; color: Tokens.fg-1; font-size: Tokens.fs-12; vertical-alignment: center; }
+                    }
+                    for hour in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23] : Rectangle {
+                        horizontal-stretch: 1;
+                        height: 28px;
+                        border-radius: 2px;
+                        background: {
+                            if (root.cells.length > 96 + hour) {
+                                if (root.cells[96 + hour].state == 1) {
+                                    Tokens.status-downloading
+                                } else if (root.cells[96 + hour].state == 2) {
+                                    Tokens.bg-hover
+                                } else {
+                                    Tokens.status-seeding
+                                }
+                            } else {
+                                Tokens.status-seeding
+                            }
+                        }
+                        TouchArea {
+                            clicked => { root.cell-clicked(4, hour); }
+                        }
+                    }
+                }
+
+                // Day 5 = Saturday
+                HorizontalLayout {
+                    spacing: 1px;
+                    Rectangle {
+                        width: 40px;
+                        Text { text: "Sat"; color: Tokens.fg-1; font-size: Tokens.fs-12; vertical-alignment: center; }
+                    }
+                    for hour in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23] : Rectangle {
+                        horizontal-stretch: 1;
+                        height: 28px;
+                        border-radius: 2px;
+                        background: {
+                            if (root.cells.length > 120 + hour) {
+                                if (root.cells[120 + hour].state == 1) {
+                                    Tokens.status-downloading
+                                } else if (root.cells[120 + hour].state == 2) {
+                                    Tokens.bg-hover
+                                } else {
+                                    Tokens.status-seeding
+                                }
+                            } else {
+                                Tokens.status-seeding
+                            }
+                        }
+                        TouchArea {
+                            clicked => { root.cell-clicked(5, hour); }
+                        }
+                    }
+                }
+
+                // Day 6 = Sunday
+                HorizontalLayout {
+                    spacing: 1px;
+                    Rectangle {
+                        width: 40px;
+                        Text { text: "Sun"; color: Tokens.fg-1; font-size: Tokens.fs-12; vertical-alignment: center; }
+                    }
+                    for hour in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23] : Rectangle {
+                        horizontal-stretch: 1;
+                        height: 28px;
+                        border-radius: 2px;
+                        background: {
+                            if (root.cells.length > 144 + hour) {
+                                if (root.cells[144 + hour].state == 1) {
+                                    Tokens.status-downloading
+                                } else if (root.cells[144 + hour].state == 2) {
+                                    Tokens.bg-hover
+                                } else {
+                                    Tokens.status-seeding
+                                }
+                            } else {
+                                Tokens.status-seeding
+                            }
+                        }
+                        TouchArea {
+                            clicked => { root.cell-clicked(6, hour); }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Status
+        if !root.enabled : Text {
+            text: "Scheduler is disabled — downloads run at full speed";
+            color: Tokens.fg-2;
+            font-size: Tokens.fs-12;
+            horizontal-alignment: center;
+        }
+    }
+}

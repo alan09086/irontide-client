@@ -323,6 +323,14 @@ pub enum GuiCommand {
         index: usize,
         selected_feed: i32,
     },
+    /// M198: toggle bandwidth scheduler enabled state.
+    SchedulerToggleEnabled,
+    /// M198: cycle a scheduler grid cell.
+    SchedulerCellClicked { day: usize, hour: usize },
+    /// M198: apply a named scheduler preset.
+    SchedulerApplyPreset { name: String },
+    /// M198: update the limited rate.
+    SchedulerLimitedRateChanged { rate_kib: u32 },
     /// M180: set per-torrent DL/UL rate limits.
     SetTorrentRateLimit {
         /// Hex-encoded info-hash string.

@@ -12,6 +12,7 @@ mod prefs;
 mod sidebar;
 mod sidebar_view;
 mod rss;
+mod scheduler;
 mod search;
 mod single_instance;
 mod skin;
@@ -1035,6 +1036,7 @@ fn main() -> Result<(), error::GuiError> {
                         win.set_show_search_page(!current);
                         if !current {
                             win.set_show_rss_page(false);
+                            win.set_show_scheduler_page(false);
                         }
                     });
                 }
@@ -1044,6 +1046,19 @@ fn main() -> Result<(), error::GuiError> {
                         win.set_show_rss_page(!current);
                         if !current {
                             win.set_show_search_page(false);
+                            win.set_show_scheduler_page(false);
+                        }
+                    });
+                }
+                palette::DispatchAction::ToggleScheduler => {
+                    let sched_weak = weak2.clone();
+                    let _ = weak2.upgrade_in_event_loop(move |win| {
+                        let current = win.get_show_scheduler_page();
+                        win.set_show_scheduler_page(!current);
+                        if !current {
+                            win.set_show_search_page(false);
+                            win.set_show_rss_page(false);
+                            crate::bridge::push_scheduler_state(&sched_weak);
                         }
                     });
                 }
@@ -1260,6 +1275,51 @@ fn main() -> Result<(), error::GuiError> {
                 let _ = tx.send(app::GuiCommand::RssMarkItemRead {
                     index: usize::try_from(idx).unwrap_or(0),
                     selected_feed,
+                });
+            }
+        });
+    }
+
+    // 6l. Wire Bandwidth Scheduler callbacks (M198).
+    {
+        let cb_state = state.clone();
+        main_window.on_scheduler_toggle_enabled(move || {
+            let cmd_tx = cb_state.lock().cmd_tx.clone();
+            if let Some(tx) = cmd_tx {
+                let _ = tx.send(app::GuiCommand::SchedulerToggleEnabled);
+            }
+        });
+    }
+    {
+        let cb_state = state.clone();
+        main_window.on_scheduler_cell_clicked(move |day, hour| {
+            let cmd_tx = cb_state.lock().cmd_tx.clone();
+            if let Some(tx) = cmd_tx {
+                let _ = tx.send(app::GuiCommand::SchedulerCellClicked {
+                    day: usize::try_from(day).unwrap_or(0),
+                    hour: usize::try_from(hour).unwrap_or(0),
+                });
+            }
+        });
+    }
+    {
+        let cb_state = state.clone();
+        main_window.on_scheduler_apply_preset(move |name| {
+            let cmd_tx = cb_state.lock().cmd_tx.clone();
+            if let Some(tx) = cmd_tx {
+                let _ = tx.send(app::GuiCommand::SchedulerApplyPreset {
+                    name: name.to_string(),
+                });
+            }
+        });
+    }
+    {
+        let cb_state = state.clone();
+        main_window.on_scheduler_limited_rate_changed(move |rate| {
+            let cmd_tx = cb_state.lock().cmd_tx.clone();
+            if let Some(tx) = cmd_tx {
+                let _ = tx.send(app::GuiCommand::SchedulerLimitedRateChanged {
+                    rate_kib: u32::try_from(rate).unwrap_or(512),
                 });
             }
         });
