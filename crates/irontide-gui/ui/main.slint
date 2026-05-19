@@ -26,8 +26,9 @@ import { TorrentListView, TorrentRow } from "organisms/torrent_list.slint";
 import { DetailPane, FileTreeRow, PeerRow, TrackerRow, WebSeedRow } from "organisms/detail_pane.slint";
 import { FilePriorityPopup } from "molecules/file_priority_popup.slint";
 import { CommandPalette, PaletteItem, PaletteCategory } from "organisms/command_palette.slint";
+import { SearchPage, SearchResultRow } from "organisms/search_page.slint";
 
-export { Tokens, Shadow, SidebarRow, TorrentRow, FileTreeRow, PaletteItem, PaletteCategory }
+export { Tokens, Shadow, SidebarRow, TorrentRow, FileTreeRow, PaletteItem, PaletteCategory, SearchResultRow }
 
 component MenuButton {
     in property <string> text;
@@ -342,6 +343,14 @@ export component MainWindow inherits Window {
     // startup from `APP_VERSION` in main.rs. Surfaced in the StatusBar
     // footer and the new About tab in the preferences dialog.
     in-out property <string> app-version: "";
+
+    // ── Search (M196) ──
+    in-out property <bool> show-search-page: false;
+    in-out property <[SearchResultRow]> search-results;
+    in-out property <int> search-result-count: 0;
+    in-out property <bool> search-loading: false;
+    callback search-requested(string);
+    callback search-add-result(string);
 
     // ── Modifier tracking ──
     in-out property <bool> shift-held: false;
@@ -768,12 +777,21 @@ export component MainWindow inherits Window {
                     }
                 }
 
-                // List above + detail pane below.
+                // List above + detail pane below (or search page).
                 VerticalLayout {
                     spacing: 0;
                     horizontal-stretch: 1;
 
-                    TorrentListView {
+                    if root.show-search-page : SearchPage {
+                        vertical-stretch: 1;
+                        results: root.search-results;
+                        result-count: root.search-result-count;
+                        searching: root.search-loading;
+                        search-requested(q) => { root.search-requested(q); }
+                        add-result(url) => { root.search-add-result(url); }
+                    }
+
+                    if !root.show-search-page : TorrentListView {
                         vertical-stretch: 2;
                         session-ready: root.session-ready;
                         error-text: root.error-text;
@@ -799,7 +817,7 @@ export component MainWindow inherits Window {
                         column-visibility-toggled(c) => { root.column-visibility-toggled(c); }
                     }
 
-                    if root.session-ready && root.error-text == "": Rectangle {
+                    if root.session-ready && root.error-text == "" && !root.show-search-page: Rectangle {
                         vertical-stretch: 1;
                         min-height: Tokens.sp-10 * 5;
                         background: Tokens.bg-1;

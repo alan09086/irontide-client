@@ -290,6 +290,15 @@ pub enum GuiCommand {
     OpenMagnet {
         uri: String,
     },
+    /// M196: execute a search query against enabled plugins.
+    SearchQuery {
+        query: String,
+        plugin_name: Option<String>,
+    },
+    /// M196: add a torrent from a search result magnet URL.
+    SearchAddResult {
+        magnet_url: String,
+    },
     /// M180: set per-torrent DL/UL rate limits.
     SetTorrentRateLimit {
         /// Hex-encoded info-hash string.

@@ -627,6 +627,15 @@ async fn handle_gui_command(
         GuiCommand::OpenMagnet { uri } => {
             handle_open_magnet(&uri, session, weak).await;
         }
+        GuiCommand::SearchQuery {
+            query,
+            plugin_name,
+        } => {
+            handle_search_query(&query, plugin_name.as_deref(), weak).await;
+        }
+        GuiCommand::SearchAddResult { magnet_url } => {
+            handle_open_magnet(&magnet_url, session, weak).await;
+        }
     }
 
     let elapsed = start.elapsed();
@@ -1791,6 +1800,96 @@ async fn handle_resume_all(
     }
     let msg = format!("Resumed {resumed} torrent(s)");
     show_toast(weak, &msg, false);
+}
+
+async fn handle_search_query(
+    query: &str,
+    plugin_name: Option<&str>,
+    weak: &slint::Weak<crate::MainWindow>,
+) {
+    let plugins = crate::search::load_plugins();
+    let active: Vec<&crate::search::SearchPlugin> = plugins
+        .iter()
+        .filter(|p| p.enabled)
+        .filter(|p| plugin_name.is_none_or(|n| p.name == n))
+        .collect();
+
+    if active.is_empty() {
+        show_toast(weak, "No search plugins configured", true);
+        push_search_results(weak, &[]);
+        return;
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .unwrap_or_default();
+
+    let mut all_results = Vec::new();
+
+    for plugin in &active {
+        let url = crate::search::build_search_url(plugin, query);
+        match client.get(&url).send().await {
+            Ok(resp) if resp.status().is_success() => {
+                if let Ok(body) = resp.text().await {
+                    let crate::search::ResultFormat::Json {
+                        ref results_path,
+                        ref fields,
+                    } = plugin.result_format;
+                    let results = crate::search::parse_json_results(
+                        &body,
+                        results_path,
+                        fields,
+                        &plugin.name,
+                    );
+                    all_results.extend(results);
+                }
+            }
+            Ok(resp) => {
+                tracing::warn!(
+                    plugin = %plugin.name,
+                    status = %resp.status(),
+                    "search plugin returned error"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(plugin = %plugin.name, error = %e, "search plugin request failed");
+            }
+        }
+    }
+
+    all_results.sort_by_key(|r| std::cmp::Reverse(r.seeds));
+    push_search_results(weak, &all_results);
+
+    if all_results.is_empty() {
+        show_toast(weak, "No results found", false);
+    } else {
+        let msg = format!("Found {} result(s)", all_results.len());
+        show_toast(weak, &msg, false);
+    }
+}
+
+fn push_search_results(
+    weak: &slint::Weak<crate::MainWindow>,
+    results: &[crate::search::SearchResult],
+) {
+    let count = i32::try_from(results.len()).unwrap_or(0);
+    let rows: Vec<crate::SearchResultRow> = results
+        .iter()
+        .map(|r| crate::SearchResultRow {
+            name: r.name.clone().into(),
+            magnet_url: r.magnet_url.clone().into(),
+            size: r.size.clone().into(),
+            seeds: r.seeds,
+            leechers: r.leechers,
+            source: r.source.clone().into(),
+        })
+        .collect();
+    let _ = weak.upgrade_in_event_loop(move |win| {
+        let model = std::rc::Rc::new(slint::VecModel::from(rows));
+        win.set_search_results(slint::ModelRc::from(model));
+        win.set_search_result_count(count);
+    });
 }
 
 async fn handle_open_torrent_file(
