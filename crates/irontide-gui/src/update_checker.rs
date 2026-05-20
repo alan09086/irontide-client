@@ -65,28 +65,19 @@ pub struct UpdateInfo {
     pub url: String,
 }
 
-/// Check for a newer release. Returns `Some(UpdateInfo)` if a newer
-/// version is available, `None` if current or newer.
-pub async fn check_for_update(current_version: &str) -> Option<UpdateInfo> {
+/// Check for an update using a blocking HTTP client (no Tokio runtime needed).
+fn check_for_update_blocking(current_version: &str) -> Option<UpdateInfo> {
     let current = SemVer::parse(current_version)?;
 
-    let client = reqwest::Client::builder()
+    let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(15))
         .user_agent(format!("irontide/{current_version}"))
         .build()
         .ok()?;
 
-    let releases: Vec<Release> = client
-        .get(RELEASES_URL)
-        .send()
-        .await
-        .ok()?
-        .json()
-        .await
-        .ok()?;
+    let releases: Vec<Release> = client.get(RELEASES_URL).send().ok()?.json().ok()?;
 
     let latest = releases.into_iter().find(|r| !r.prerelease && !r.draft)?;
-
     let latest_ver = SemVer::parse(&latest.tag_name)?;
 
     if latest_ver.is_newer_than(&current) {
@@ -99,31 +90,33 @@ pub async fn check_for_update(current_version: &str) -> Option<UpdateInfo> {
     }
 }
 
-/// Spawn a background task that periodically checks for updates and
+/// Spawn a background thread that periodically checks for updates and
 /// pushes notifications to the Slint UI.
 pub fn spawn_update_checker(weak: slint::Weak<crate::MainWindow>) {
     let version = env!("CARGO_PKG_VERSION").to_string();
-    tokio::spawn(async move {
-        tokio::time::sleep(INITIAL_DELAY).await;
-
-        loop {
-            if let Some(info) = check_for_update(&version).await {
-                let weak = weak.clone();
-                let msg: slint::SharedString = format!(
-                    "Update available: {} — {}",
-                    info.version, info.url
-                )
-                .into();
-                let _ = weak.upgrade_in_event_loop(move |win| {
-                    win.set_update_available(true);
-                    win.set_update_version(info.version.as_str().into());
-                    win.set_update_url(info.url.as_str().into());
-                    win.set_update_message(msg);
-                });
+    std::thread::Builder::new()
+        .name("update-checker".into())
+        .spawn(move || {
+            std::thread::sleep(INITIAL_DELAY);
+            loop {
+                if let Some(info) = check_for_update_blocking(&version) {
+                    let weak = weak.clone();
+                    let msg: slint::SharedString = format!(
+                        "Update available: {} — {}",
+                        info.version, info.url
+                    )
+                    .into();
+                    let _ = weak.upgrade_in_event_loop(move |win| {
+                        win.set_update_available(true);
+                        win.set_update_version(info.version.as_str().into());
+                        win.set_update_url(info.url.as_str().into());
+                        win.set_update_message(msg);
+                    });
+                }
+                std::thread::sleep(CHECK_INTERVAL);
             }
-            tokio::time::sleep(CHECK_INTERVAL).await;
-        }
-    });
+        })
+        .expect("failed to spawn update checker thread");
 }
 
 #[cfg(test)]

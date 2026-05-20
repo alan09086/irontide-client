@@ -1571,13 +1571,16 @@ fn main() -> Result<(), error::GuiError> {
     }
 
     // 7. Build system tray (M193).
-    let tray_handle = match tray::TrayHandle::new() {
+    //    libappindicator requires GTK to be initialised. On Wayland-only
+    //    compositors or headless setups, gtk::init may fail — guard it so
+    //    the GUI still works without a tray icon.
+    let tray_handle = match tray::try_init_tray() {
         Ok(h) => {
             tracing::info!("system tray icon created");
             Some(h)
         }
         Err(e) => {
-            tracing::warn!("failed to create system tray: {e} — running without tray");
+            tracing::warn!("system tray unavailable: {e} — running without tray");
             None
         }
     };

@@ -1,6 +1,11 @@
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
+pub fn try_init_tray() -> Result<TrayHandle, Box<dyn std::error::Error>> {
+    gtk::init().map_err(|_| "GTK initialisation failed (no display?)")?;
+    Ok(TrayHandle::new()?)
+}
+
 const ICON_SIZE: u32 = 32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
