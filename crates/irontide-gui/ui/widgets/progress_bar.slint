@@ -4,6 +4,8 @@ import { Tokens } from "../tokens.slint";
 import { StatusDot } from "../atoms/status_dot.slint";
 
 export component TorrentProgressBar {
+    accessible-role: progress-indicator;
+    accessible-label: root.progress-text;
     in property <float> progress: 0.0;
     in property <color> fill-color: Tokens.status-seeding;
     in property <string> progress-text: "";

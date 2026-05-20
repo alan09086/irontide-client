@@ -1088,6 +1088,8 @@ component SpeedTab inherits VerticalLayout {
 // scope. When `info-hash == ""` we render the M176 empty-state copy
 // so deselection always returns the same look across layouts.
 export component DetailPane inherits Rectangle {
+    accessible-role: none;
+    accessible-label: "Torrent detail pane";
     in property <string> info-hash: "";
     in property <string> active-tab: "General";
     callback tab-changed(string);

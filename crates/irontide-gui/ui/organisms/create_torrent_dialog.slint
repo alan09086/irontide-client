@@ -110,6 +110,8 @@ export component CreateTorrentDialog {
                                     vertical-alignment: center;
                                 }
                                 browse-src-touch := TouchArea {
+                                    accessible-role: button;
+                                    accessible-label: "Browse source";
                                     clicked => { root.browse-source(); }
                                 }
                             }
@@ -135,6 +137,7 @@ export component CreateTorrentDialog {
                             border-radius: Tokens.r-md;
 
                             tracker-input := TextInput {
+                                accessible-label: "Tracker URLs";
                                 x: Tokens.sp-4;
                                 y: Tokens.sp-2;
                                 width: parent.width - Tokens.sp-6;
@@ -203,6 +206,8 @@ export component CreateTorrentDialog {
                                     }
 
                                     private-touch := TouchArea {
+                                        accessible-role: checkbox;
+                                        accessible-label: "Private torrent";
                                         clicked => { root.toggle-private(); }
                                     }
                                 }
@@ -228,6 +233,7 @@ export component CreateTorrentDialog {
                             border-radius: Tokens.r-md;
 
                             comment-input := TextInput {
+                                accessible-label: "Comment";
                                 x: Tokens.sp-4;
                                 y: 0;
                                 width: parent.width - Tokens.sp-6;
@@ -251,6 +257,7 @@ export component CreateTorrentDialog {
                             border-radius: Tokens.r-md;
 
                             source-tag-input := TextInput {
+                                accessible-label: "Source tag";
                                 x: Tokens.sp-4;
                                 y: 0;
                                 width: parent.width - Tokens.sp-6;
@@ -300,6 +307,8 @@ export component CreateTorrentDialog {
                                     vertical-alignment: center;
                                 }
                                 browse-out-touch := TouchArea {
+                                    accessible-role: button;
+                                    accessible-label: "Browse output location";
                                     clicked => { root.browse-output(); }
                                 }
                             }
@@ -371,6 +380,8 @@ export component CreateTorrentDialog {
                                 vertical-alignment: center;
                             }
                             cancel-touch := TouchArea {
+                                accessible-role: button;
+                                accessible-label: "Cancel";
                                 clicked => { root.cancel(); }
                             }
                         }
@@ -393,6 +404,8 @@ export component CreateTorrentDialog {
                                 vertical-alignment: center;
                             }
                             create-touch := TouchArea {
+                                accessible-role: button;
+                                accessible-label: "Create torrent";
                                 clicked => {
                                     if root.source-path != "" && root.output-path != "" && !root.is-creating {
                                         root.create-confirmed();

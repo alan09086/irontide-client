@@ -41,6 +41,9 @@ component MenuButton {
     in property <string> text;
     callback clicked();
 
+    accessible-role: button;
+    accessible-label: root.text;
+
     min-height: Tokens.sp-9 - Tokens.sp-1;
     min-width: Tokens.sp-10 + Tokens.sp-7;
 

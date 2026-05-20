@@ -49,6 +49,8 @@ export component PrefSelect inherits Rectangle {
     }
 
     select-touch := TouchArea {
+        accessible-role: button;
+        accessible-label: root.current-value;
         enabled: root.select-enabled;
         clicked => {
             root.request-popup(root.select-id, self.absolute-position.x, self.absolute-position.y + root.height + Tokens.sp-1, root.width);

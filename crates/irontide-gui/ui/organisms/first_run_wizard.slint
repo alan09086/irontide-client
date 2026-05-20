@@ -1,6 +1,8 @@
 import { Tokens } from "../tokens.slint";
 
 export component FirstRunWizard inherits Rectangle {
+    accessible-role: none;
+    accessible-label: "First run setup wizard";
     in property <int> step: 0;
     in property <string> download-dir: "";
     in property <string> listen-port: "6881";
@@ -88,6 +90,7 @@ export component FirstRunWizard inherits Rectangle {
                     padding-right: Tokens.sp-3;
 
                     dir-input := TextInput {
+                        accessible-label: "Download directory";
                         text: root.download-dir;
                         font-size: Tokens.fs-13;
                         color: Tokens.fg-0;
@@ -148,6 +151,7 @@ export component FirstRunWizard inherits Rectangle {
                         height: 32px;
 
                         port-input := TextInput {
+                            accessible-label: "Listen port";
                             text: root.listen-port;
                             font-size: Tokens.fs-12;
                             color: Tokens.fg-0;
@@ -174,6 +178,8 @@ export component FirstRunWizard inherits Rectangle {
                         vertical-alignment: center;
                     }
                     dht-ta := TouchArea {
+                        accessible-role: switch;
+                        accessible-label: "DHT";
                         width: 40px;
                         mouse-cursor: pointer;
                         clicked => { root.toggle-dht(!root.enable-dht); }
@@ -210,6 +216,8 @@ export component FirstRunWizard inherits Rectangle {
                         vertical-alignment: center;
                     }
                     utp-ta := TouchArea {
+                        accessible-role: switch;
+                        accessible-label: "uTP";
                         width: 40px;
                         mouse-cursor: pointer;
                         clicked => { root.toggle-utp(!root.enable-utp); }
@@ -246,6 +254,8 @@ export component FirstRunWizard inherits Rectangle {
                         vertical-alignment: center;
                     }
                     pex-ta := TouchArea {
+                        accessible-role: switch;
+                        accessible-label: "PEX";
                         width: 40px;
                         mouse-cursor: pointer;
                         clicked => { root.toggle-pex(!root.enable-pex); }

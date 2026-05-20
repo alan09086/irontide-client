@@ -86,6 +86,7 @@ export component CommandPalette {
                         height: Tokens.row-h;
 
                         search-input := TextInput {
+                            accessible-label: "Search commands";
                             x: Tokens.sp-3;
                             y: (parent.height - self.preferred-height) / 2;
                             width: parent.width - Tokens.sp-3 * 2;

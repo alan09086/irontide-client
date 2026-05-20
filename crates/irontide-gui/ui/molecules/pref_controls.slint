@@ -95,6 +95,8 @@ export component PrefToggle inherits Rectangle {
     }
 
     touch := TouchArea {
+        accessible-role: switch;
+        accessible-label: "Toggle";
         enabled: root.toggle-enabled;
         clicked => {
             root.checked = !root.checked;
@@ -119,6 +121,7 @@ export component PrefTextInput inherits Rectangle {
     opacity: root.input-enabled ? 1.0 : 0.5;
 
     text-input := TextInput {
+        accessible-label: root.placeholder != "" ? root.placeholder : "Text input";
         x: Tokens.sp-4;
         y: 0;
         width: parent.width - Tokens.sp-6;

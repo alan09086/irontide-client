@@ -74,6 +74,8 @@ component Spinner {
 }
 
 export component TorrentListView {
+    accessible-role: list;
+    accessible-label: "Torrent list";
     // ── Session state ─────────────────────────────────────────────────
     in property <bool> session-ready: false;
     in property <string> error-text: "";
