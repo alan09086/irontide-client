@@ -66,6 +66,8 @@ export component FilePriorityPopup {
                         x: Tokens.sp-4;
                     }
                     skip-touch := TouchArea {
+                        accessible-role: button;
+                        accessible-label: "Skip";
                         clicked => { root.priority-selected(0); }
                     }
                 }
@@ -84,6 +86,8 @@ export component FilePriorityPopup {
                         x: Tokens.sp-4;
                     }
                     low-touch := TouchArea {
+                        accessible-role: button;
+                        accessible-label: "Low";
                         clicked => { root.priority-selected(1); }
                     }
                 }
@@ -102,6 +106,8 @@ export component FilePriorityPopup {
                         x: Tokens.sp-4;
                     }
                     normal-touch := TouchArea {
+                        accessible-role: button;
+                        accessible-label: "Normal";
                         clicked => { root.priority-selected(4); }
                     }
                 }
@@ -120,6 +126,8 @@ export component FilePriorityPopup {
                         x: Tokens.sp-4;
                     }
                     high-touch := TouchArea {
+                        accessible-role: button;
+                        accessible-label: "High";
                         clicked => { root.priority-selected(7); }
                     }
                 }

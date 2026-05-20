@@ -79,6 +79,8 @@ export component ConfirmDeleteDialog {
                         }
 
                         check-state := TouchArea {
+                            accessible-role: checkbox;
+                            accessible-label: "Also delete files on disk";
                             clicked => { root.check-active = !root.check-active; }
                         }
                     }
@@ -117,6 +119,8 @@ export component ConfirmDeleteDialog {
                         }
 
                         cancel-touch := TouchArea {
+                            accessible-role: button;
+                            accessible-label: "Cancel";
                             clicked => { root.cancel(); }
                         }
                     }
@@ -137,6 +141,8 @@ export component ConfirmDeleteDialog {
                         }
 
                         remove-touch := TouchArea {
+                            accessible-role: button;
+                            accessible-label: "Remove";
                             clicked => { root.delete-confirmed(root.check-active); }
                         }
                     }

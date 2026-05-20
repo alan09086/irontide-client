@@ -89,6 +89,8 @@ export component AddTorrentDialog {
                                 vertical-alignment: center;
                             }
                             browse-file-touch := TouchArea {
+                                accessible-role: button;
+                                accessible-label: "Browse torrent file";
                                 clicked => { root.browse-torrent-file(); }
                             }
                         }
@@ -156,6 +158,7 @@ export component AddTorrentDialog {
                             border-radius: Tokens.r-md;
 
                             dir-input := TextInput {
+                                accessible-label: "Download directory";
                                 x: Tokens.sp-4;
                                 y: 0;
                                 width: parent.width - Tokens.sp-6;
@@ -179,6 +182,8 @@ export component AddTorrentDialog {
                                 vertical-alignment: center;
                             }
                             browse-dir-touch := TouchArea {
+                                accessible-role: button;
+                                accessible-label: "Browse download directory";
                                 clicked => { root.browse-download-dir(); }
                             }
                         }
@@ -205,6 +210,8 @@ export component AddTorrentDialog {
                             vertical-alignment: center;
                         }
                         cancel-touch := TouchArea {
+                            accessible-role: button;
+                            accessible-label: "Cancel";
                             clicked => { root.cancel(); }
                         }
                     }
@@ -225,6 +232,8 @@ export component AddTorrentDialog {
                             vertical-alignment: center;
                         }
                         add-touch := TouchArea {
+                            accessible-role: button;
+                            accessible-label: "Add torrent";
                             enabled: root.torrent-name != "";
                             clicked => { root.add-confirmed(root.selected-file-path, dir-input.text); }
                         }

@@ -17,6 +17,8 @@ export component PrefResetRow inherits VerticalLayout {
             border-radius: Tokens.r-sm;
 
             touch := TouchArea {
+                accessible-role: button;
+                accessible-label: "Reset to Defaults";
                 clicked => { root.reset-requested(); }
             }
 

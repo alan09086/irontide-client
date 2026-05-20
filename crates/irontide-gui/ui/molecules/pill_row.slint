@@ -56,6 +56,8 @@ export component PillRow {
             }
 
             touch := TouchArea {
+                accessible-role: button;
+                accessible-label: opt;
                 enabled: !root.disabled;
                 clicked => { root.option-clicked(opt); }
             }

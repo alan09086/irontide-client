@@ -60,6 +60,8 @@ export component SidebarSection {
         }
 
         touch := TouchArea {
+            accessible-role: button;
+            accessible-label: root.label;
             mouse-cursor: pointer;
             clicked => {
                 root.collapsed = !root.collapsed;

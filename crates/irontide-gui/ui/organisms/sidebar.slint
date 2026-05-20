@@ -103,6 +103,8 @@ export component Sidebar {
                     vertical-alignment: center;
                 }
                 lib-touch := TouchArea {
+                    accessible-role: button;
+                    accessible-label: "Library";
                     mouse-cursor: pointer;
                     clicked => {
                         if root.library-rows.length > 0 {
@@ -126,6 +128,8 @@ export component Sidebar {
                     vertical-alignment: center;
                 }
                 cat-touch := TouchArea {
+                    accessible-role: button;
+                    accessible-label: "Categories";
                     mouse-cursor: pointer;
                     clicked => {
                         if root.category-rows.length > 0 {
@@ -149,6 +153,8 @@ export component Sidebar {
                     vertical-alignment: center;
                 }
                 tag-touch := TouchArea {
+                    accessible-role: button;
+                    accessible-label: "Tags";
                     mouse-cursor: pointer;
                     clicked => {
                         if root.tag-rows.length > 0 {
@@ -172,6 +178,8 @@ export component Sidebar {
                     vertical-alignment: center;
                 }
                 trk-touch := TouchArea {
+                    accessible-role: button;
+                    accessible-label: "Trackers";
                     mouse-cursor: pointer;
                     clicked => {
                         if root.tracker-rows.length > 0 {

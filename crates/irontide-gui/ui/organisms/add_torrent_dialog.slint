@@ -134,6 +134,8 @@ export component AddTorrentDialog {
                                 vertical-alignment: center;
                             }
                             browse-file-touch := TouchArea {
+                                accessible-role: button;
+                                accessible-label: "Browse torrent file";
                                 clicked => { root.browse-torrent-file(); }
                             }
                         }
@@ -152,6 +154,7 @@ export component AddTorrentDialog {
                         border-radius: Tokens.r-md;
 
                         magnet-input := TextInput {
+                            accessible-label: "Magnet URI";
                             x: Tokens.sp-4;
                             y: 0;
                             width: parent.width - Tokens.sp-6;
@@ -183,6 +186,7 @@ export component AddTorrentDialog {
                         border-radius: Tokens.r-md;
 
                         url-input := TextInput {
+                            accessible-label: "Torrent URL";
                             x: Tokens.sp-4;
                             y: 0;
                             width: parent.width - Tokens.sp-6;
@@ -304,6 +308,8 @@ export component AddTorrentDialog {
                                         vertical-alignment: center;
                                     }
                                     sel-all-touch := TouchArea {
+                                        accessible-role: button;
+                                        accessible-label: "Select all files";
                                         clicked => { root.select-all-files(); }
                                     }
                                 }
@@ -321,6 +327,8 @@ export component AddTorrentDialog {
                                         vertical-alignment: center;
                                     }
                                     sel-none-touch := TouchArea {
+                                        accessible-role: button;
+                                        accessible-label: "Deselect all files";
                                         clicked => { root.deselect-all-files(); }
                                     }
                                 }
@@ -414,6 +422,7 @@ export component AddTorrentDialog {
                                 border-radius: Tokens.r-md;
 
                                 dir-input := TextInput {
+                                    accessible-label: "Download directory";
                                     x: Tokens.sp-4;
                                     y: 0;
                                     width: parent.width - Tokens.sp-6;
@@ -437,6 +446,8 @@ export component AddTorrentDialog {
                                     vertical-alignment: center;
                                 }
                                 browse-dir-touch := TouchArea {
+                                    accessible-role: button;
+                                    accessible-label: "Browse download directory";
                                     clicked => { root.browse-download-dir(); }
                                 }
                             }
@@ -468,6 +479,8 @@ export component AddTorrentDialog {
                             }
 
                             paused-touch := TouchArea {
+                                accessible-role: checkbox;
+                                accessible-label: "Start paused";
                                 clicked => { root.toggle-start-paused(); }
                             }
                         }
@@ -499,6 +512,8 @@ export component AddTorrentDialog {
                             }
 
                             skip-touch := TouchArea {
+                                accessible-role: checkbox;
+                                accessible-label: "Skip hash check";
                                 clicked => { root.toggle-skip-checking(); }
                             }
                         }
@@ -530,6 +545,8 @@ export component AddTorrentDialog {
                             vertical-alignment: center;
                         }
                         cancel-touch := TouchArea {
+                            accessible-role: button;
+                            accessible-label: "Cancel";
                             clicked => { root.cancel(); }
                         }
                     }
@@ -551,6 +568,8 @@ export component AddTorrentDialog {
                             vertical-alignment: center;
                         }
                         add-touch := TouchArea {
+                            accessible-role: button;
+                            accessible-label: "Add torrent";
                             enabled: root.preview-name != "";
                             clicked => { root.add-confirmed(dir-input.text); }
                         }

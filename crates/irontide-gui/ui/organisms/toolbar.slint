@@ -31,6 +31,8 @@ export component Toolbar {
 
             // L1 — 3-pane
             Rectangle {
+                accessible-role: button;
+                accessible-label: "3-pane layout";
                 width: Tokens.sp-9;
                 height: parent.height - Tokens.sp-2;
                 background: root.current-layout-label == "3-pane"
@@ -61,6 +63,8 @@ export component Toolbar {
 
             // L2 — Drawer
             Rectangle {
+                accessible-role: button;
+                accessible-label: "Drawer layout";
                 width: Tokens.sp-9;
                 height: parent.height - Tokens.sp-2;
                 background: root.current-layout-label == "Drawer"
@@ -91,6 +95,8 @@ export component Toolbar {
 
             // L3 — Command
             Rectangle {
+                accessible-role: button;
+                accessible-label: "Command workspace layout";
                 width: Tokens.sp-9;
                 height: parent.height - Tokens.sp-2;
                 background: root.current-layout-label == "Command"
