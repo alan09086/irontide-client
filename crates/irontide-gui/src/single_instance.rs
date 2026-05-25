@@ -219,11 +219,14 @@ mod tests {
     }
 
     #[test]
-    fn socket_path_ends_with_irontide_gui_sock() {
+    fn socket_path_references_irontide_gui_sock() {
         let p = socket_path();
+        let s = p.to_string_lossy();
+        let xdg = s.ends_with("irontide-gui.sock");
+        let fallback = s.starts_with("/tmp/irontide-gui-") && s.ends_with(".sock");
         assert!(
-            p.to_string_lossy().ends_with("irontide-gui.sock"),
-            "socket path should end with irontide-gui.sock: {p:?}"
+            xdg || fallback,
+            "socket path should be $XDG_RUNTIME_DIR/irontide-gui.sock or /tmp/irontide-gui-<uid>.sock: {p:?}"
         );
     }
 }
