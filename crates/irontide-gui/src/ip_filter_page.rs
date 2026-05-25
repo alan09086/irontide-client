@@ -51,8 +51,7 @@ pub fn save_state(state: &IpFilterState) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let json = serde_json::to_string_pretty(state)
-        .map_err(std::io::Error::other)?;
+    let json = serde_json::to_string_pretty(state).map_err(std::io::Error::other)?;
     std::fs::write(&path, json)
 }
 
@@ -70,25 +69,27 @@ pub fn parse_ip_range(text: &str) -> Option<(IpAddr, IpAddr)> {
                 if bits > 32 {
                     return None;
                 }
-                let mask = if bits == 0 { 0 } else { u32::MAX << (32 - bits) };
+                let mask = if bits == 0 {
+                    0
+                } else {
+                    u32::MAX << (32 - bits)
+                };
                 let start = u32::from(v4) & mask;
                 let end = start | !mask;
-                Some((
-                    IpAddr::V4(start.into()),
-                    IpAddr::V4(end.into()),
-                ))
+                Some((IpAddr::V4(start.into()), IpAddr::V4(end.into())))
             }
             IpAddr::V6(v6) => {
                 if bits > 128 {
                     return None;
                 }
-                let mask = if bits == 0 { 0 } else { u128::MAX << (128 - bits) };
+                let mask = if bits == 0 {
+                    0
+                } else {
+                    u128::MAX << (128 - bits)
+                };
                 let start = u128::from(v6) & mask;
                 let end = start | !mask;
-                Some((
-                    IpAddr::V6(start.into()),
-                    IpAddr::V6(end.into()),
-                ))
+                Some((IpAddr::V6(start.into()), IpAddr::V6(end.into())))
             }
         }
     } else {
@@ -141,7 +142,14 @@ mod tests {
     fn parse_ipv6_cidr() {
         let (f, l) = parse_ip_range("fe80::/10").unwrap();
         assert_eq!(f, IpAddr::V6("fe80::".parse::<Ipv6Addr>().unwrap()));
-        assert_eq!(l, IpAddr::V6("febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff".parse::<Ipv6Addr>().unwrap()));
+        assert_eq!(
+            l,
+            IpAddr::V6(
+                "febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff"
+                    .parse::<Ipv6Addr>()
+                    .unwrap()
+            )
+        );
     }
 
     #[test]

@@ -1,11 +1,7 @@
 use std::path::Path;
 use std::time::Duration;
 
-use notify_debouncer_full::{
-    DebounceEventResult,
-    new_debouncer,
-    notify::RecursiveMode,
-};
+use notify_debouncer_full::{DebounceEventResult, new_debouncer, notify::RecursiveMode};
 
 use irontide_config::WatchedFolder;
 
@@ -109,15 +105,18 @@ pub async fn process_watch_events(
     weak: slint::Weak<crate::MainWindow>,
 ) {
     while let Some(event) = rx.recv().await {
-        let path_display = event
-            .path
-            .file_name()
-            .map_or_else(|| event.path.display().to_string(), |n| n.to_string_lossy().into_owned());
+        let path_display = event.path.file_name().map_or_else(
+            || event.path.display().to_string(),
+            |n| n.to_string_lossy().into_owned(),
+        );
 
         let bytes = match tokio::fs::read(&event.path).await {
             Ok(b) => b,
             Err(e) => {
-                tracing::warn!("failed to read watched torrent {}: {e}", event.path.display());
+                tracing::warn!(
+                    "failed to read watched torrent {}: {e}",
+                    event.path.display()
+                );
                 continue;
             }
         };

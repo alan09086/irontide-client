@@ -22,8 +22,10 @@ pub fn mark_complete() {
 }
 
 fn sentinel_path() -> PathBuf {
-    directories::ProjectDirs::from("", "", "irontide")
-        .map_or_else(|| PathBuf::from("/tmp/irontide-first-run-complete"), |d| d.config_dir().join(".first-run-complete"))
+    directories::ProjectDirs::from("", "", "irontide").map_or_else(
+        || PathBuf::from("/tmp/irontide-first-run-complete"),
+        |d| d.config_dir().join(".first-run-complete"),
+    )
 }
 
 /// Default download directory for the wizard.

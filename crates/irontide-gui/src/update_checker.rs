@@ -9,8 +9,7 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-const RELEASES_URL: &str =
-    "https://codeberg.org/api/v1/repos/alan090/irontide/releases?limit=1";
+const RELEASES_URL: &str = "https://codeberg.org/api/v1/repos/alan090/irontide/releases?limit=1";
 const CHECK_INTERVAL: Duration = Duration::from_hours(24);
 const INITIAL_DELAY: Duration = Duration::from_mins(1);
 
@@ -101,11 +100,8 @@ pub fn spawn_update_checker(weak: slint::Weak<crate::MainWindow>) {
             loop {
                 if let Some(info) = check_for_update_blocking(&version) {
                     let weak = weak.clone();
-                    let msg: slint::SharedString = format!(
-                        "Update available: {} — {}",
-                        info.version, info.url
-                    )
-                    .into();
+                    let msg: slint::SharedString =
+                        format!("Update available: {} — {}", info.version, info.url).into();
                     let _ = weak.upgrade_in_event_loop(move |win| {
                         win.set_update_available(true);
                         win.set_update_version(info.version.as_str().into());
@@ -126,13 +122,27 @@ mod tests {
     #[test]
     fn parse_version_with_v_prefix() {
         let v = SemVer::parse("v0.208.0").unwrap();
-        assert_eq!(v, SemVer { major: 0, minor: 208, patch: 0 });
+        assert_eq!(
+            v,
+            SemVer {
+                major: 0,
+                minor: 208,
+                patch: 0
+            }
+        );
     }
 
     #[test]
     fn parse_version_without_prefix() {
         let v = SemVer::parse("1.2.3").unwrap();
-        assert_eq!(v, SemVer { major: 1, minor: 2, patch: 3 });
+        assert_eq!(
+            v,
+            SemVer {
+                major: 1,
+                minor: 2,
+                patch: 3
+            }
+        );
     }
 
     #[test]

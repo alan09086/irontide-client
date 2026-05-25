@@ -144,9 +144,11 @@ pub fn alert_to_log_entry(alert: &irontide::session::Alert) -> LogEntry {
                 &info_hash.to_hex()[..8]
             ),
         ),
-        irontide::session::AlertKind::MetadataReceived { name, .. } => {
-            (LogLevel::Info, "Torrent", format!("Metadata received: {name}"))
-        }
+        irontide::session::AlertKind::MetadataReceived { name, .. } => (
+            LogLevel::Info,
+            "Torrent",
+            format!("Metadata received: {name}"),
+        ),
         irontide::session::AlertKind::MetadataFailed { info_hash } => (
             LogLevel::Warning,
             "Torrent",
@@ -169,10 +171,7 @@ pub fn alert_to_log_entry(alert: &irontide::session::Alert) -> LogEntry {
         } => (
             LogLevel::Warning,
             "Storage",
-            format!(
-                "Hash failed: {} piece {piece}",
-                &info_hash.to_hex()[..8]
-            ),
+            format!("Hash failed: {} piece {piece}", &info_hash.to_hex()[..8]),
         ),
         irontide::session::AlertKind::PeerConnected { addr, .. } => {
             (LogLevel::Info, "Peer", format!("Connected: {addr}"))
@@ -191,9 +190,7 @@ pub fn alert_to_log_entry(alert: &irontide::session::Alert) -> LogEntry {
         irontide::session::AlertKind::PeerBlocked { addr } => {
             (LogLevel::Info, "Peer", format!("Blocked: {addr}"))
         }
-        irontide::session::AlertKind::TrackerReply {
-            url, num_peers, ..
-        } => (
+        irontide::session::AlertKind::TrackerReply { url, num_peers, .. } => (
             LogLevel::Info,
             "Tracker",
             format!("{url}: {num_peers} peers"),
@@ -213,38 +210,29 @@ pub fn alert_to_log_entry(alert: &irontide::session::Alert) -> LogEntry {
         } => (
             LogLevel::Info,
             "DHT",
-            format!(
-                "get_peers {}: {num_peers} peers",
-                &info_hash.to_hex()[..8]
-            ),
+            format!("get_peers {}: {num_peers} peers", &info_hash.to_hex()[..8]),
         ),
-        irontide::session::AlertKind::ListenSucceeded { port } => {
-            (LogLevel::Info, "Session", format!("Listening on port {port}"))
-        }
+        irontide::session::AlertKind::ListenSucceeded { port } => (
+            LogLevel::Info,
+            "Session",
+            format!("Listening on port {port}"),
+        ),
         irontide::session::AlertKind::ListenFailed { port, message } => (
             LogLevel::Error,
             "Session",
             format!("Listen failed on port {port}: {message}"),
         ),
-        irontide::session::AlertKind::TorrentError {
-            info_hash,
-            message,
-        } => (
+        irontide::session::AlertKind::TorrentError { info_hash, message } => (
             LogLevel::Error,
             "Torrent",
             format!("{}: {message}", &info_hash.to_hex()[..8]),
         ),
-        irontide::session::AlertKind::PerformanceWarning {
-            info_hash,
-            message,
-        } => (
+        irontide::session::AlertKind::PerformanceWarning { info_hash, message } => (
             LogLevel::Warning,
             "Performance",
             format!("{}: {message}", &info_hash.to_hex()[..8]),
         ),
-        irontide::session::AlertKind::FileError {
-            path, message, ..
-        } => (
+        irontide::session::AlertKind::FileError { path, message, .. } => (
             LogLevel::Error,
             "Storage",
             format!("{}: {message}", path.display()),

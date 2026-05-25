@@ -416,9 +416,7 @@ mod tests {
     fn effective_width_returns_stored_for_visible_column() {
         let mut cfg = ColumnConfig::default();
         cfg.widths[1] = 150.0;
-        assert!(
-            (cfg.effective_width(ColumnId::Progress) - 150.0).abs() < f32::EPSILON,
-        );
+        assert!((cfg.effective_width(ColumnId::Progress) - 150.0).abs() < f32::EPSILON,);
     }
 
     #[test]

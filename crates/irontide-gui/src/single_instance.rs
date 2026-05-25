@@ -98,10 +98,7 @@ impl InstanceGuard {
     }
 
     #[cfg(unix)]
-    pub fn spawn_listener(
-        &mut self,
-        tx: tokio::sync::mpsc::UnboundedSender<InstanceMessage>,
-    ) {
+    pub fn spawn_listener(&mut self, tx: tokio::sync::mpsc::UnboundedSender<InstanceMessage>) {
         let Some(std_listener) = self.listener.take() else {
             return;
         };
@@ -168,7 +165,9 @@ mod tests {
         let msg = InstanceMessage::OpenFile(PathBuf::from("/tmp/test.torrent"));
         let s = msg.serialize();
         let parsed = InstanceMessage::parse(&s).unwrap();
-        assert!(matches!(parsed, InstanceMessage::OpenFile(ref p) if p.as_path() == Path::new("/tmp/test.torrent")));
+        assert!(
+            matches!(parsed, InstanceMessage::OpenFile(ref p) if p.as_path() == Path::new("/tmp/test.torrent"))
+        );
     }
 
     #[test]

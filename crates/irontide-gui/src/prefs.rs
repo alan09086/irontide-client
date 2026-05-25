@@ -437,10 +437,7 @@ impl PreferencesState {
             seed_time_enabled: settings.seed_time_limit_secs.is_some(),
             seed_time_value: settings.seed_time_limit_secs.unwrap_or(86400) / 60,
             inactive_seed_time_enabled: settings.inactive_seed_time_limit_secs.is_some(),
-            inactive_seed_time_value: settings
-                .inactive_seed_time_limit_secs
-                .unwrap_or(3600)
-                / 60,
+            inactive_seed_time_value: settings.inactive_seed_time_limit_secs.unwrap_or(3600) / 60,
             queueing_enabled: settings.queueing_enabled,
             // RSS — from GuiConfig (not-yet-active)
             rss_enabled: gui.rss_enabled.unwrap_or(false),
@@ -1817,10 +1814,7 @@ mod tests {
         let cases = [
             (MaxRatioAction::Pause, "Pause torrent"),
             (MaxRatioAction::Remove, "Remove torrent"),
-            (
-                MaxRatioAction::EnableSuperSeeding,
-                "Super-seeding mode",
-            ),
+            (MaxRatioAction::EnableSuperSeeding, "Super-seeding mode"),
         ];
         for (action, expected_label) in &cases {
             let label = max_ratio_action_to_label(*action);

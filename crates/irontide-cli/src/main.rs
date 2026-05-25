@@ -30,9 +30,9 @@ fn main() {
 
     #[cfg(feature = "tokio-console")]
     {
+        use tracing_subscriber::Layer as _;
         use tracing_subscriber::layer::SubscriberExt as _;
         use tracing_subscriber::util::SubscriberInitExt as _;
-        use tracing_subscriber::Layer as _;
 
         let console_layer = console_subscriber::spawn();
         tracing_subscriber::registry()

@@ -42,7 +42,10 @@ fn generate_icon_rgba(state: TrayState) -> Vec<u8> {
         TrayState::Error => (234, 67, 53),
     };
     let size = ICON_SIZE as usize;
-    #[allow(clippy::cast_precision_loss, reason = "ICON_SIZE is 32, well within f64 precision")]
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "ICON_SIZE is 32, well within f64 precision"
+    )]
     let centre = size as f64 / 2.0;
     let radius = centre - 1.0;
     let mut data = vec![0u8; size * size * 4];
@@ -136,7 +139,6 @@ impl TrayHandle {
             self.current_state = new_state;
         }
     }
-
 }
 
 #[must_use]
@@ -169,7 +171,10 @@ mod tests {
         let centre = ICON_SIZE as usize / 2;
         let offset = (centre * ICON_SIZE as usize + centre) * 4;
         assert_eq!(data[offset + 3], 255, "centre pixel should be fully opaque");
-        assert_eq!(data[offset], 66, "centre pixel R should match downloading blue");
+        assert_eq!(
+            data[offset], 66,
+            "centre pixel R should match downloading blue"
+        );
     }
 
     #[test]
@@ -181,7 +186,10 @@ mod tests {
     #[test]
     fn derive_tray_state_priority() {
         assert_eq!(derive_tray_state(false, false, false), TrayState::Idle);
-        assert_eq!(derive_tray_state(true, false, false), TrayState::Downloading);
+        assert_eq!(
+            derive_tray_state(true, false, false),
+            TrayState::Downloading
+        );
         assert_eq!(derive_tray_state(false, true, false), TrayState::Seeding);
         assert_eq!(derive_tray_state(true, true, false), TrayState::Downloading);
         assert_eq!(derive_tray_state(true, true, true), TrayState::Error);
@@ -190,7 +198,12 @@ mod tests {
 
     #[test]
     fn all_states_produce_valid_icons() {
-        for state in [TrayState::Idle, TrayState::Downloading, TrayState::Seeding, TrayState::Error] {
+        for state in [
+            TrayState::Idle,
+            TrayState::Downloading,
+            TrayState::Seeding,
+            TrayState::Error,
+        ] {
             let data = generate_icon_rgba(state);
             assert_eq!(data.len(), (ICON_SIZE * ICON_SIZE * 4) as usize);
             assert!(

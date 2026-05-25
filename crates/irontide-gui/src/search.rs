@@ -90,9 +90,7 @@ pub fn load_plugins() -> Vec<SearchPlugin> {
 }
 
 pub fn build_search_url(plugin: &SearchPlugin, query: &str) -> String {
-    plugin
-        .url_template
-        .replace("{query}", &urlencoded(query))
+    plugin.url_template.replace("{query}", &urlencoded(query))
 }
 
 fn urlencoded(s: &str) -> String {
@@ -236,10 +234,7 @@ mod tests {
             },
         };
         let url = build_search_url(&plugin, "hello world");
-        assert_eq!(
-            url,
-            "https://api.example.com/search?q=hello+world&limit=20"
-        );
+        assert_eq!(url, "https://api.example.com/search?q=hello+world&limit=20");
     }
 
     #[test]

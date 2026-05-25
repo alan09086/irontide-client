@@ -112,7 +112,12 @@ impl BandwidthSchedule {
         let now = chrono::Local::now();
         let dow = now.format("%u").to_string().parse::<usize>().unwrap_or(1);
         let day_idx = dow.wrapping_sub(1).min(DAYS - 1);
-        let hour = now.format("%H").to_string().parse::<usize>().unwrap_or(0).min(HOURS - 1);
+        let hour = now
+            .format("%H")
+            .to_string()
+            .parse::<usize>()
+            .unwrap_or(0)
+            .min(HOURS - 1);
         self.grid[day_idx][hour]
     }
 
@@ -170,8 +175,7 @@ pub fn save_schedule(schedule: &BandwidthSchedule) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let json = serde_json::to_string_pretty(schedule)
-        .map_err(std::io::Error::other)?;
+    let json = serde_json::to_string_pretty(schedule).map_err(std::io::Error::other)?;
     std::fs::write(&path, json)
 }
 

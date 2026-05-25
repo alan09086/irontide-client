@@ -83,7 +83,10 @@ pub struct DownloadRule {
 
 impl DownloadRule {
     #[must_use]
-    #[allow(dead_code, reason = "will be used by auto-download in a future milestone")]
+    #[allow(
+        dead_code,
+        reason = "will be used by auto-download in a future milestone"
+    )]
     pub fn matches(&self, item: &RssItem) -> bool {
         if !self.enabled {
             return false;
@@ -97,18 +100,14 @@ impl DownloadRule {
             if self.use_regex {
                 return false;
             }
-            let any_match = pattern
-                .split('|')
-                .any(|p| title.contains(p.trim()));
+            let any_match = pattern.split('|').any(|p| title.contains(p.trim()));
             if !any_match {
                 return false;
             }
         }
         if !self.must_not_contain.is_empty() {
             let exclude = self.must_not_contain.to_lowercase();
-            let any_exclude = exclude
-                .split('|')
-                .any(|p| title.contains(p.trim()));
+            let any_exclude = exclude.split('|').any(|p| title.contains(p.trim()));
             if any_exclude {
                 return false;
             }
@@ -154,8 +153,7 @@ pub fn save_state(state: &RssState) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let json = serde_json::to_string_pretty(state)
-        .map_err(std::io::Error::other)?;
+    let json = serde_json::to_string_pretty(state).map_err(std::io::Error::other)?;
     std::fs::write(&path, json)
 }
 
@@ -338,7 +336,10 @@ fn format_size(bytes: u64) -> String {
     }
 }
 
-#[allow(dead_code, reason = "will be used by auto-download in a future milestone")]
+#[allow(
+    dead_code,
+    reason = "will be used by auto-download in a future milestone"
+)]
 pub fn matching_rules<'a>(item: &RssItem, rules: &'a [DownloadRule]) -> Vec<&'a DownloadRule> {
     rules.iter().filter(|r| r.matches(item)).collect()
 }

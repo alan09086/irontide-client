@@ -29,7 +29,15 @@ pub fn spawn_session_thread(
         .spawn(move || {
             let rt = irontide_config::build_runtime(&settings);
             rt.block_on(async {
-                run_session(settings, api_config, watched_folders, weak, shutdown_rx, state).await;
+                run_session(
+                    settings,
+                    api_config,
+                    watched_folders,
+                    weak,
+                    shutdown_rx,
+                    state,
+                )
+                .await;
             });
             rt.shutdown_timeout(std::time::Duration::from_secs(1));
         })
@@ -75,7 +83,9 @@ async fn run_session(
         match irontide_api::ApiServer::bind(addr, session.clone()).await {
             Ok(server) => {
                 tracing::info!("API server listening on {}", server.local_addr());
-                Some(tokio::spawn(async move { let _ = server.run().await; }))
+                Some(tokio::spawn(async move {
+                    let _ = server.run().await;
+                }))
             }
             Err(e) => {
                 tracing::warn!("API server failed to bind on {addr}: {e}");
@@ -322,8 +332,8 @@ pub fn handle_browse_torrent_file(
 
                         let file_exts = extract_file_extensions(&preview);
                         let tracker_list = extract_tracker_urls(&preview);
-                        let suggested = suggest_category(&name, &file_exts, &tracker_list)
-                            .unwrap_or_default();
+                        let suggested =
+                            suggest_category(&name, &file_exts, &tracker_list).unwrap_or_default();
 
                         state.lock().add_torrent_preview = Some(preview);
 
@@ -608,7 +618,10 @@ async fn handle_gui_command(
             .await;
             show_toast(weak, &msg, false);
         }
-        GuiCommand::MoveTorrentStorage { info_hash, new_path } => {
+        GuiCommand::MoveTorrentStorage {
+            info_hash,
+            new_path,
+        } => {
             handle_move_torrent_storage(&info_hash, &new_path, session, weak).await;
         }
         GuiCommand::SetTorrentSeedRatio { info_hash, limit } => {
@@ -652,7 +665,15 @@ async fn handle_gui_command(
             start_paused,
             skip_checking,
         } => {
-            handle_add_torrent_from_preview(preview, download_dir, start_paused, skip_checking, session, weak).await;
+            handle_add_torrent_from_preview(
+                preview,
+                download_dir,
+                start_paused,
+                skip_checking,
+                session,
+                weak,
+            )
+            .await;
         }
         GuiCommand::CreateTorrent { state } => {
             handle_create_torrent(state, weak);
@@ -669,10 +690,7 @@ async fn handle_gui_command(
         GuiCommand::OpenMagnet { uri } => {
             handle_open_magnet(&uri, session, weak).await;
         }
-        GuiCommand::SearchQuery {
-            query,
-            plugin_name,
-        } => {
+        GuiCommand::SearchQuery { query, plugin_name } => {
             handle_search_query(&query, plugin_name.as_deref(), weak).await;
         }
         GuiCommand::SearchAddResult { magnet_url } => {
@@ -1637,11 +1655,7 @@ async fn handle_apply_engine_prefs(
                     // v0.187.3 / 2A: Web UI port/bind changes are
                     // restart-required; flag them in the same channel.
                     let fields = applied.restart_required.join(", ");
-                    show_toast(
-                        weak,
-                        &format!("Restart required to apply: {fields}"),
-                        false,
-                    );
+                    show_toast(weak, &format!("Restart required to apply: {fields}"), false);
                 }
                 confirm_settings_to_gui(session, weak).await;
             }
@@ -1675,18 +1689,26 @@ async fn confirm_settings_to_gui(
     let max_peers = live.max_peers_per_torrent;
     let max_conn = live.max_connections_global;
     let _ = weak.upgrade_in_event_loop(move |win| {
-        win.set_pref_dl_limit_value(
-            if dl_limit_raw == 0 { "0".into() } else { dl_limit.into() }
-        );
-        win.set_pref_ul_limit_value(
-            if ul_limit_raw == 0 { "0".into() } else { ul_limit.into() }
-        );
-        win.set_pref_alt_dl_limit(
-            if alt_dl_raw == 0 { "0".into() } else { alt_dl.into() }
-        );
-        win.set_pref_alt_ul_limit(
-            if alt_ul_raw == 0 { "0".into() } else { alt_ul.into() }
-        );
+        win.set_pref_dl_limit_value(if dl_limit_raw == 0 {
+            "0".into()
+        } else {
+            dl_limit.into()
+        });
+        win.set_pref_ul_limit_value(if ul_limit_raw == 0 {
+            "0".into()
+        } else {
+            ul_limit.into()
+        });
+        win.set_pref_alt_dl_limit(if alt_dl_raw == 0 {
+            "0".into()
+        } else {
+            alt_dl.into()
+        });
+        win.set_pref_alt_ul_limit(if alt_ul_raw == 0 {
+            "0".into()
+        } else {
+            alt_ul.into()
+        });
         win.set_pref_enable_dht(enable_dht);
         win.set_pref_enable_pex(enable_pex);
         win.set_pref_enable_lsd(enable_lsd);
@@ -1728,9 +1750,9 @@ pub fn handle_browse_create_torrent_source(
     let weak = weak.clone();
     let state = state.clone();
     std::thread::spawn(move || {
-        let path = rfd::FileDialog::new().pick_folder().or_else(|| {
-            rfd::FileDialog::new().pick_file()
-        });
+        let path = rfd::FileDialog::new()
+            .pick_folder()
+            .or_else(|| rfd::FileDialog::new().pick_file());
         if let Some(p) = path {
             let path_str = p.to_string_lossy().into_owned();
             let name = p
@@ -1770,7 +1792,10 @@ pub fn handle_browse_create_torrent_source(
 }
 
 /// M192: Handle "Browse..." for the Create Torrent output file path.
-pub fn handle_browse_create_torrent_output(weak: &slint::Weak<crate::MainWindow>, state: &Arc<Mutex<AppState>>) {
+pub fn handle_browse_create_torrent_output(
+    weak: &slint::Weak<crate::MainWindow>,
+    state: &Arc<Mutex<AppState>>,
+) {
     let weak = weak.clone();
     let state = state.clone();
     std::thread::spawn(move || {
@@ -1780,7 +1805,11 @@ pub fn handle_browse_create_torrent_output(weak: &slint::Weak<crate::MainWindow>
             .save_file();
         if let Some(p) = file {
             let path_str = p.to_string_lossy().into_owned();
-            state.lock().create_torrent.output_path.clone_from(&path_str);
+            state
+                .lock()
+                .create_torrent
+                .output_path
+                .clone_from(&path_str);
             let _ = weak.upgrade_in_event_loop(move |win| {
                 win.set_create_torrent_output_path(path_str.into());
             });
@@ -2064,9 +2093,10 @@ async fn handle_open_torrent_file(
     session: &irontide::session::SessionHandle,
     weak: &slint::Weak<crate::MainWindow>,
 ) {
-    let display = path
-        .file_name()
-        .map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned());
+    let display = path.file_name().map_or_else(
+        || path.display().to_string(),
+        |n| n.to_string_lossy().into_owned(),
+    );
 
     let bytes = match tokio::fs::read(&path).await {
         Ok(b) => b,
@@ -2182,9 +2212,11 @@ async fn handle_rss_add_feed(url: &str, weak: &slint::Weak<crate::MainWindow>) {
 
     let item_count = new_items.len();
     for item in new_items {
-        if !state.items.iter().any(|existing| {
-            existing.title == item.title && existing.feed_url == item.feed_url
-        }) {
+        if !state
+            .items
+            .iter()
+            .any(|existing| existing.title == item.title && existing.feed_url == item.feed_url)
+        {
             state.items.push(item);
         }
     }
@@ -2390,11 +2422,7 @@ fn push_rss_state(
         .feeds
         .iter()
         .map(|f| {
-            let item_count = state
-                .items
-                .iter()
-                .filter(|i| i.feed_url == f.url)
-                .count();
+            let item_count = state.items.iter().filter(|i| i.feed_url == f.url).count();
             crate::RssFeedRow {
                 url: f.url.clone().into(),
                 title: f.alias.as_deref().unwrap_or(&f.title).into(),
@@ -2413,10 +2441,7 @@ fn push_rss_state(
                 return true;
             }
             let idx = usize::try_from(selected_feed_index).unwrap_or(0);
-            state
-                .feeds
-                .get(idx)
-                .is_some_and(|f| f.url == item.feed_url)
+            state.feeds.get(idx).is_some_and(|f| f.url == item.feed_url)
         })
         .map(|item| {
             let feed_title = state
@@ -2468,11 +2493,7 @@ fn handle_scheduler_toggle_enabled(weak: &slint::Weak<crate::MainWindow>) {
     push_scheduler_state(weak);
 }
 
-fn handle_scheduler_cell_clicked(
-    day: usize,
-    hour: usize,
-    weak: &slint::Weak<crate::MainWindow>,
-) {
+fn handle_scheduler_cell_clicked(day: usize, hour: usize, weak: &slint::Weak<crate::MainWindow>) {
     let mut schedule = crate::scheduler::load_schedule();
     schedule.toggle_cell(day, hour);
     if let Err(e) = crate::scheduler::save_schedule(&schedule) {
@@ -2494,10 +2515,7 @@ fn handle_scheduler_apply_preset(name: &str, weak: &slint::Weak<crate::MainWindo
     push_scheduler_state(weak);
 }
 
-fn handle_scheduler_limited_rate_changed(
-    rate_kib: u32,
-    weak: &slint::Weak<crate::MainWindow>,
-) {
+fn handle_scheduler_limited_rate_changed(rate_kib: u32, weak: &slint::Weak<crate::MainWindow>) {
     let mut schedule = crate::scheduler::load_schedule();
     schedule.limited_rate_kib = rate_kib.max(1);
     if let Err(e) = crate::scheduler::save_schedule(&schedule) {
@@ -2508,11 +2526,7 @@ fn handle_scheduler_limited_rate_changed(
 
 // ── IP Filter handlers (M199) ───────────────────────────────────────────────
 
-fn handle_ip_filter_add_rule(
-    label: &str,
-    range: &str,
-    weak: &slint::Weak<crate::MainWindow>,
-) {
+fn handle_ip_filter_add_rule(label: &str, range: &str, weak: &slint::Weak<crate::MainWindow>) {
     if let Some((first, last)) = crate::ip_filter_page::parse_ip_range(range) {
         let mut state = crate::ip_filter_page::load_state();
         state.rules.push(crate::ip_filter_page::ManualRule {
@@ -2583,9 +2597,10 @@ fn handle_ip_filter_import_file(weak: &slint::Weak<crate::MainWindow>) {
                     Ok(filter) => {
                         let count = filter.num_ranges();
                         let mut state = crate::ip_filter_page::load_state();
-                        let filename = path
-                            .file_name()
-                            .map_or_else(|| "imported".to_string(), |n| n.to_string_lossy().to_string());
+                        let filename = path.file_name().map_or_else(
+                            || "imported".to_string(),
+                            |n| n.to_string_lossy().to_string(),
+                        );
                         if !state.imported_files.contains(&filename) {
                             state.imported_files.push(filename);
                         }
@@ -2665,10 +2680,7 @@ async fn push_ip_filter_state_with_session(
         })
         .collect();
 
-    let filter_enabled = session
-        .settings()
-        .await
-        .is_ok_and(|s| s.ip_filter_enabled);
+    let filter_enabled = session.settings().await.is_ok_and(|s| s.ip_filter_enabled);
 
     let _ = weak.upgrade_in_event_loop(move |win| {
         let rule_model = std::rc::Rc::new(slint::VecModel::from(rule_rows));
@@ -2914,8 +2926,8 @@ pub async fn push_logs_stats_state_with_session(
 
     let uptime_secs = session.counters().uptime_secs();
 
-    let cards = crate::logs_stats_page::build_stat_cards(
-        &crate::logs_stats_page::SessionSnapshot {
+    let cards =
+        crate::logs_stats_page::build_stat_cards(&crate::logs_stats_page::SessionSnapshot {
             total_torrents,
             active_torrents: active,
             dl_rate: total_dl_rate,
@@ -2925,8 +2937,7 @@ pub async fn push_logs_stats_state_with_session(
             dht_nodes,
             total_peers,
             uptime_secs,
-        },
-    );
+        });
 
     let card_rows: Vec<crate::StatCardData> = cards
         .into_iter()
@@ -2948,9 +2959,15 @@ pub async fn push_logs_stats_state_with_session(
 
 // ── M202: category suggestion ─────────────────────────────────────────
 
-pub fn suggest_category(name: &str, file_extensions: &[String], trackers: &[String]) -> Option<String> {
+pub fn suggest_category(
+    name: &str,
+    file_extensions: &[String],
+    trackers: &[String],
+) -> Option<String> {
     let model = crate::category_suggest::ClassifierModel::load();
-    model.suggest(name, file_extensions, trackers).map(|r| r.category)
+    model
+        .suggest(name, file_extensions, trackers)
+        .map(|r| r.category)
 }
 
 fn handle_category_suggest_train(

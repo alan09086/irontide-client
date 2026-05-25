@@ -145,13 +145,18 @@ pub struct CreateTorrentState {
     pub is_private: bool,
     pub source_tag: String,
     pub output_path: String,
-    #[allow(dead_code, reason = "M192: read by handle_create_torrent for progress signalling")]
+    #[allow(
+        dead_code,
+        reason = "M192: read by handle_create_torrent for progress signalling"
+    )]
     pub is_creating: bool,
-    #[allow(dead_code, reason = "M192: read by handle_create_torrent for progress signalling")]
+    #[allow(
+        dead_code,
+        reason = "M192: read by handle_create_torrent for progress signalling"
+    )]
     pub create_progress: f32,
     pub create_error: String,
 }
-
 
 /// File entry for the add-torrent preview.
 #[derive(Debug, Clone)]
@@ -275,54 +280,34 @@ pub enum GuiCommand {
         skip_checking: bool,
     },
     /// M192: create a .torrent file from the dialog state.
-    CreateTorrent {
-        state: CreateTorrentState,
-    },
+    CreateTorrent { state: CreateTorrentState },
     /// M193: pause every torrent in the session (tray menu action).
     PauseAll,
     /// M193: resume every torrent in the session (tray menu action).
     ResumeAll,
     /// M195: add a torrent from a file path received via IPC or CLI arg.
-    OpenTorrentFile {
-        path: std::path::PathBuf,
-    },
+    OpenTorrentFile { path: std::path::PathBuf },
     /// M195: add a torrent from a magnet URI received via IPC or CLI arg.
-    OpenMagnet {
-        uri: String,
-    },
+    OpenMagnet { uri: String },
     /// M196: execute a search query against enabled plugins.
     SearchQuery {
         query: String,
         plugin_name: Option<String>,
     },
     /// M196: add a torrent from a search result magnet URL.
-    SearchAddResult {
-        magnet_url: String,
-    },
+    SearchAddResult { magnet_url: String },
     /// M197: add an RSS feed by URL.
-    RssAddFeed {
-        url: String,
-    },
+    RssAddFeed { url: String },
     /// M197: remove an RSS feed by index.
-    RssRemoveFeed {
-        index: usize,
-    },
+    RssRemoveFeed { index: usize },
     /// M197: refresh all RSS feeds.
     RssRefreshFeeds,
     /// M197: select a feed to filter items (-1 = all).
-    RssFeedSelected {
-        index: i32,
-    },
+    RssFeedSelected { index: i32 },
     /// M197: download an RSS item by visible index.
-    RssDownloadItem {
-        index: usize,
-        selected_feed: i32,
-    },
+    RssDownloadItem { index: usize, selected_feed: i32 },
     /// M197: mark an RSS item as read by visible index.
-    RssMarkItemRead {
-        index: usize,
-        selected_feed: i32,
-    },
+    RssMarkItemRead { index: usize, selected_feed: i32 },
     /// M198: toggle bandwidth scheduler enabled state.
     SchedulerToggleEnabled,
     /// M198: cycle a scheduler grid cell.
@@ -378,7 +363,10 @@ pub enum GuiCommand {
         new_path: String,
     },
     /// M211: set per-torrent seed ratio override (`None` = session default).
-    #[allow(dead_code, reason = "M211: detail-pane ratio input wired in future polish")]
+    #[allow(
+        dead_code,
+        reason = "M211: detail-pane ratio input wired in future polish"
+    )]
     SetTorrentSeedRatio {
         /// Hex-encoded info-hash string.
         info_hash: String,

@@ -694,7 +694,9 @@ fn build_detail_props(
         "{} / {} pieces ({:.1}%)",
         stats.pieces_have, stats.pieces_total, pieces_pct
     );
-    let state_label = crate::format::format_state_full(stats.state, stats.user_seed_mode, stats.super_seeding).to_owned();
+    let state_label =
+        crate::format::format_state_full(stats.state, stats.user_seed_mode, stats.super_seeding)
+            .to_owned();
     let save_path = info.map_or_else(|| stats.save_path.clone(), |_| stats.save_path.clone());
 
     DetailProps {

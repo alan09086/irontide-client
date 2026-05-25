@@ -1059,12 +1059,7 @@ mod tests {
         let paused = row(TorrentState::Paused, 0.4);
         let errored = row(TorrentState::Downloading, 0.5).with_error("oh no");
 
-        let rows = vec![
-            downloading,
-            seeding,
-            paused,
-            errored,
-        ];
+        let rows = vec![downloading, seeding, paused, errored];
         let c = library_counts(&rows);
         assert_eq!(c[&LibraryFilter::All], 4);
         // Downloading: the active downloader + the errored one.

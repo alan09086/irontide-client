@@ -66,14 +66,21 @@ impl ClassifierModel {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let json = serde_json::to_string_pretty(self)
-            .map_err(std::io::Error::other)?;
+        let json = serde_json::to_string_pretty(self).map_err(std::io::Error::other)?;
         std::fs::write(path, json)
     }
 
-    pub fn suggest(&self, name: &str, file_extensions: &[String], trackers: &[String]) -> Option<SuggestionResult> {
+    pub fn suggest(
+        &self,
+        name: &str,
+        file_extensions: &[String],
+        trackers: &[String],
+    ) -> Option<SuggestionResult> {
         let name_lower = name.to_lowercase();
-        let tokens: Vec<&str> = name_lower.split(|c: char| !c.is_alphanumeric()).filter(|s| !s.is_empty()).collect();
+        let tokens: Vec<&str> = name_lower
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|s| !s.is_empty())
+            .collect();
 
         let mut scores: HashMap<&str, f32> = HashMap::new();
 
@@ -100,14 +107,22 @@ impl ClassifierModel {
             }
         }
 
-        let best = scores.iter().max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal));
+        let best = scores
+            .iter()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal));
         best.map(|(cat, score)| SuggestionResult {
             category: (*cat).to_string(),
             confidence: *score,
         })
     }
 
-    pub fn train(&mut self, category: &str, name: &str, file_extensions: &[String], trackers: &[String]) {
+    pub fn train(
+        &mut self,
+        category: &str,
+        name: &str,
+        file_extensions: &[String],
+        trackers: &[String],
+    ) {
         let name_lower = name.to_lowercase();
         let tokens: Vec<String> = name_lower
             .split(|c: char| !c.is_alphanumeric())
@@ -115,7 +130,10 @@ impl ClassifierModel {
             .map(String::from)
             .collect();
 
-        let keywords = self.category_keywords.entry(category.to_string()).or_default();
+        let keywords = self
+            .category_keywords
+            .entry(category.to_string())
+            .or_default();
         for token in tokens {
             if !keywords.contains(&token) {
                 keywords.push(token);
@@ -124,13 +142,17 @@ impl ClassifierModel {
 
         for ext in file_extensions {
             let ext_lower = ext.to_lowercase();
-            self.extension_map.entry(ext_lower).or_insert_with(|| category.to_string());
+            self.extension_map
+                .entry(ext_lower)
+                .or_insert_with(|| category.to_string());
         }
 
         for tracker in trackers {
             let domain = extract_domain(tracker);
             if !domain.is_empty() {
-                self.tracker_map.entry(domain).or_insert_with(|| category.to_string());
+                self.tracker_map
+                    .entry(domain)
+                    .or_insert_with(|| category.to_string());
             }
         }
     }
@@ -139,7 +161,10 @@ impl ClassifierModel {
 #[derive(Debug, Clone)]
 pub struct SuggestionResult {
     pub category: String,
-    #[allow(dead_code, reason = "M202: used for ranking; exposed for future confidence display")]
+    #[allow(
+        dead_code,
+        reason = "M202: used for ranking; exposed for future confidence display"
+    )]
     pub confidence: f32,
 }
 
@@ -166,7 +191,10 @@ mod tests {
         assert_eq!(model.extension_map.get("mkv"), Some(&"Video".to_string()));
         assert_eq!(model.extension_map.get("flac"), Some(&"Music".to_string()));
         assert_eq!(model.extension_map.get("pdf"), Some(&"Books".to_string()));
-        assert_eq!(model.extension_map.get("iso"), Some(&"Software".to_string()));
+        assert_eq!(
+            model.extension_map.get("iso"),
+            Some(&"Software".to_string())
+        );
     }
 
     #[test]
@@ -180,7 +208,11 @@ mod tests {
     #[test]
     fn suggest_by_multiple_extensions() {
         let model = ClassifierModel::default();
-        let result = model.suggest("Album", &["flac".to_string(), "flac".to_string(), "jpg".to_string()], &[]);
+        let result = model.suggest(
+            "Album",
+            &["flac".to_string(), "flac".to_string(), "jpg".to_string()],
+            &[],
+        );
         assert!(result.is_some());
         assert_eq!(result.unwrap().category, "Music");
     }
@@ -204,31 +236,56 @@ mod tests {
     #[test]
     fn train_adds_tracker_domain() {
         let mut model = ClassifierModel::default();
-        model.train("Linux", "Ubuntu 24.04", &[], &["https://torrent.ubuntu.com/announce".to_string()]);
-        assert_eq!(model.tracker_map.get("torrent.ubuntu.com"), Some(&"Linux".to_string()));
+        model.train(
+            "Linux",
+            "Ubuntu 24.04",
+            &[],
+            &["https://torrent.ubuntu.com/announce".to_string()],
+        );
+        assert_eq!(
+            model.tracker_map.get("torrent.ubuntu.com"),
+            Some(&"Linux".to_string())
+        );
     }
 
     #[test]
     fn suggest_by_tracker() {
         let mut model = ClassifierModel::default();
-        model.tracker_map.insert("tracker.example.com".to_string(), "Games".to_string());
-        let result = model.suggest("Something", &[], &["http://tracker.example.com:6969/announce".to_string()]);
+        model
+            .tracker_map
+            .insert("tracker.example.com".to_string(), "Games".to_string());
+        let result = model.suggest(
+            "Something",
+            &[],
+            &["http://tracker.example.com:6969/announce".to_string()],
+        );
         assert!(result.is_some());
         assert_eq!(result.unwrap().category, "Games");
     }
 
     #[test]
     fn extract_domain_cases() {
-        assert_eq!(extract_domain("https://tracker.example.com/announce"), "tracker.example.com");
-        assert_eq!(extract_domain("http://tracker.example.com:6969/announce"), "tracker.example.com");
-        assert_eq!(extract_domain("udp://tracker.example.com:1337"), "tracker.example.com");
+        assert_eq!(
+            extract_domain("https://tracker.example.com/announce"),
+            "tracker.example.com"
+        );
+        assert_eq!(
+            extract_domain("http://tracker.example.com:6969/announce"),
+            "tracker.example.com"
+        );
+        assert_eq!(
+            extract_domain("udp://tracker.example.com:1337"),
+            "tracker.example.com"
+        );
         assert_eq!(extract_domain("tracker.example.com"), "tracker.example.com");
     }
 
     #[test]
     fn confidence_stacks() {
         let mut model = ClassifierModel::default();
-        model.category_keywords.insert("Video".to_string(), vec!["movie".to_string()]);
+        model
+            .category_keywords
+            .insert("Video".to_string(), vec!["movie".to_string()]);
         let result = model.suggest("Some Movie 2024", &["mkv".to_string()], &[]);
         assert!(result.is_some());
         let r = result.unwrap();
