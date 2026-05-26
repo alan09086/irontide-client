@@ -253,6 +253,25 @@ export component ContextMenu {
                         clicked => { root.context-action(9); }
                     }
                 }
+
+                // Item 10: Copy Magnet Link
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: copy-magnet-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+
+                    Text {
+                        text: "Copy Magnet Link";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        x: Tokens.sp-4;
+                    }
+
+                    copy-magnet-touch := TouchArea {
+                        clicked => { root.context-action(10); }
+                    }
+                }
             }
         }
     }

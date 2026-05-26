@@ -35,6 +35,14 @@ import { BandwidthIntentPage, IntentPresetRow } from "organisms/bandwidth_intent
 import { PhonePairPage } from "organisms/phone_pair_page.slint";
 import { FirstRunWizard } from "organisms/first_run_wizard.slint";
 
+// M217: Row data for the Keyboard Shortcuts modal. Populated once at
+// startup from the Rust palette table.
+export struct KeyboardShortcutRow {
+    category: string,
+    binding: string,
+    description: string,
+}
+
 export { Tokens, Shadow, SidebarRow, TorrentRow, FileTreeRow, PaletteItem, PaletteCategory, SearchResultRow, RssFeedRow, RssItemRow, RssRuleRow, SchedulerCell, IpFilterRuleRow, BannedPeerRow, LogRow, StatCardData, TransferBar, IntentPresetRow }
 
 component MenuButton {
@@ -1042,6 +1050,22 @@ export component MainWindow inherits Window {
     // ── Preferences dialog (M184, replaces Tweaks overlay) ──
     in-out property <bool> show-preferences-dialog: false;
     in-out property <bool> show-about-dialog: false;
+    // M217: Keyboard Shortcuts modal (replaces M216 toast stub).
+    in-out property <bool> show-keyboard-shortcuts-dialog: false;
+    // M217: Inline torrent filter (Ctrl+F). The row appears above the
+    // torrent list when show-torrent-filter-row is true; the LineEdit
+    // binds to torrent-filter-query and the Rust side filters the row
+    // builder by case-insensitive substring on name + tracker domains.
+    in-out property <bool> show-torrent-filter-row: false;
+    in-out property <string> torrent-filter-query: "";
+    callback focus-torrent-filter();
+    // Fired by the inline filter TextInput's edited handler so the Rust
+    // poll loop can mirror the query into AppState (tokio-thread-safe read).
+    callback filter-query-changed(string);
+    // M217: Static binding list rendered in the Shortcuts modal.
+    // Populated once at startup from palette::resolved_hotkey so the
+    // modal stays in sync if palette IDs change later.
+    in-out property <[KeyboardShortcutRow]> keyboard-shortcuts-rows: [];
     in-out property <string> pref-skin: "tide";
     in-out property <string> pref-theme: "dark";
     in-out property <string> pref-density: "balanced";
@@ -1185,6 +1209,8 @@ export component MainWindow inherits Window {
     callback menu-tools-action(int);
     callback menu-help-action(int);
     callback quit-requested();
+    // M217: F5 refresh — surfaces a toast and (TODO) re-polls engine.
+    callback refresh-requested();
     callback sort-requested(/* column index */ int);
     callback row-clicked(/* info-hash */ string, /* shift */ bool, /* ctrl */ bool);
     callback column-move-requested(/* from */ int, /* to */ int);
@@ -1217,11 +1243,23 @@ export component MainWindow inherits Window {
                 }
                 return accept;
             }
+            // M217: F1 always opens the Shortcuts modal, even with another
+            // dialog already up (layered modal, OS Help convention).
+            if event.text == Key.F1 {
+                root.show-keyboard-shortcuts-dialog = true;
+                return accept;
+            }
+            // M217: Ctrl+Q always quits (graceful shutdown).
+            if (root.ctrl-held || root.meta-held)
+               && (event.text == "q" || event.text == "Q") {
+                root.quit-requested();
+                return accept;
+            }
             // Keyboard shortcuts (only when no dialog/menu is open).
             // The Tweaks overlay is treated as modal too — it absorbs
             // its own keys above, so any leftover key event with
             // root.show-tweaks should not trigger sidebar shortcuts.
-            if !root.show-add-torrent-dialog && !root.show-create-torrent-dialog && !root.show-delete-dialog && !root.show-context-menu && !root.show-preferences-dialog && !root.show-command-palette {
+            if !root.show-add-torrent-dialog && !root.show-create-torrent-dialog && !root.show-delete-dialog && !root.show-context-menu && !root.show-preferences-dialog && !root.show-command-palette && !root.show-about-dialog && !root.show-keyboard-shortcuts-dialog {
                 // v0.187.3 / Bug 2.2: accept BOTH the literal space character
                 // AND `Key.Space` — Slint forwards one or the other depending
                 // on IME state on Linux. Dogfood reported "Spacebar toggles
@@ -1261,12 +1299,47 @@ export component MainWindow inherits Window {
                     root.sidebar-shortcut(event.text);
                     return accept;
                 }
+                // M217: F5 refreshes the torrent list (re-poll trigger).
+                if event.text == Key.F5 {
+                    root.refresh-requested();
+                    return accept;
+                }
+                // M217: Ctrl+O — Open .torrent file (Add Torrent dialog).
+                if (root.ctrl-held || root.meta-held)
+                   && (event.text == "o" || event.text == "O") {
+                    root.menu-file-action(1);  // AddTorrentFile index
+                    return accept;
+                }
+                // M217: Ctrl+N — Add Magnet Link.
+                if (root.ctrl-held || root.meta-held)
+                   && (event.text == "n" || event.text == "N") {
+                    root.menu-file-action(0);  // AddMagnet index
+                    return accept;
+                }
+                // M217: Ctrl+F — focus the torrent filter input.
+                if (root.ctrl-held || root.meta-held)
+                   && (event.text == "f" || event.text == "F") {
+                    root.show-torrent-filter-row = true;
+                    root.focus-torrent-filter();
+                    return accept;
+                }
             }
             // Escape: dismiss open dialogs/menus (priority order)
             if event.text == Key.Escape {
                 if root.show-command-palette {
                     root.show-command-palette = false;
                     root.palette-dismissed();
+                    return accept;
+                }
+                // M217: Keyboard Shortcuts modal Escape dismiss.
+                if root.show-keyboard-shortcuts-dialog {
+                    root.show-keyboard-shortcuts-dialog = false;
+                    return accept;
+                }
+                // M217: About modal Escape dismiss (pre-existing gap;
+                // M216 wired About via menu/close-button only, no Escape).
+                if root.show-about-dialog {
+                    root.show-about-dialog = false;
                     return accept;
                 }
                 if root.show-preferences-dialog {
@@ -1287,6 +1360,13 @@ export component MainWindow inherits Window {
                 }
                 if root.show-create-torrent-dialog {
                     root.show-create-torrent-dialog = false;
+                    return accept;
+                }
+                // M217: Ctrl+F filter row — Escape hides it and clears query.
+                if root.show-torrent-filter-row {
+                    root.show-torrent-filter-row = false;
+                    root.torrent-filter-query = "";
+                    root.filter-query-changed("");
                     return accept;
                 }
             }
@@ -1494,6 +1574,76 @@ export component MainWindow inherits Window {
                                         vertical-alignment: center;
                                     }
                                 }
+                            }
+                        }
+                    }
+
+                    // M217 — inline filter row above the torrent list. Toggled
+                    // by Ctrl+F (via root.show-torrent-filter-row). The TextInput
+                    // self-focuses on instantiation; Esc clears + hides via the
+                    // global key-pressed handler.
+                    if root.show-torrent-filter-row && !root.show-search-page && !root.show-rss-page && !root.show-scheduler-page && !root.show-ip-filter-page && !root.show-logs-stats-page && !root.show-bandwidth-intent-page && !root.show-phone-pair-page : Rectangle {
+                        height: Tokens.row-h + Tokens.sp-4 * 2;
+                        background: Tokens.bg-1;
+                        border-color: Tokens.border-1;
+                        border-width: Tokens.border-width-thin;
+
+                        HorizontalLayout {
+                            padding: Tokens.sp-4;
+                            spacing: Tokens.sp-3;
+                            alignment: stretch;
+
+                            Text {
+                                text: "Filter:";
+                                color: Tokens.fg-2;
+                                font-size: Tokens.fs-13;
+                                vertical-alignment: center;
+                                horizontal-stretch: 0;
+                            }
+
+                            Rectangle {
+                                horizontal-stretch: 1;
+                                background: Tokens.bg-inset;
+                                border-color: Tokens.border-1;
+                                border-width: Tokens.border-width-thin;
+                                border-radius: Tokens.r-md;
+                                height: Tokens.row-h;
+
+                                filter-input := TextInput {
+                                    accessible-label: "Filter torrents";
+                                    x: Tokens.sp-3;
+                                    y: (parent.height - self.preferred-height) / 2;
+                                    width: parent.width - Tokens.sp-3 * 2;
+                                    font-size: Tokens.fs-13;
+                                    color: Tokens.fg-0;
+                                    selection-foreground-color: Tokens.fg-0;
+                                    selection-background-color: Tokens.bg-selected;
+                                    text: root.torrent-filter-query;
+                                    init => { self.focus(); }
+                                    edited => {
+                                        root.torrent-filter-query = self.text;
+                                        root.filter-query-changed(self.text);
+                                    }
+                                }
+
+                                Text {
+                                    x: Tokens.sp-3;
+                                    y: (parent.height - self.preferred-height) / 2;
+                                    width: parent.width - Tokens.sp-3 * 2;
+                                    text: "Type to filter by name or tracker\u{2026}";
+                                    color: Tokens.fg-3;
+                                    font-size: Tokens.fs-13;
+                                    vertical-alignment: center;
+                                    visible: filter-input.text == "";
+                                }
+                            }
+
+                            Text {
+                                text: "Esc to close";
+                                color: Tokens.fg-3;
+                                font-size: Tokens.fs-12;
+                                vertical-alignment: center;
+                                horizontal-stretch: 0;
                             }
                         }
                     }
@@ -2012,6 +2162,117 @@ export component MainWindow inherits Window {
 
                     about-close-touch := TouchArea {
                         clicked => { root.show-about-dialog = false; }
+                    }
+                }
+            }
+        }
+    }
+
+    // M217: Keyboard Shortcuts modal — replaces the M216 toast stub.
+    // Reachable via Help → Keyboard Shortcuts, F1, and palette command.
+    if root.show-keyboard-shortcuts-dialog : Rectangle {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        background: #00000088;
+
+        shortcuts-scrim-touch := TouchArea {
+            clicked => { root.show-keyboard-shortcuts-dialog = false; }
+        }
+
+        Rectangle {
+            x: (parent.width - 520px) / 2;
+            y: (parent.height - 480px) / 2;
+            width: 520px;
+            height: 480px;
+            background: Tokens.bg-2;
+            border-color: Tokens.border-1;
+            border-width: Tokens.border-width-thin;
+            border-radius: Tokens.r-md;
+
+            shortcuts-card-touch := TouchArea {
+                // Eat clicks so they don't dismiss via scrim.
+            }
+
+            VerticalLayout {
+                padding: Tokens.sp-4;
+                spacing: Tokens.sp-2;
+
+                Text {
+                    text: "Keyboard Shortcuts";
+                    color: Tokens.fg-0;
+                    font-size: Tokens.fs-18;
+                    horizontal-alignment: center;
+                }
+
+                Rectangle {
+                    height: Tokens.border-width-thin;
+                    background: Tokens.border-1;
+                }
+
+                Flickable {
+                    vertical-stretch: 1;
+
+                    VerticalLayout {
+                        spacing: Tokens.sp-1;
+
+                        for row in root.keyboard-shortcuts-rows : Rectangle {
+                            height: Tokens.row-h;
+                            background: Tokens.bg-1;
+                            border-radius: Tokens.r-sm;
+
+                            HorizontalLayout {
+                                padding-left: Tokens.sp-3;
+                                padding-right: Tokens.sp-3;
+                                spacing: Tokens.sp-2;
+
+                                Text {
+                                    text: row.category;
+                                    color: Tokens.fg-3;
+                                    font-size: Tokens.fs-12;
+                                    vertical-alignment: center;
+                                    width: 80px;
+                                }
+
+                                Text {
+                                    text: row.binding;
+                                    color: Tokens.accent;
+                                    font-size: Tokens.fs-13;
+                                    font-family: "monospace";
+                                    vertical-alignment: center;
+                                    width: 120px;
+                                }
+
+                                Text {
+                                    text: row.description;
+                                    color: Tokens.fg-0;
+                                    font-size: Tokens.fs-13;
+                                    vertical-alignment: center;
+                                    horizontal-stretch: 1;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: shortcuts-close-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+                    border-color: Tokens.border-1;
+                    border-width: Tokens.border-width-thin;
+
+                    Text {
+                        text: "Close";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    shortcuts-close-touch := TouchArea {
+                        clicked => { root.show-keyboard-shortcuts-dialog = false; }
                     }
                 }
             }

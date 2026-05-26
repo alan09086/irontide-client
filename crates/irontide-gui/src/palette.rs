@@ -40,6 +40,11 @@ pub enum PaletteCommandId {
     TogglePhonePair,
     OpenPreferences,
     SelectAll,
+    FocusFilter,
+    RefreshList,
+    CopyMagnetLink,
+    // Help
+    ShowKeyboardShortcuts,
     // Settings
     Quit,
 }
@@ -49,6 +54,7 @@ pub enum PaletteCategory {
     Action,
     Navigation,
     Tools,
+    Help,
     Settings,
 }
 
@@ -59,6 +65,7 @@ impl PaletteCategory {
             Self::Action => "ACTION",
             Self::Navigation => "NAVIGATION",
             Self::Tools => "TOOLS",
+            Self::Help => "HELP",
             Self::Settings => "SETTINGS",
         }
     }
@@ -233,6 +240,31 @@ pub static COMMANDS: &[PaletteCommand] = &[
         category: PaletteCategory::Tools,
         hotkey_hint: "",
     },
+    PaletteCommand {
+        id: PaletteCommandId::FocusFilter,
+        label: "Find in Torrents",
+        category: PaletteCategory::Tools,
+        hotkey_hint: "",
+    },
+    PaletteCommand {
+        id: PaletteCommandId::RefreshList,
+        label: "Refresh Torrent List",
+        category: PaletteCategory::Tools,
+        hotkey_hint: "F5",
+    },
+    PaletteCommand {
+        id: PaletteCommandId::CopyMagnetLink,
+        label: "Copy Magnet Link",
+        category: PaletteCategory::Tools,
+        hotkey_hint: "",
+    },
+    // Help
+    PaletteCommand {
+        id: PaletteCommandId::ShowKeyboardShortcuts,
+        label: "Keyboard Shortcuts",
+        category: PaletteCategory::Help,
+        hotkey_hint: "F1",
+    },
     // Settings
     PaletteCommand {
         id: PaletteCommandId::OpenPreferences,
@@ -314,7 +346,8 @@ pub fn is_enabled(id: PaletteCommandId, has_selection: bool) -> bool {
         | PaletteCommandId::ResumeSelected
         | PaletteCommandId::RemoveSelected
         | PaletteCommandId::ForceRecheck
-        | PaletteCommandId::ForceReannounce => has_selection,
+        | PaletteCommandId::ForceReannounce
+        | PaletteCommandId::CopyMagnetLink => has_selection,
         _ => true,
     }
 }
@@ -326,6 +359,10 @@ pub fn resolved_hotkey(cmd: &PaletteCommand) -> SharedString {
     match cmd.id {
         PaletteCommandId::OpenPreferences => accel::format_shortcut(&[","]),
         PaletteCommandId::SelectAll => accel::format_shortcut(&["A"]),
+        PaletteCommandId::AddTorrentFile => accel::format_shortcut(&["O"]),
+        PaletteCommandId::AddMagnetLink => accel::format_shortcut(&["N"]),
+        PaletteCommandId::Quit => accel::format_shortcut(&["Q"]),
+        PaletteCommandId::FocusFilter => accel::format_shortcut(&["F"]),
         _ => SharedString::from(cmd.hotkey_hint),
     }
 }
@@ -347,6 +384,10 @@ pub enum DispatchAction {
     SetPredicate(crate::sidebar::SidebarPredicate),
     OpenPreferences,
     SelectAll,
+    FocusFilter,
+    RefreshList,
+    CopyMagnetLink(String),
+    ShowKeyboardShortcuts,
     Quit,
 }
 
@@ -419,6 +460,12 @@ pub fn dispatch(id: PaletteCommandId, selected: &[String]) -> DispatchAction {
         PaletteCommandId::TogglePhonePair => DispatchAction::TogglePhonePair,
         PaletteCommandId::OpenPreferences => DispatchAction::OpenPreferences,
         PaletteCommandId::SelectAll => DispatchAction::SelectAll,
+        PaletteCommandId::FocusFilter => DispatchAction::FocusFilter,
+        PaletteCommandId::RefreshList => DispatchAction::RefreshList,
+        PaletteCommandId::CopyMagnetLink => DispatchAction::CopyMagnetLink(
+            selected.first().cloned().unwrap_or_default(),
+        ),
+        PaletteCommandId::ShowKeyboardShortcuts => DispatchAction::ShowKeyboardShortcuts,
         PaletteCommandId::Quit => DispatchAction::Quit,
     }
 }
@@ -477,6 +524,7 @@ pub fn build_slint_categories(
         PaletteCategory::Action,
         PaletteCategory::Navigation,
         PaletteCategory::Tools,
+        PaletteCategory::Help,
         PaletteCategory::Settings,
     ];
 
@@ -614,5 +662,89 @@ mod tests {
         assert_eq!(recent.len(), 5);
         assert_eq!(recent[0], PaletteCommandId::SelectAll);
         assert!(!recent.contains(&PaletteCommandId::Quit));
+    }
+
+    #[test]
+    fn dispatch_show_keyboard_shortcuts_routes_to_modal() {
+        assert!(matches!(
+            dispatch(PaletteCommandId::ShowKeyboardShortcuts, &[]),
+            DispatchAction::ShowKeyboardShortcuts
+        ));
+    }
+
+    #[test]
+    fn dispatch_copy_magnet_link_carries_first_selected_hash() {
+        let hashes = vec![
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
+        ];
+        let action = dispatch(PaletteCommandId::CopyMagnetLink, &hashes);
+        match action {
+            DispatchAction::CopyMagnetLink(h) => {
+                assert_eq!(h, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+            }
+            _ => panic!("expected CopyMagnetLink, got something else"),
+        }
+    }
+
+    #[test]
+    fn dispatch_copy_magnet_link_empty_selection_yields_empty_hash() {
+        let action = dispatch(PaletteCommandId::CopyMagnetLink, &[]);
+        match action {
+            DispatchAction::CopyMagnetLink(h) => assert!(h.is_empty()),
+            _ => panic!("expected CopyMagnetLink"),
+        }
+    }
+
+    #[test]
+    fn dispatch_focus_filter_and_refresh_route_correctly() {
+        assert!(matches!(
+            dispatch(PaletteCommandId::FocusFilter, &[]),
+            DispatchAction::FocusFilter
+        ));
+        assert!(matches!(
+            dispatch(PaletteCommandId::RefreshList, &[]),
+            DispatchAction::RefreshList
+        ));
+    }
+
+    #[test]
+    fn copy_magnet_link_requires_selection() {
+        assert!(!is_enabled(PaletteCommandId::CopyMagnetLink, false));
+        assert!(is_enabled(PaletteCommandId::CopyMagnetLink, true));
+    }
+
+    #[test]
+    fn resolved_hotkey_for_new_palette_commands() {
+        let focus = COMMANDS
+            .iter()
+            .find(|c| c.id == PaletteCommandId::FocusFilter)
+            .unwrap();
+        let refresh = COMMANDS
+            .iter()
+            .find(|c| c.id == PaletteCommandId::RefreshList)
+            .unwrap();
+        let shortcuts = COMMANDS
+            .iter()
+            .find(|c| c.id == PaletteCommandId::ShowKeyboardShortcuts)
+            .unwrap();
+        assert!(!resolved_hotkey(focus).is_empty(), "FocusFilter must have a rendered hotkey");
+        assert_eq!(resolved_hotkey(refresh).as_str(), "F5");
+        assert_eq!(resolved_hotkey(shortcuts).as_str(), "F1");
+    }
+
+    #[test]
+    fn all_new_palette_commands_appear_in_commands_table() {
+        for id in [
+            PaletteCommandId::FocusFilter,
+            PaletteCommandId::RefreshList,
+            PaletteCommandId::CopyMagnetLink,
+            PaletteCommandId::ShowKeyboardShortcuts,
+        ] {
+            assert!(
+                COMMANDS.iter().any(|c| c.id == id),
+                "missing COMMANDS entry for {id:?}"
+            );
+        }
     }
 }

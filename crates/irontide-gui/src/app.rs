@@ -410,6 +410,8 @@ pub enum ContextAction {
     ForceStart,
     /// Move download directory.
     MoveStorage,
+    /// Copy a magnet URI for the first selected torrent to the system clipboard.
+    CopyMagnet,
 }
 
 impl ContextAction {
@@ -427,6 +429,7 @@ impl ContextAction {
             7 => Some(Self::ForceReannounce),
             8 => Some(Self::ForceStart),
             9 => Some(Self::MoveStorage),
+            10 => Some(Self::CopyMagnet),
             _ => None,
         }
     }
@@ -545,14 +548,14 @@ impl ToolsMenuAction {
 
 /// Help-menu actions (M216).
 ///
-/// Mirrors the `MenuAction` pattern. `KeyboardShortcuts` and
-/// `OpenLogsFolder` ship as toast-only stubs in M216 — the shortcuts dialog
-/// arrives in M217 and file logging in a later milestone.
+/// Mirrors the `MenuAction` pattern. M217 wired `KeyboardShortcuts` to a
+/// real modal (replacing the M216 toast stub); `OpenLogsFolder` remains a
+/// stub until file logging lands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HelpMenuAction {
     /// Show the About dialog.
     About,
-    /// Stub: toast "Coming in M217 — try Ctrl+K for now".
+    /// Show the Keyboard Shortcuts modal (M217).
     KeyboardShortcuts,
     /// Trigger an on-demand update check via `update_checker::check_now`.
     CheckForUpdates,
@@ -705,6 +708,15 @@ pub struct AppState {
     /// M192: whether the Create Torrent dialog is visible.
     #[allow(dead_code, reason = "M192: read by Slint property bindings at runtime")]
     pub show_create_torrent_dialog: bool,
+    /// M217: inline torrent filter query (Ctrl+F filter row).
+    ///
+    /// Mirrors the Slint `torrent-filter-query` property — main.rs wires
+    /// the edited callback to update this field. The poll loop reads it
+    /// every tick and filters the row builder by case-insensitive substring
+    /// match against the torrent name and tracker URLs. Empty string means
+    /// no filter is applied. Cleared when the user dismisses the filter
+    /// row via Esc.
+    pub torrent_filter_query: String,
 }
 
 impl AppState {
@@ -748,6 +760,7 @@ impl AppState {
             add_torrent_skip_checking: false,
             create_torrent: CreateTorrentState::default(),
             show_create_torrent_dialog: false,
+            torrent_filter_query: String::new(),
         }
     }
 
@@ -1361,12 +1374,16 @@ mod tests {
             ContextAction::from_index(9),
             Some(ContextAction::MoveStorage)
         );
+        assert_eq!(
+            ContextAction::from_index(10),
+            Some(ContextAction::CopyMagnet)
+        );
     }
 
     #[test]
     fn context_action_from_index_invalid() {
         assert_eq!(ContextAction::from_index(-1), None);
-        assert_eq!(ContextAction::from_index(10), None);
+        assert_eq!(ContextAction::from_index(11), None);
         assert_eq!(ContextAction::from_index(100), None);
     }
 

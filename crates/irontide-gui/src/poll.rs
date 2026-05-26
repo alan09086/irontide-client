@@ -199,10 +199,15 @@ pub async fn poll_loop(
             }
         };
 
-        // Read sort + selection + predicate state.
-        let (sort, selected, predicate) = {
+        // Read sort + selection + predicate state + M217 filter query.
+        let (sort, selected, predicate, filter_query) = {
             let st = state.lock();
-            (st.sort, st.selected.clone(), st.predicate.clone())
+            (
+                st.sort,
+                st.selected.clone(),
+                st.predicate.clone(),
+                st.torrent_filter_query.clone(),
+            )
         };
 
         // Filter (M173 Lane A) then sort. The enricher reaches into the
@@ -217,6 +222,17 @@ pub async fn poll_loop(
                 .cloned()
                 .unwrap_or_else(|| RowView::from_summary(s))
         });
+
+        // M217: inline filter query (Ctrl+F). Case-insensitive substring
+        // match against torrent name + tracker URLs. Empty query is a
+        // no-op so behaviour stays identical to pre-M217 when the filter
+        // row isn't open. Tracker URL matching lets users filter to e.g.
+        // "linuxtracker" without typing the full announce URL.
+        if !filter_query.is_empty() {
+            let needle = filter_query.to_lowercase();
+            sorted.retain(|s| matches_filter(s, &rich_by_hash, &needle));
+        }
+
         sort_summaries(&mut sorted, sort);
 
         // Convert to Slint rows.
@@ -869,6 +885,27 @@ pub fn enrich_summary_only(s: &TorrentSummary) -> RowView {
     RowView::from_summary(s)
 }
 
+/// M217 inline filter matcher. Returns true when the lowercase `needle`
+/// is a substring of the torrent's name or any of its tracker hostnames.
+/// `rich_by_hash` lets us reuse the lowercased + deduplicated
+/// `tracker_hosts` set the sidebar predicate already computes; falls
+/// back to the bare summary when no rich row is available (magnet
+/// torrents with no tracker metadata yet).
+#[must_use]
+pub fn matches_filter(
+    s: &TorrentSummary,
+    rich_by_hash: &std::collections::HashMap<&str, &RowView>,
+    needle: &str,
+) -> bool {
+    if s.name.to_lowercase().contains(needle) {
+        return true;
+    }
+    if let Some(rv) = rich_by_hash.get(s.info_hash.as_str()) {
+        return rv.tracker_hosts.iter().any(|host| host.contains(needle));
+    }
+    false
+}
+
 // ── Sorting ─────────────────────────────────────────────────────────────────
 
 /// Sort torrent summaries in-place according to the current sort state.
@@ -1374,5 +1411,40 @@ mod tests {
         let mut row_c = row_a.clone();
         row_c.progress = 0.75;
         assert!(rows_differ(&row_a, &row_c));
+    }
+
+    fn rich_for(s: &TorrentSummary, hosts: &[&str]) -> RowView {
+        let mut rv = RowView::from_summary(s);
+        rv.tracker_hosts = hosts.iter().map(|h| (*h).to_lowercase()).collect();
+        rv
+    }
+
+    #[test]
+    fn matches_filter_name_substring_case_insensitive() {
+        let s = test_summary("Ubuntu 24.04 LTS amd64", "aa");
+        let rich = rich_for(&s, &[]);
+        let map: std::collections::HashMap<&str, &RowView> = [("aa", &rich)].into();
+        assert!(matches_filter(&s, &map, "ubuntu"));
+        assert!(matches_filter(&s, &map, "UBUNTU".to_lowercase().as_str()));
+        assert!(matches_filter(&s, &map, "24.04"));
+        assert!(!matches_filter(&s, &map, "debian"));
+    }
+
+    #[test]
+    fn matches_filter_tracker_host_substring() {
+        let s = test_summary("anything", "bb");
+        let rich = rich_for(&s, &["tracker.linuxtracker.org", "opentrackr.org"]);
+        let map: std::collections::HashMap<&str, &RowView> = [("bb", &rich)].into();
+        assert!(matches_filter(&s, &map, "linuxtracker"));
+        assert!(matches_filter(&s, &map, "opentrackr"));
+        assert!(!matches_filter(&s, &map, "missing"));
+    }
+
+    #[test]
+    fn matches_filter_falls_back_when_no_rich_row() {
+        let s = test_summary("Magnet without metadata", "cc");
+        let map: std::collections::HashMap<&str, &RowView> = std::collections::HashMap::new();
+        assert!(matches_filter(&s, &map, "magnet"));
+        assert!(!matches_filter(&s, &map, "tracker"));
     }
 }

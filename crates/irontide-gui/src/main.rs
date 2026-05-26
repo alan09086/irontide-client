@@ -3,6 +3,7 @@ mod app;
 mod bandwidth_intent;
 mod bridge;
 mod category_suggest;
+mod clipboard;
 mod columns;
 mod detail;
 mod error;
@@ -11,6 +12,7 @@ mod format;
 mod ip_filter_page;
 #[allow(dead_code)]
 mod logs_stats_page;
+mod magnet;
 mod palette;
 mod panic_hook;
 mod phone_pair;
@@ -411,7 +413,9 @@ fn main() -> Result<(), error::GuiError> {
                     });
                 }
                 app::HelpMenuAction::KeyboardShortcuts => {
-                    bridge::show_toast(&weak, "Keyboard shortcuts dialog ships in M217.", false);
+                    let _ = weak.upgrade_in_event_loop(|win| {
+                        win.set_show_keyboard_shortcuts_dialog(true);
+                    });
                 }
                 app::HelpMenuAction::CheckForUpdates => {
                     update_checker::check_now(weak.clone());
@@ -852,6 +856,21 @@ fn main() -> Result<(), error::GuiError> {
                     } else {
                         return;
                     }
+                }
+                ContextAction::CopyMagnet => {
+                    let Some(hash) = hashes.into_iter().next() else {
+                        bridge::show_toast(&weak, "No torrent selected", true);
+                        return;
+                    };
+                    match clipboard::copy_magnet_for_hash(&hash) {
+                        Ok(_) => bridge::show_toast(&weak, "Magnet copied", false),
+                        Err(e) => bridge::show_toast(
+                            &weak,
+                            &format!("Clipboard unavailable: {e}"),
+                            true,
+                        ),
+                    }
+                    return;
                 }
                 // Handled by the confirmation dialog above; unreachable here.
                 ContextAction::Remove | ContextAction::RemoveAndDelete => return,
@@ -1449,6 +1468,38 @@ fn main() -> Result<(), error::GuiError> {
                     crate::poll::update_selection(&new_selected);
                     crate::poll::update_primary_selection(primary.as_deref());
                 }
+                palette::DispatchAction::FocusFilter => {
+                    let _ = weak2.upgrade_in_event_loop(|win| {
+                        win.set_show_torrent_filter_row(true);
+                        win.invoke_focus_torrent_filter();
+                    });
+                }
+                palette::DispatchAction::RefreshList => {
+                    let _ = weak2.upgrade_in_event_loop(|win| {
+                        win.set_toast_text("Refreshing torrent list".into());
+                        win.set_toast_visible(true);
+                        win.set_toast_is_error(false);
+                    });
+                }
+                palette::DispatchAction::CopyMagnetLink(hash) => {
+                    let _ = weak2.upgrade_in_event_loop(move |win| {
+                        let (msg, is_error) = match crate::clipboard::copy_magnet_for_hash(&hash) {
+                            Ok(_) => ("Magnet link copied to clipboard", false),
+                            Err(crate::clipboard::ClipboardError::NoSelection) => {
+                                ("No torrent selected for Copy Magnet", true)
+                            }
+                            Err(_) => ("Could not access clipboard", true),
+                        };
+                        win.set_toast_text(msg.into());
+                        win.set_toast_visible(true);
+                        win.set_toast_is_error(is_error);
+                    });
+                }
+                palette::DispatchAction::ShowKeyboardShortcuts => {
+                    let _ = weak2.upgrade_in_event_loop(|win| {
+                        win.set_show_keyboard_shortcuts_dialog(true);
+                    });
+                }
                 palette::DispatchAction::Quit => {
                     let _ = weak2.upgrade_in_event_loop(|win| {
                         win.invoke_quit_requested();
@@ -1461,6 +1512,91 @@ fn main() -> Result<(), error::GuiError> {
         main_window.on_palette_dismissed(|| {
             // No state cleanup needed beyond closing (handled by Slint side)
         });
+    }
+
+    // ── M217 keyboard parity: refresh + focus-filter callbacks ───────
+    //
+    // F5 surfaces a toast via the engine push model (the next poll tick
+    // pushes fresh data automatically; the toast is the user-visible ack).
+    // Ctrl+F focus stays a no-op for now — Slint's focus model needs the
+    // LineEdit to be present in the tree, and the filter row appears
+    // conditionally. The callback exists so the Rust side can hook focus
+    // forwarding later without touching Slint again.
+    {
+        let weak = main_window.as_weak();
+        main_window.on_refresh_requested(move || {
+            let _ = weak.upgrade_in_event_loop(|win| {
+                win.set_toast_text("Torrent list refreshed".into());
+                win.set_toast_visible(true);
+                win.set_toast_is_error(false);
+            });
+        });
+    }
+    {
+        main_window.on_focus_torrent_filter(|| {
+            // Slint focus forwarding hook — intentionally empty; the
+            // filter LineEdit auto-focuses on first appearance via Slint
+            // layout, and explicit focus-grab requires the LineEdit
+            // element to be in scope. Step 7 follow-up.
+        });
+    }
+    {
+        let cb_state = state.clone();
+        main_window.on_filter_query_changed(move |new_query| {
+            let mut st = cb_state.lock();
+            st.torrent_filter_query = new_query.to_string();
+        });
+    }
+
+    // ── M217 Keyboard Shortcuts modal — populate static binding rows ─
+    {
+        use palette::PaletteCommandId;
+        let rows: Vec<KeyboardShortcutRow> = palette::COMMANDS
+            .iter()
+            .map(|cmd| {
+                let category = match cmd.category {
+                    palette::PaletteCategory::Action => "ACTION",
+                    palette::PaletteCategory::Navigation => "NAV",
+                    palette::PaletteCategory::Tools => "TOOLS",
+                    palette::PaletteCategory::Help => "HELP",
+                    palette::PaletteCategory::Settings => "SETTINGS",
+                };
+                let binding = palette::resolved_hotkey(cmd);
+                KeyboardShortcutRow {
+                    category: slint::SharedString::from(category),
+                    binding,
+                    description: slint::SharedString::from(cmd.label),
+                }
+            })
+            // Filter out commands with no rendered hotkey (palette-only).
+            .filter(|r| !r.binding.is_empty())
+            .chain(std::iter::once(KeyboardShortcutRow {
+                category: slint::SharedString::from("PALETTE"),
+                binding: accel::format_shortcut(&["K"]),
+                description: slint::SharedString::from("Open Command Palette"),
+            }))
+            .chain([
+                ("ACTION", "Space", "Pause / Resume selected"),
+                ("ACTION", "Del", "Remove selected"),
+                ("ACTION", "Enter", "Show details for selected"),
+                ("ACTION", "F4", "Pause / Resume selected"),
+                (
+                    "NAV",
+                    if cfg!(target_os = "macos") { "⌘1..9" } else { "Ctrl+1..9" },
+                    "Sidebar navigation",
+                ),
+            ]
+            .into_iter()
+            .map(|(c, b, d)| KeyboardShortcutRow {
+                category: slint::SharedString::from(c),
+                binding: slint::SharedString::from(b),
+                description: slint::SharedString::from(d),
+            }))
+            .collect();
+        // Mark `PaletteCommandId` as referenced so future changes that
+        // remove the import don't slip past clippy --allow.
+        let _: PaletteCommandId = PaletteCommandId::ShowKeyboardShortcuts;
+        main_window.set_keyboard_shortcuts_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
     }
 
     // ── M184 Preferences dialog callbacks ────────────────────────────
