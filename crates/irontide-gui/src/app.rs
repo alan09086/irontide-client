@@ -1,4 +1,6 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 
 /// Application lifecycle phases.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -99,6 +101,20 @@ pub struct EnginePrefs {
 pub enum AddTorrentSource {
     File(String),
     Magnet(String),
+    /// M218: bytes fetched from a user-supplied URL. Carries the source URL
+    /// (for display / debugging only) and the raw `.torrent` bytes inline so
+    /// the add-confirm path can hand them directly to
+    /// `AddTorrentParams::from_bytes` without touching disk. The inline `Vec`
+    /// is bounded by the fetcher's 10 MiB ceiling.
+    UrlBytes {
+        /// The user-typed URL the bytes were fetched from. Read via `Debug`
+        /// for diagnostics; future milestones (tracing, error toasts, history)
+        /// will surface it through the UI.
+        #[allow(dead_code, reason = "M218: retained for Debug + future UI use")]
+        url: String,
+        /// The raw `.torrent` file contents.
+        bytes: Vec<u8>,
+    },
 }
 
 /// M192: torrent output format for the Create Torrent dialog.
@@ -717,6 +733,20 @@ pub struct AppState {
     /// no filter is applied. Cleared when the user dismisses the filter
     /// row via Esc.
     pub torrent_filter_query: String,
+    /// M218: monotonic counter for in-flight URL-tab torrent fetches.
+    ///
+    /// Each `on_add_torrent_url_changed` keystroke spawns a worker thread —
+    /// without a generation counter, a slow first fetch landing after a
+    /// fast second fetch would overwrite the latter's preview with stale
+    /// bytes. Workers capture the counter at spawn time and compare against
+    /// the current value before committing their result; mismatches mean
+    /// a newer fetch has superseded this one, so we silently discard.
+    ///
+    /// `Arc<AtomicU64>` rather than a plain `u64` because each worker
+    /// thread holds its own clone; `parking_lot::Mutex` would force
+    /// workers to serialise on the lock when only the generation field
+    /// matters.
+    pub add_torrent_url_generation: Arc<AtomicU64>,
 }
 
 impl AppState {
@@ -761,6 +791,7 @@ impl AppState {
             create_torrent: CreateTorrentState::default(),
             show_create_torrent_dialog: false,
             torrent_filter_query: String::new(),
+            add_torrent_url_generation: Arc::new(AtomicU64::new(0)),
         }
     }
 

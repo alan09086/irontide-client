@@ -27,6 +27,7 @@ mod single_instance;
 mod skin;
 mod skin_tokens;
 mod speed;
+mod torrent_fetch;
 mod tray;
 mod update_checker;
 mod watcher;
@@ -650,13 +651,17 @@ fn main() -> Result<(), error::GuiError> {
     }
 
     {
+        let weak = main_window.as_weak();
         let cb_state = state.clone();
-        main_window.on_add_torrent_url_changed(move |_url| {
-            let _cmd_tx = {
-                let st = cb_state.lock();
-                st.cmd_tx.clone()
-            };
-            // URL fetch deferred — placeholder for now
+        main_window.on_add_torrent_url_changed(move |url| {
+            let url = url.trim().to_string();
+            if url.is_empty() {
+                return;
+            }
+            // Off-thread blocking HTTP fetch. Generation counter inside
+            // spawn_torrent_url_fetch discards stale results if the user
+            // edits the field again before the response lands.
+            torrent_fetch::spawn_torrent_url_fetch(weak.clone(), cb_state.clone(), url);
         });
     }
 

@@ -322,7 +322,10 @@ pub fn handle_browse_torrent_file(
             match std::fs::read(&path) {
                 Ok(data) => match irontide::core::torrent_from_bytes_any(&data) {
                     Ok(meta) => {
-                        let preview = build_preview_from_meta(&meta, &path_str);
+                        let preview = build_preview_from_meta(
+                            &meta,
+                            crate::app::AddTorrentSource::File(path_str.clone()),
+                        );
                         let name: String = preview.name.clone();
                         let size_str = crate::format::format_size(preview.total_size);
                         let count = i32::try_from(preview.file_count).unwrap_or(i32::MAX);
@@ -362,9 +365,13 @@ pub fn handle_browse_torrent_file(
 }
 
 /// Build an `AddTorrentPreview` from parsed torrent metadata.
-fn build_preview_from_meta(
+///
+/// `source` is consumed and stored verbatim on the returned preview — caller
+/// chooses whether the bytes came from a local file, a magnet (not currently
+/// used here — magnet uses a separate skeleton path), or a URL fetch (M218).
+pub(crate) fn build_preview_from_meta(
     meta: &irontide::core::TorrentMeta,
-    path_str: &str,
+    source: crate::app::AddTorrentSource,
 ) -> crate::app::AddTorrentPreview {
     let (name, total_size, file_count) = extract_torrent_info(meta);
 
@@ -429,7 +436,7 @@ fn build_preview_from_meta(
         trackers,
         files,
         file_selected,
-        source: crate::app::AddTorrentSource::File(path_str.to_owned()),
+        source,
     }
 }
 
@@ -470,7 +477,7 @@ fn extract_trackers_v1(v1: &irontide::core::TorrentMetaV1) -> String {
 }
 
 /// Build a `Vec<AddTorrentFileRow>` from a preview (Send-safe).
-fn build_sendable_file_rows(
+pub(crate) fn build_sendable_file_rows(
     preview: &crate::app::AddTorrentPreview,
 ) -> Vec<crate::AddTorrentFileRow> {
     preview
@@ -527,7 +534,7 @@ fn extract_torrent_info(meta: &irontide::core::TorrentMeta) -> (String, u64, usi
     }
 }
 
-fn extract_file_extensions(preview: &crate::app::AddTorrentPreview) -> Vec<String> {
+pub(crate) fn extract_file_extensions(preview: &crate::app::AddTorrentPreview) -> Vec<String> {
     preview
         .files
         .iter()
@@ -540,7 +547,7 @@ fn extract_file_extensions(preview: &crate::app::AddTorrentPreview) -> Vec<Strin
         .collect()
 }
 
-fn extract_tracker_urls(preview: &crate::app::AddTorrentPreview) -> Vec<String> {
+pub(crate) fn extract_tracker_urls(preview: &crate::app::AddTorrentPreview) -> Vec<String> {
     preview
         .trackers
         .split([',', '\n'])
@@ -950,6 +957,19 @@ async fn handle_add_torrent_from_preview(
                 }
             };
             let mut params = irontide::AddTorrentParams::from_magnet(magnet);
+            if let Some(dir) = download_dir {
+                params = params.download_dir(dir);
+            }
+            if start_paused {
+                params = params.paused(true);
+            }
+            if skip_checking {
+                params = params.skip_checking(true);
+            }
+            params.add_to(session).await
+        }
+        crate::app::AddTorrentSource::UrlBytes { ref bytes, .. } => {
+            let mut params = irontide::AddTorrentParams::from_bytes(bytes.clone());
             if let Some(dir) = download_dir {
                 params = params.download_dir(dir);
             }
