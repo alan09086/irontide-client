@@ -231,6 +231,17 @@ pub struct GuiConfig {
     // ── M187: Advanced not-yet-active ───────────────────────────────
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub disk_cache_size: Option<i32>,
+    // ── M219: window geometry + detail-pane tab persistence ─────────
+    /// Active detail-pane tab restored on launch
+    /// (`"General"` / `"Content"` / `"Peers"` / `"Trackers"` / `"HTTP Sources"`).
+    /// An unknown value is forwarded to Slint unchanged — the pillrow
+    /// simply shows no active pill until the user clicks one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail_active_tab: Option<String>,
+    /// `[gui.window]` — main-window geometry persisted across launches
+    /// (M219). Absent table → cold-start at OS-WM default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window: Option<WindowConfig>,
 }
 
 /// `[gui.sidebar]` — per-user sidebar selection + collapsed state
@@ -265,6 +276,36 @@ pub struct SidebarConfig {
     /// to match Slint's `length`-typed scroll coordinate.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scroll_offset_px: Option<f32>,
+}
+
+/// `[gui.window]` — main-window geometry persisted across launches (M219).
+///
+/// All fields are `Option<_>` so an absent table on a pre-M219 `config.toml`
+/// round-trips unchanged. On launch, the GUI applies these values after the
+/// first-run wizard has completed and clamps positions to keep the title bar
+/// on-screen across monitor topology changes. On KDE Wayland (and other
+/// Wayland compositors) `set_position` is advisory per protocol — size
+/// usually restores but position may be ignored by the compositor.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct WindowConfig {
+    /// Logical width in CSS-pixel-equivalent units.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width: Option<f32>,
+    /// Logical height.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height: Option<f32>,
+    /// Screen-space top-left X (logical). May be negative on multi-monitor
+    /// layouts where the secondary monitor sits left of the primary.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub x: Option<i32>,
+    /// Screen-space top-left Y (logical).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub y: Option<i32>,
+    /// Best-effort maximised flag. Slint 1.x's stable public `Window` API
+    /// does not expose `set_maximized`, so the restore path logs and skips
+    /// when set. The field is kept in the schema for forward compatibility.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maximized: Option<bool>,
 }
 
 // ── Top-level config ────────────────────────────────────────────────
@@ -1541,6 +1582,86 @@ skin = "tide"
         let text = std::fs::read_to_string(&config_path).expect("read back");
         let reloaded: ConfigFile = toml::from_str(&text).expect("parse");
         assert_eq!(reloaded.gui.sidebar, gui.sidebar);
+    }
+
+    // ── M219: window geometry + detail-tab persistence ───────────────
+
+    #[test]
+    fn window_config_default_round_trip() {
+        let win = WindowConfig::default();
+        let toml_str = toml::to_string(&win).expect("serialize default WindowConfig");
+        let parsed: WindowConfig = toml::from_str(&toml_str).expect("parse default WindowConfig");
+        assert_eq!(parsed, win);
+        // Default is all-None — the serialised form must be empty.
+        assert!(toml_str.is_empty(), "default WindowConfig must serialise empty: {toml_str:?}");
+    }
+
+    #[test]
+    fn window_config_populated_round_trip() {
+        let win = WindowConfig {
+            width: Some(1200.0),
+            height: Some(800.0),
+            x: Some(100),
+            y: Some(80),
+            maximized: Some(false),
+        };
+        let toml_str = toml::to_string(&win).expect("serialize populated WindowConfig");
+        let parsed: WindowConfig = toml::from_str(&toml_str).expect("parse populated WindowConfig");
+        assert_eq!(parsed, win);
+    }
+
+    #[test]
+    fn window_config_absent_omits_table() {
+        // A GuiConfig with window: None must NOT emit a `[gui.window]` table.
+        let cfg = ConfigFile {
+            gui: GuiConfig {
+                window: None,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let serialized = toml::to_string(&cfg).expect("serialize");
+        assert!(
+            !serialized.contains("[gui.window]"),
+            "absent window must not produce table: {serialized}"
+        );
+    }
+
+    #[test]
+    fn gui_config_window_round_trips_via_save_gui_config() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let config_path = dir.path().join("config.toml");
+        let gui = GuiConfig {
+            window: Some(WindowConfig {
+                width: Some(1600.0),
+                height: Some(900.0),
+                x: Some(50),
+                y: Some(30),
+                maximized: Some(false),
+            }),
+            ..Default::default()
+        };
+        save_gui_config(Some(&config_path), &gui).expect("save");
+        let text = std::fs::read_to_string(&config_path).expect("read back");
+        let reloaded: ConfigFile = toml::from_str(&text).expect("parse");
+        assert_eq!(reloaded.gui.window, gui.window);
+    }
+
+    #[test]
+    fn detail_active_tab_round_trip() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let config_path = dir.path().join("config.toml");
+        let gui = GuiConfig {
+            detail_active_tab: Some("Trackers".into()),
+            ..Default::default()
+        };
+        save_gui_config(Some(&config_path), &gui).expect("save");
+        let text = std::fs::read_to_string(&config_path).expect("read back");
+        let reloaded: ConfigFile = toml::from_str(&text).expect("parse");
+        assert_eq!(
+            reloaded.gui.detail_active_tab.as_deref(),
+            Some("Trackers")
+        );
     }
 
     // ── M172a Lane A: save_config_atomic ─────────────────────────────

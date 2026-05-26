@@ -711,6 +711,15 @@ pub struct AppState {
     pub prefs: crate::prefs::PreferencesState,
     /// M184: whether preferences have been applied this session (gates persist).
     pub prefs_dirty: bool,
+    /// M219: gates a `[gui.window]` write at shutdown. Defaults to `true` so
+    /// every successful GUI launch persists current geometry on close —
+    /// the user expects the window to reopen where they left it even if
+    /// they didn't manually resize, and an atomic byte-equal write is cheap.
+    pub window_dirty: bool,
+    /// M219: gates a `gui.detail_active_tab` write at shutdown. Flipped to
+    /// `true` inside the Slint `on_detail_tab_changed` callback so we only
+    /// persist when the user actually picks a tab.
+    pub detail_tab_dirty: bool,
     /// M191: parsed torrent preview for the unified add-torrent dialog.
     pub add_torrent_preview: Option<AddTorrentPreview>,
     /// M191: active tab in the add-torrent dialog ("file"/"magnet"/"url").
@@ -784,6 +793,8 @@ impl AppState {
             palette_recent: Vec::new(),
             prefs: crate::prefs::PreferencesState::default(),
             prefs_dirty: false,
+            window_dirty: true,
+            detail_tab_dirty: false,
             add_torrent_preview: None,
             add_torrent_tab: String::from("file"),
             add_torrent_start_paused: false,
