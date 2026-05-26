@@ -911,7 +911,7 @@ export component MainWindow inherits Window {
     in-out property <string> phone-pair-status-text: "Ready";
     callback phone-pair-refresh();
 
-    // ── First-run wizard (M210) ──
+    // ── First-run wizard (M210; M220 adds validation + browse) ──
     in-out property <bool> show-first-run: false;
     in-out property <int> first-run-step: 0;
     in-out property <string> wizard-download-dir: "";
@@ -919,7 +919,13 @@ export component MainWindow inherits Window {
     in-out property <bool> wizard-enable-dht: true;
     in-out property <bool> wizard-enable-utp: true;
     in-out property <bool> wizard-enable-pex: true;
+    // M220 — inline validation hints + browse + validator hooks.
+    in-out property <string> wizard-dir-error: "";
+    in-out property <string> wizard-port-error: "";
     callback wizard-finish();
+    callback wizard-browse-download-dir();
+    callback wizard-validate-port();
+    callback wizard-validate-dir();
 
     // ── Update notification (M209) ──
     in-out property <bool> update-available: false;
@@ -2279,7 +2285,9 @@ export component MainWindow inherits Window {
         }
     }
 
-    // M210: First-run wizard (highest z-order — covers everything)
+    // M210: First-run wizard (highest z-order — covers everything).
+    // M220 adds inline validation hints + browse callback + debounced
+    // dir validation (only on Next, never on every keystroke).
     if root.show-first-run : FirstRunWizard {
         step: root.first-run-step;
         download-dir: root.wizard-download-dir;
@@ -2287,13 +2295,29 @@ export component MainWindow inherits Window {
         enable-dht: root.wizard-enable-dht;
         enable-utp: root.wizard-enable-utp;
         enable-pex: root.wizard-enable-pex;
+        dir-error: root.wizard-dir-error;
+        port-error: root.wizard-port-error;
 
-        set-download-dir(dir) => { root.wizard-download-dir = dir; }
-        set-listen-port(port) => { root.wizard-listen-port = port; }
+        set-download-dir(dir) => {
+            root.wizard-download-dir = dir;
+            // R4 — typing clears the prior validation error.
+            root.wizard-dir-error = "";
+        }
+        set-listen-port(port) => {
+            root.wizard-listen-port = port;
+            // R4 — clear, then R2 live-validate (pure string parse, safe).
+            root.wizard-port-error = "";
+            root.wizard-validate-port();
+        }
         toggle-dht(v) => { root.wizard-enable-dht = v; }
         toggle-utp(v) => { root.wizard-enable-utp = v; }
         toggle-pex(v) => { root.wizard-enable-pex = v; }
-        next-step => { root.first-run-step = root.first-run-step + 1; }
+        browse-download-dir => { root.wizard-browse-download-dir(); }
+        next-step => {
+            // R2 — directory validation only fires here, not on edited.
+            root.wizard-validate-dir();
+            root.first-run-step = root.first-run-step + 1;
+        }
         prev-step => { root.first-run-step = root.first-run-step - 1; }
         finish => { root.wizard-finish(); }
     }

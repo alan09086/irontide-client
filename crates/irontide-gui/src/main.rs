@@ -2131,7 +2131,7 @@ fn main() -> Result<(), error::GuiError> {
         _ipc_timer = timer;
     }
 
-    // 8b. First-run wizard (M210).
+    // 8b. First-run wizard (M210; M220 — browse + validation).
     if first_run::is_first_run() {
         main_window.set_show_first_run(true);
         main_window.set_wizard_download_dir(first_run::default_download_dir().into());
@@ -2162,6 +2162,39 @@ fn main() -> Result<(), error::GuiError> {
 
                 win.set_show_first_run(false);
                 first_run::mark_complete();
+            }
+        }
+    });
+    // M220 — Browse button on step 0 (rfd folder picker).
+    main_window.on_wizard_browse_download_dir({
+        let weak = main_window.as_weak();
+        move || { bridge::handle_wizard_browse_download_dir(&weak); }
+    });
+    // M220 — live port validation (cheap, runs on every keystroke).
+    main_window.on_wizard_validate_port({
+        let weak = main_window.as_weak();
+        move || {
+            if let Some(win) = weak.upgrade() {
+                let s = win.get_wizard_listen_port().to_string();
+                let err = match first_run::validate_listen_port(&s) {
+                    Ok(_) => String::new(),
+                    Err(e) => e.to_string(),
+                };
+                win.set_wizard_port_error(err.into());
+            }
+        }
+    });
+    // M220 — debounced directory validation (runs on Next button only).
+    main_window.on_wizard_validate_dir({
+        let weak = main_window.as_weak();
+        move || {
+            if let Some(win) = weak.upgrade() {
+                let dir = win.get_wizard_download_dir().to_string();
+                let err = match first_run::validate_download_dir(&dir) {
+                    Ok(()) => String::new(),
+                    Err(e) => e.to_string(),
+                };
+                win.set_wizard_dir_error(err.into());
             }
         }
     });

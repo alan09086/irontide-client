@@ -277,6 +277,27 @@ pub fn handle_browse_download_dir(
     });
 }
 
+/// Handle the wizard's "Browse..." button for the download directory (M220).
+///
+/// Spawns `rfd::FileDialog` on a separate thread (GTK blocks). On
+/// selection, writes the result back to the `wizard-download-dir`
+/// property and clears the `wizard-dir-error` since a freshly picked
+/// directory must exist. Unlike `handle_browse_download_dir`, the wizard
+/// variant does NOT persist to session settings — the wizard's finish
+/// handler at main.rs takes care of persistence in one shot.
+pub fn handle_wizard_browse_download_dir(weak: &slint::Weak<crate::MainWindow>) {
+    let weak = weak.clone();
+    std::thread::spawn(move || {
+        if let Some(path) = rfd::FileDialog::new().pick_folder() {
+            let p = path.to_string_lossy().into_owned();
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_wizard_download_dir(p.into());
+                win.set_wizard_dir_error(slint::SharedString::new());
+            });
+        }
+    });
+}
+
 /// Handle a "Browse..." button for a Preferences dialog path field.
 ///
 /// Spawns `rfd::FileDialog` on a separate thread (GTK blocks). On

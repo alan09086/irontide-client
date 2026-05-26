@@ -1,4 +1,13 @@
+// First-run wizard (M210 → rebuilt M220).
+//
+// M220 replaces the bespoke Rectangle/TouchArea/TextInput primitives with
+// the shared Pref* molecule vocabulary (PrefField, PrefTextInput,
+// PrefToggle) so the wizard reads visually identical to the Preferences
+// dialog. Adds a Browse… button on step 0 (rfd folder picker) and inline
+// validation hints for the download dir and listen port.
+
 import { Tokens } from "../tokens.slint";
+import { PrefField, PrefToggle, PrefTextInput } from "../molecules/pref_controls.slint";
 
 export component FirstRunWizard inherits Rectangle {
     accessible-role: none;
@@ -9,12 +18,17 @@ export component FirstRunWizard inherits Rectangle {
     in property <bool> enable-dht: true;
     in property <bool> enable-utp: true;
     in property <bool> enable-pex: true;
+    // Inline validation hints rendered under the corresponding field.
+    // Set by root via the Rust validate-port / validate-dir callbacks.
+    in property <string> dir-error: "";
+    in property <string> port-error: "";
 
     callback set-download-dir(string);
     callback set-listen-port(string);
     callback toggle-dht(bool);
     callback toggle-utp(bool);
     callback toggle-pex(bool);
+    callback browse-download-dir();
     callback next-step();
     callback prev-step();
     callback finish();
@@ -57,11 +71,12 @@ export component FirstRunWizard inherits Rectangle {
 
         Rectangle { height: Tokens.sp-4; }
 
-        // Step 0: Download directory
+        // Step 0: Download directory (M220 — Pref* molecules + Browse).
         if root.step == 0 : VerticalLayout {
             spacing: Tokens.sp-3;
             alignment: center;
             horizontal-stretch: 1;
+            max-width: 560px;
 
             Text {
                 text: "Download Directory";
@@ -79,40 +94,59 @@ export component FirstRunWizard inherits Rectangle {
                 wrap: word-wrap;
             }
 
-            Rectangle {
-                background: Tokens.bg-1;
-                border-radius: Tokens.r-sm;
-                height: 40px;
-                max-width: 480px;
+            Rectangle { height: Tokens.sp-2; }
 
+            PrefField {
+                label: "Folder";
+                hint: "You can change this later in Preferences.";
                 HorizontalLayout {
-                    padding-left: Tokens.sp-3;
-                    padding-right: Tokens.sp-3;
+                    spacing: Tokens.sp-4;
+                    horizontal-stretch: 1;
 
-                    dir-input := TextInput {
-                        accessible-label: "Download directory";
-                        text: root.download-dir;
-                        font-size: Tokens.fs-13;
-                        color: Tokens.fg-0;
-                        vertical-alignment: center;
-                        horizontal-stretch: 1;
-                        edited => { root.set-download-dir(self.text); }
+                    PrefTextInput {
+                        value: root.download-dir;
+                        placeholder: "/path/to/downloads";
+                        edited(v) => { root.set-download-dir(v); }
+                    }
+
+                    Rectangle {
+                        width: Tokens.sp-10 * 2;
+                        height: Tokens.chrome-h - Tokens.sp-2;
+                        background: browse-touch.has-hover ? Tokens.bg-hover : Tokens.accent;
+                        border-radius: Tokens.r-md;
+
+                        Text {
+                            text: "Browse\u{2026}";
+                            color: Tokens.accent-fg;
+                            font-size: Tokens.fs-13;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        browse-touch := TouchArea {
+                            accessible-role: button;
+                            accessible-label: "Browse for download folder";
+                            mouse-cursor: pointer;
+                            clicked => { root.browse-download-dir(); }
+                        }
                     }
                 }
             }
 
-            Text {
-                text: "You can change this later in Preferences.";
-                font-size: Tokens.fs-10;
-                color: Tokens.fg-2;
+            if root.dir-error != "" : Text {
+                text: root.dir-error;
+                color: #ef4444;
+                font-size: 11px;
                 horizontal-alignment: center;
             }
         }
 
-        // Step 1: Connection settings
+        // Step 1: Connection settings (M220 — Pref* molecules).
         if root.step == 1 : VerticalLayout {
             spacing: Tokens.sp-3;
             alignment: center;
+            max-width: 560px;
+            horizontal-stretch: 1;
 
             Text {
                 text: "Connection Settings";
@@ -129,156 +163,55 @@ export component FirstRunWizard inherits Rectangle {
                 horizontal-alignment: center;
             }
 
+            Rectangle { height: Tokens.sp-2; }
+
             VerticalLayout {
                 spacing: Tokens.sp-2;
-                max-width: 400px;
+                horizontal-stretch: 1;
 
-                HorizontalLayout {
-                    spacing: Tokens.sp-3;
-
-                    Text {
-                        text: "Listen Port";
-                        font-size: Tokens.fs-12;
-                        color: Tokens.fg-1;
-                        vertical-alignment: center;
-                        horizontal-stretch: 1;
-                    }
-
-                    Rectangle {
-                        background: Tokens.bg-1;
-                        border-radius: Tokens.r-sm;
-                        width: 80px;
-                        height: 32px;
-
-                        port-input := TextInput {
-                            accessible-label: "Listen port";
-                            text: root.listen-port;
-                            font-size: Tokens.fs-12;
-                            color: Tokens.fg-0;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                            edited => { root.set-listen-port(self.text); }
-                        }
+                PrefField {
+                    label: "Listen Port";
+                    hint: "TCP/UDP port BitTorrent peers connect on.";
+                    PrefTextInput {
+                        value: root.listen-port;
+                        placeholder: "1024-65535";
+                        edited(v) => { root.set-listen-port(v); }
                     }
                 }
 
-                HorizontalLayout {
-                    spacing: Tokens.sp-3;
-                    Text {
-                        text: "DHT (Distributed Hash Table)";
-                        font-size: Tokens.fs-12;
-                        color: Tokens.fg-1;
-                        vertical-alignment: center;
-                        horizontal-stretch: 1;
-                    }
-                    Text {
-                        text: root.enable-dht ? "On" : "Off";
-                        font-size: Tokens.fs-12;
-                        color: root.enable-dht ? Tokens.accent : Tokens.fg-2;
-                        vertical-alignment: center;
-                    }
-                    dht-ta := TouchArea {
-                        accessible-role: switch;
-                        accessible-label: "DHT";
-                        width: 40px;
-                        mouse-cursor: pointer;
-                        clicked => { root.toggle-dht(!root.enable-dht); }
-                        Rectangle {
-                            background: root.enable-dht ? Tokens.accent : Tokens.bg-2;
-                            border-radius: 10px;
-                            width: 40px;
-                            height: 20px;
-                            Rectangle {
-                                x: root.enable-dht ? 22px : 2px;
-                                y: 2px;
-                                width: 16px;
-                                height: 16px;
-                                border-radius: 8px;
-                                background: white;
-                            }
-                        }
+                if root.port-error != "" : Text {
+                    text: root.port-error;
+                    color: #ef4444;
+                    font-size: 11px;
+                }
+
+                PrefField {
+                    label: "DHT (Distributed Hash Table)";
+                    PrefToggle {
+                        checked: root.enable-dht;
+                        toggled(v) => { root.toggle-dht(v); }
                     }
                 }
 
-                HorizontalLayout {
-                    spacing: Tokens.sp-3;
-                    Text {
-                        text: "uTP (Micro Transport Protocol)";
-                        font-size: Tokens.fs-12;
-                        color: Tokens.fg-1;
-                        vertical-alignment: center;
-                        horizontal-stretch: 1;
-                    }
-                    Text {
-                        text: root.enable-utp ? "On" : "Off";
-                        font-size: Tokens.fs-12;
-                        color: root.enable-utp ? Tokens.accent : Tokens.fg-2;
-                        vertical-alignment: center;
-                    }
-                    utp-ta := TouchArea {
-                        accessible-role: switch;
-                        accessible-label: "uTP";
-                        width: 40px;
-                        mouse-cursor: pointer;
-                        clicked => { root.toggle-utp(!root.enable-utp); }
-                        Rectangle {
-                            background: root.enable-utp ? Tokens.accent : Tokens.bg-2;
-                            border-radius: 10px;
-                            width: 40px;
-                            height: 20px;
-                            Rectangle {
-                                x: root.enable-utp ? 22px : 2px;
-                                y: 2px;
-                                width: 16px;
-                                height: 16px;
-                                border-radius: 8px;
-                                background: white;
-                            }
-                        }
+                PrefField {
+                    label: "uTP (Micro Transport Protocol)";
+                    PrefToggle {
+                        checked: root.enable-utp;
+                        toggled(v) => { root.toggle-utp(v); }
                     }
                 }
 
-                HorizontalLayout {
-                    spacing: Tokens.sp-3;
-                    Text {
-                        text: "PEX (Peer Exchange)";
-                        font-size: Tokens.fs-12;
-                        color: Tokens.fg-1;
-                        vertical-alignment: center;
-                        horizontal-stretch: 1;
-                    }
-                    Text {
-                        text: root.enable-pex ? "On" : "Off";
-                        font-size: Tokens.fs-12;
-                        color: root.enable-pex ? Tokens.accent : Tokens.fg-2;
-                        vertical-alignment: center;
-                    }
-                    pex-ta := TouchArea {
-                        accessible-role: switch;
-                        accessible-label: "PEX";
-                        width: 40px;
-                        mouse-cursor: pointer;
-                        clicked => { root.toggle-pex(!root.enable-pex); }
-                        Rectangle {
-                            background: root.enable-pex ? Tokens.accent : Tokens.bg-2;
-                            border-radius: 10px;
-                            width: 40px;
-                            height: 20px;
-                            Rectangle {
-                                x: root.enable-pex ? 22px : 2px;
-                                y: 2px;
-                                width: 16px;
-                                height: 16px;
-                                border-radius: 8px;
-                                background: white;
-                            }
-                        }
+                PrefField {
+                    label: "PEX (Peer Exchange)";
+                    PrefToggle {
+                        checked: root.enable-pex;
+                        toggled(v) => { root.toggle-pex(v); }
                     }
                 }
             }
         }
 
-        // Step 2: Ready
+        // Step 2: Ready (unchanged from M210).
         if root.step == 2 : VerticalLayout {
             spacing: Tokens.sp-3;
             alignment: center;
