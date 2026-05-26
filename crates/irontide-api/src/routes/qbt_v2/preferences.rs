@@ -122,6 +122,18 @@ pub struct QbtPreferences {
     // NOTE: `proxy_password` is intentionally NOT exposed on the GET side —
     // same input-only convention as `web_ui_password`. The qBt v2 docs treat
     // this field as write-only too. Tests assert its absence (M214 step 7).
+    /// M215: anonymous-mode peer ID. Set via setPreferences, classified as
+    /// `restart_required` (handshake/peer-id rotation at session boot).
+    pub anonymous_mode: bool,
+    /// M215: piece-hashing worker count. Per-torrent snapshot at add-time;
+    /// changing it via setPreferences only affects subsequently-added
+    /// torrents (in-flight retain their original count). Classified as
+    /// `restart_required` to match qBt convention.
+    pub hashing_threads: u32,
+    /// M215: periodic resume-save interval (seconds). Boot-time consumer
+    /// at session.rs:3696 builds the timer from this value; live timer-
+    /// rebuild defers to a future milestone. Classified as `restart_required`.
+    pub save_resume_interval: u64,
 }
 
 impl From<&Settings> for QbtPreferences {
@@ -210,6 +222,11 @@ impl From<&Settings> for QbtPreferences {
             proxy_peer_connections: s.proxy.proxy_peer_connections,
             proxy_hostnames: s.proxy.proxy_hostnames,
             force_proxy: s.force_proxy,
+
+            // M215: BitTorrent + Advanced round-trip.
+            anonymous_mode: s.anonymous_mode,
+            hashing_threads: s.hashing_threads as u32,
+            save_resume_interval: s.save_resume_interval_secs,
         }
     }
 }

@@ -264,6 +264,20 @@ struct QbtPreferencesPatch {
     /// `proxy_type` is rejected at `settings.validate()`.
     #[serde(default)]
     force_proxy: Option<bool>,
+
+    // ── M215: BitTorrent + Advanced engine round-trip ───────────────
+    /// M215: piece-hashing worker count. Maps to `settings.hashing_threads`
+    /// (`u32` on the wire; cast to `usize` on apply). `0` is rejected by
+    /// `Settings::validate()` at the call site (`app.rs:307-310`); no
+    /// redundant pre-check inside `apply_preferences_patch`.
+    #[serde(default)]
+    hashing_threads: Option<u32>,
+    /// M215: periodic resume-save interval (seconds). Maps to
+    /// `settings.save_resume_interval_secs`. `0` is a valid value that
+    /// disables the timer entirely (matches the consumer at
+    /// `session.rs:3696`); no validation.
+    #[serde(default)]
+    save_resume_interval: Option<u64>,
 }
 
 /// `POST /api/v2/app/setPreferences` (M171 D3 + D3.5).
@@ -653,6 +667,14 @@ fn apply_preferences_patch(
     }
     if let Some(v) = patch.force_proxy {
         settings.force_proxy = v;
+    }
+
+    // ── M215: BitTorrent + Advanced engine round-trip ───────────────
+    if let Some(v) = patch.hashing_threads {
+        settings.hashing_threads = v as usize;
+    }
+    if let Some(v) = patch.save_resume_interval {
+        settings.save_resume_interval_secs = v;
     }
 
     Ok(())

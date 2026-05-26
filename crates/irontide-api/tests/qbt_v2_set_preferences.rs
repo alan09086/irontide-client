@@ -829,6 +829,157 @@ async fn set_preferences_proxy_type_invalid_value() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "proxy_type=-1");
 }
 
+// ── M215: BitTorrent + Advanced round-trip ──────────────────────────
+
+#[tokio::test]
+async fn anonymous_mode_round_trips_through_get() {
+    // M215 Step 7: confirms anonymous_mode IS projected on GET (in contrast
+    // to M214 proxy_password which is deliberately omitted as input-only).
+    let (router, sid) = enabled_router_with(|s| {
+        s.anonymous_mode = false;
+    })
+    .await;
+
+    // GET baseline.
+    let prefs_before = get_prefs(&router, &sid).await;
+    assert_eq!(prefs_before["anonymous_mode"], false);
+
+    // POST flip.
+    let resp = post_json(&router, &sid, serde_json::json!({"anonymous_mode": true})).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let header = resp
+        .headers()
+        .get("x-irontide-restart-pending")
+        .expect("anonymous_mode is restart_required; header must fire")
+        .to_str()
+        .unwrap();
+    assert!(
+        header.split(',').any(|f| f == "anonymous_mode"),
+        "restart header must include anonymous_mode: {header}"
+    );
+
+    // GET the flipped value.
+    let prefs_after = get_prefs(&router, &sid).await;
+    assert_eq!(
+        prefs_after["anonymous_mode"], true,
+        "anonymous_mode must round-trip through GET (M215 fix)"
+    );
+}
+
+#[tokio::test]
+async fn set_preferences_rejects_hashing_threads_zero() {
+    // M215 Step 6: hashing_threads=0 must 400. Rejection surfaces from
+    // Settings::validate() at app.rs:307-310 (not a redundant pre-check
+    // in apply_preferences_patch). The error message originates in
+    // settings.rs::validate() and is forwarded verbatim by the BadRequest
+    // wrapper at app.rs:309-310.
+    let (router, sid) = enabled_router_with(|_| {}).await;
+    let resp = post_json(&router, &sid, serde_json::json!({"hashing_threads": 0})).await;
+    assert_eq!(
+        resp.status(),
+        StatusCode::BAD_REQUEST,
+        "hashing_threads=0 must 400"
+    );
+    let body = axum::body::to_bytes(resp.into_body(), 8192).await.unwrap();
+    let body_str = String::from_utf8_lossy(&body);
+    assert!(
+        body_str.contains("hashing_threads"),
+        "error body should mention hashing_threads: {body_str}"
+    );
+}
+
+#[tokio::test]
+async fn m215_bittorrent_advanced_group_round_trips() {
+    // M215 Step 5: comprehensive end-to-end test for all 10 round-trippable
+    // M215 fields. POST one patch flipping each value, then GET prefs and
+    // confirm every field surfaces on the wire with the new value.
+    let (router, sid) = enabled_router_with(|s| {
+        // Pre-existing values that DIFFER from the patch below so every
+        // field produces a diff.
+        s.enable_dht = false;
+        s.enable_pex = false;
+        s.enable_lsd = false;
+        s.encryption_mode = irontide::prelude::EncryptionMode::Disabled;
+        s.anonymous_mode = false;
+        s.queueing_enabled = false;
+        s.seed_time_limit_secs = None;
+        s.inactive_seed_time_limit_secs = None;
+        s.hashing_threads = 2;
+        s.save_resume_interval_secs = 300;
+    })
+    .await;
+
+    let resp = post_json(
+        &router,
+        &sid,
+        serde_json::json!({
+            "dht": true,
+            "pex": true,
+            "lsd": true,
+            "encryption": 1,            // 1 = Forced (qBt wire convention)
+            "anonymous_mode": true,
+            "queueing_enabled": true,
+            "max_seeding_time": 60,     // 60 minutes on the wire → 3600 secs storage
+            "max_inactive_seeding_time": 30,
+            "hashing_threads": 8,
+            "save_resume_interval": 600,
+        }),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Restart_required fields: pex, encryption, anonymous_mode,
+    // hashing_threads, save_resume_interval.
+    let header = resp
+        .headers()
+        .get("x-irontide-restart-pending")
+        .expect("M215 group includes 5 restart_required fields; header must fire")
+        .to_str()
+        .unwrap();
+    let restart_fields: std::collections::HashSet<&str> = header.split(',').collect();
+    for expected in [
+        "pex",
+        "encryption",
+        "anonymous_mode",
+        "hashing_threads",
+        "save_resume_interval",
+    ] {
+        assert!(
+            restart_fields.contains(expected),
+            "restart header missing {expected}: {restart_fields:?}"
+        );
+    }
+    // Immediate fields (dht, lsd, queueing_enabled, max_seeding_time,
+    // max_inactive_seeding_time) MUST NOT appear in the header.
+    for forbidden in [
+        "dht",
+        "lsd",
+        "queueing_enabled",
+        "max_seeding_time",
+        "max_inactive_seeding_time",
+    ] {
+        assert!(
+            !restart_fields.contains(forbidden),
+            "immediate field {forbidden} leaked into restart header: {restart_fields:?}"
+        );
+    }
+
+    // GET projection — every M215 field surfaces on the wire with the new value.
+    let prefs = get_prefs(&router, &sid).await;
+    assert_eq!(prefs["dht"], true);
+    assert_eq!(prefs["pex"], true);
+    assert_eq!(prefs["lsd"], true);
+    // encryption: u8 1 == Forced
+    assert_eq!(prefs["encryption"], 1);
+    assert_eq!(prefs["anonymous_mode"], true);
+    assert_eq!(prefs["queueing_enabled"], true);
+    // max_seeding_time wire is minutes; storage was 3600 secs → wire reads 60.
+    assert_eq!(prefs["max_seeding_time"], 60);
+    assert_eq!(prefs["max_inactive_seeding_time"], 30);
+    assert_eq!(prefs["hashing_threads"], 8);
+    assert_eq!(prefs["save_resume_interval"], 600);
+}
+
 // ── Auth gate ─────────────────────────────────────────────────────────
 
 #[tokio::test]
