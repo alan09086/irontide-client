@@ -67,6 +67,20 @@ component MenuButton {
 
 component MenuBar {
     callback menu-file-action(int);
+    callback menu-edit-action(int);
+    callback menu-view-action(int);
+    callback menu-tools-action(int);
+    callback menu-help-action(int);
+
+    // M216: View-menu label state — bound from MainWindow root so menu items
+    // reflect the current pref-theme / pref-density / sidebar-*-collapsed
+    // values.
+    in property <string> view-theme: "dark";
+    in property <string> view-density: "balanced";
+    in property <bool> sidebar-library-collapsed: false;
+    in property <bool> sidebar-category-collapsed: false;
+    in property <bool> sidebar-tag-collapsed: false;
+    in property <bool> sidebar-tracker-collapsed: false;
 
     height: Tokens.chrome-h;
 
@@ -82,6 +96,26 @@ component MenuBar {
             file-btn := MenuButton {
                 text: "File";
                 clicked => { file-popup.show(); }
+            }
+
+            edit-btn := MenuButton {
+                text: "Edit";
+                clicked => { edit-popup.show(); }
+            }
+
+            view-btn := MenuButton {
+                text: "View";
+                clicked => { view-popup.show(); }
+            }
+
+            tools-btn := MenuButton {
+                text: "Tools";
+                clicked => { tools-popup.show(); }
+            }
+
+            help-btn := MenuButton {
+                text: "Help";
+                clicked => { help-popup.show(); }
             }
         }
     }
@@ -223,6 +257,440 @@ component MenuBar {
 
                     quit-touch := TouchArea {
                         clicked => { root.menu-file-action(4); }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── M216: Edit menu ────────────────────────────────────────────
+    edit-popup := PopupWindow {
+        // ~ 60px right of file button (file button label = "File", ~40px wide)
+        x: Tokens.sp-2 + 50px;
+        y: Tokens.chrome-h;
+        width: Tokens.sidebar-w;
+
+        Rectangle {
+            background: Tokens.bg-1;
+            border-color: Tokens.border-1;
+            border-width: Tokens.border-width-thin;
+            border-radius: Tokens.r-md;
+
+            VerticalLayout {
+                padding: Tokens.sp-2;
+                spacing: Tokens.sp-1;
+
+                // Item 0: Select All (Ctrl+A)
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: edit-selall-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+
+                    HorizontalLayout {
+                        padding-left: Tokens.sp-4;
+                        padding-right: Tokens.sp-4;
+
+                        Text {
+                            text: "Select All";
+                            color: Tokens.fg-0;
+                            font-size: Tokens.fs-13;
+                            vertical-alignment: center;
+                            horizontal-alignment: left;
+                            horizontal-stretch: 1;
+                        }
+
+                        Text {
+                            text: "Ctrl+A";
+                            color: Tokens.fg-3;
+                            font-size: Tokens.fs-13;
+                            vertical-alignment: center;
+                            horizontal-alignment: right;
+                        }
+                    }
+
+                    edit-selall-touch := TouchArea {
+                        clicked => { root.menu-edit-action(0); }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── M216: View menu ────────────────────────────────────────────
+    view-popup := PopupWindow {
+        x: Tokens.sp-2 + 100px;
+        y: Tokens.chrome-h;
+        width: Tokens.sidebar-w;
+
+        Rectangle {
+            background: Tokens.bg-1;
+            border-color: Tokens.border-1;
+            border-width: Tokens.border-width-thin;
+            border-radius: Tokens.r-md;
+
+            VerticalLayout {
+                padding: Tokens.sp-2;
+                spacing: Tokens.sp-1;
+
+                // Item 0: Theme cycle
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: view-theme-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+
+                    Text {
+                        text: "Theme: " + root.view-theme;
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+
+                    view-theme-touch := TouchArea {
+                        clicked => { root.menu-view-action(0); }
+                    }
+                }
+
+                // Item 1: Density cycle
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: view-density-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+
+                    Text {
+                        text: "Density: " + root.view-density;
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+
+                    view-density-touch := TouchArea {
+                        clicked => { root.menu-view-action(1); }
+                    }
+                }
+
+                // Separator
+                Rectangle {
+                    height: Tokens.border-width-thin;
+                    background: Tokens.border-1;
+                }
+
+                // Item 2: Sidebar Library
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: view-sb-lib-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+
+                    Text {
+                        text: root.sidebar-library-collapsed ? "Show Library" : "Hide Library";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+
+                    view-sb-lib-touch := TouchArea {
+                        clicked => { root.menu-view-action(2); }
+                    }
+                }
+
+                // Item 3: Sidebar Categories
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: view-sb-cat-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+
+                    Text {
+                        text: root.sidebar-category-collapsed ? "Show Categories" : "Hide Categories";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+
+                    view-sb-cat-touch := TouchArea {
+                        clicked => { root.menu-view-action(3); }
+                    }
+                }
+
+                // Item 4: Sidebar Tags
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: view-sb-tag-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+
+                    Text {
+                        text: root.sidebar-tag-collapsed ? "Show Tags" : "Hide Tags";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+
+                    view-sb-tag-touch := TouchArea {
+                        clicked => { root.menu-view-action(4); }
+                    }
+                }
+
+                // Item 5: Sidebar Trackers
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: view-sb-trk-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+
+                    Text {
+                        text: root.sidebar-tracker-collapsed ? "Show Trackers" : "Hide Trackers";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+
+                    view-sb-trk-touch := TouchArea {
+                        clicked => { root.menu-view-action(5); }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── M216: Tools menu ───────────────────────────────────────────
+    tools-popup := PopupWindow {
+        x: Tokens.sp-2 + 150px;
+        y: Tokens.chrome-h;
+        width: Tokens.sidebar-w;
+
+        Rectangle {
+            background: Tokens.bg-1;
+            border-color: Tokens.border-1;
+            border-width: Tokens.border-width-thin;
+            border-radius: Tokens.r-md;
+
+            VerticalLayout {
+                padding: Tokens.sp-2;
+                spacing: Tokens.sp-1;
+
+                // Items 0..6: tool toggles (label, palette dispatch id)
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: tools-search-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+                    Text {
+                        text: "Search";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+                    tools-search-touch := TouchArea {
+                        clicked => { root.menu-tools-action(0); }
+                    }
+                }
+
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: tools-rss-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+                    Text {
+                        text: "RSS";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+                    tools-rss-touch := TouchArea {
+                        clicked => { root.menu-tools-action(1); }
+                    }
+                }
+
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: tools-sched-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+                    Text {
+                        text: "Scheduler";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+                    tools-sched-touch := TouchArea {
+                        clicked => { root.menu-tools-action(2); }
+                    }
+                }
+
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: tools-ipf-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+                    Text {
+                        text: "IP Filter";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+                    tools-ipf-touch := TouchArea {
+                        clicked => { root.menu-tools-action(3); }
+                    }
+                }
+
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: tools-logs-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+                    Text {
+                        text: "Logs / Stats";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+                    tools-logs-touch := TouchArea {
+                        clicked => { root.menu-tools-action(4); }
+                    }
+                }
+
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: tools-bw-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+                    Text {
+                        text: "Bandwidth Intent";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+                    tools-bw-touch := TouchArea {
+                        clicked => { root.menu-tools-action(5); }
+                    }
+                }
+
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: tools-phone-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+                    Text {
+                        text: "Phone Pair";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+                    tools-phone-touch := TouchArea {
+                        clicked => { root.menu-tools-action(6); }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── M216: Help menu ────────────────────────────────────────────
+    help-popup := PopupWindow {
+        x: Tokens.sp-2 + 200px;
+        y: Tokens.chrome-h;
+        width: Tokens.sidebar-w;
+
+        Rectangle {
+            background: Tokens.bg-1;
+            border-color: Tokens.border-1;
+            border-width: Tokens.border-width-thin;
+            border-radius: Tokens.r-md;
+
+            VerticalLayout {
+                padding: Tokens.sp-2;
+                spacing: Tokens.sp-1;
+
+                // Item 0: About
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: help-about-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+                    Text {
+                        text: "About IronTide\u{2026}";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+                    help-about-touch := TouchArea {
+                        clicked => { root.menu-help-action(0); }
+                    }
+                }
+
+                // Item 1: Keyboard Shortcuts (stub in M216, dialog in M217)
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: help-keys-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+                    Text {
+                        text: "Keyboard Shortcuts\u{2026}";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+                    help-keys-touch := TouchArea {
+                        clicked => { root.menu-help-action(1); }
+                    }
+                }
+
+                // Separator
+                Rectangle {
+                    height: Tokens.border-width-thin;
+                    background: Tokens.border-1;
+                }
+
+                // Item 2: Check for Updates
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: help-update-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+                    Text {
+                        text: "Check for Updates\u{2026}";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+                    help-update-touch := TouchArea {
+                        clicked => { root.menu-help-action(2); }
+                    }
+                }
+
+                // Item 3: Open Logs Folder
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: help-logs-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+                    Text {
+                        text: "Open Logs Folder";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+                    help-logs-touch := TouchArea {
+                        clicked => { root.menu-help-action(3); }
                     }
                 }
             }
@@ -573,6 +1041,7 @@ export component MainWindow inherits Window {
 
     // ── Preferences dialog (M184, replaces Tweaks overlay) ──
     in-out property <bool> show-preferences-dialog: false;
+    in-out property <bool> show-about-dialog: false;
     in-out property <string> pref-skin: "tide";
     in-out property <string> pref-theme: "dark";
     in-out property <string> pref-density: "balanced";
@@ -711,6 +1180,10 @@ export component MainWindow inherits Window {
 
     // ── Callbacks ──
     callback menu-file-action(int);
+    callback menu-edit-action(int);
+    callback menu-view-action(int);
+    callback menu-tools-action(int);
+    callback menu-help-action(int);
     callback quit-requested();
     callback sort-requested(/* column index */ int);
     callback row-clicked(/* info-hash */ string, /* shift */ bool, /* ctrl */ bool);
@@ -847,6 +1320,18 @@ export component MainWindow inherits Window {
             menu := MenuBar {
                 menu-file-action(index) => {
                     root.menu-file-action(index);
+                }
+                menu-edit-action(index) => {
+                    root.menu-edit-action(index);
+                }
+                menu-view-action(index) => {
+                    root.menu-view-action(index);
+                }
+                menu-tools-action(index) => {
+                    root.menu-tools-action(index);
+                }
+                menu-help-action(index) => {
+                    root.menu-help-action(index);
                 }
             }
 
@@ -1419,6 +1904,118 @@ export component MainWindow inherits Window {
         browse-watched-folder => { root.preferences-browse-watched-folder(); }
         browse-copy-torrent-to => { root.preferences-browse-copy-torrent-to(); }
         browse-move-completed-to => { root.preferences-browse-move-completed-to(); }
+    }
+
+    // M216: About dialog — modal between Preferences and FirstRunWizard.
+    if root.show-about-dialog : Rectangle {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        background: #00000088;
+
+        about-scrim-touch := TouchArea {
+            clicked => { root.show-about-dialog = false; }
+        }
+
+        Rectangle {
+            x: (parent.width - 420px) / 2;
+            y: (parent.height - 320px) / 2;
+            width: 420px;
+            height: 320px;
+            background: Tokens.bg-2;
+            border-color: Tokens.border-1;
+            border-width: Tokens.border-width-thin;
+            border-radius: Tokens.r-md;
+
+            about-card-touch := TouchArea {
+                // Eat clicks so they don't dismiss via scrim.
+            }
+
+            VerticalLayout {
+                padding: Tokens.sp-4;
+                spacing: Tokens.sp-2;
+
+                Text {
+                    text: "IronTide";
+                    color: Tokens.fg-0;
+                    font-size: Tokens.fs-24;
+                    horizontal-alignment: center;
+                }
+
+                Text {
+                    text: "Version " + root.app-version;
+                    color: Tokens.fg-1;
+                    font-size: Tokens.fs-14;
+                    horizontal-alignment: center;
+                }
+
+                Rectangle {
+                    height: Tokens.border-width-thin;
+                    background: Tokens.border-1;
+                }
+
+                Text {
+                    text: "Rust BitTorrent client";
+                    color: Tokens.fg-1;
+                    font-size: Tokens.fs-13;
+                    horizontal-alignment: center;
+                }
+
+                Text {
+                    text: "Source (Codeberg, primary):";
+                    color: Tokens.fg-2;
+                    font-size: Tokens.fs-13;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: "codeberg.org/alan090/irontide";
+                    color: Tokens.accent;
+                    font-size: Tokens.fs-13;
+                    horizontal-alignment: center;
+                }
+
+                Text {
+                    text: "Mirror (GitHub):";
+                    color: Tokens.fg-2;
+                    font-size: Tokens.fs-13;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: "github.com/alan09086/irontide";
+                    color: Tokens.accent;
+                    font-size: Tokens.fs-13;
+                    horizontal-alignment: center;
+                }
+
+                Text {
+                    text: "GPL-3.0-or-later";
+                    color: Tokens.fg-3;
+                    font-size: Tokens.fs-13;
+                    horizontal-alignment: center;
+                }
+
+                Rectangle {
+                    height: Tokens.row-h;
+                    background: about-close-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+                    border-color: Tokens.border-1;
+                    border-width: Tokens.border-width-thin;
+
+                    Text {
+                        text: "Close";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    about-close-touch := TouchArea {
+                        clicked => { root.show-about-dialog = false; }
+                    }
+                }
+            }
+        }
     }
 
     // M210: First-run wizard (highest z-order — covers everything)

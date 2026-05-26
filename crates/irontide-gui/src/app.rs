@@ -432,6 +432,147 @@ impl ContextAction {
     }
 }
 
+/// Edit-menu actions (M216).
+///
+/// Mirrors the `MenuAction` pattern with `from_index` for Slint callback
+/// integration. Indices must remain stable across releases.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EditMenuAction {
+    /// Select every row in the torrent list. Mirrors `PaletteCommandId::SelectAll`.
+    SelectAll,
+}
+
+impl EditMenuAction {
+    /// Parse an Edit-menu callback index into an `EditMenuAction`.
+    pub fn from_index(index: i32) -> Option<Self> {
+        match index {
+            0 => Some(Self::SelectAll),
+            _ => None,
+        }
+    }
+}
+
+/// View-menu actions (M216).
+///
+/// Mirrors the `MenuAction` pattern with `from_index` for Slint callback
+/// integration. Indices must remain stable across releases.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(
+    clippy::enum_variant_names,
+    reason = "every View-menu action toggles something; the prefix reads naturally next to call sites"
+)]
+pub enum ViewMenuAction {
+    /// Cycle `pref-theme` between `dark` ↔ `light`.
+    ToggleTheme,
+    /// Cycle `pref-density` `compact` → `balanced` → `comfortable` → `compact`.
+    ToggleDensity,
+    /// Toggle the Library sidebar section collapsed state.
+    ToggleSidebarLibrary,
+    /// Toggle the Categories sidebar section collapsed state.
+    ToggleSidebarCategory,
+    /// Toggle the Tags sidebar section collapsed state.
+    ToggleSidebarTag,
+    /// Toggle the Trackers sidebar section collapsed state.
+    ToggleSidebarTracker,
+}
+
+impl ViewMenuAction {
+    /// Parse a View-menu callback index into a `ViewMenuAction`.
+    pub fn from_index(index: i32) -> Option<Self> {
+        match index {
+            0 => Some(Self::ToggleTheme),
+            1 => Some(Self::ToggleDensity),
+            2 => Some(Self::ToggleSidebarLibrary),
+            3 => Some(Self::ToggleSidebarCategory),
+            4 => Some(Self::ToggleSidebarTag),
+            5 => Some(Self::ToggleSidebarTracker),
+            _ => None,
+        }
+    }
+}
+
+/// Tools-menu actions (M216).
+///
+/// Each variant maps 1:1 to a `PaletteCommandId::Toggle*` variant so the
+/// menu shares the exact same dispatch path as `Ctrl+K`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolsMenuAction {
+    /// Toggle the Search tool page.
+    Search,
+    /// Toggle the RSS tool page.
+    Rss,
+    /// Toggle the Scheduler tool page.
+    Scheduler,
+    /// Toggle the IP Filter tool page.
+    IpFilter,
+    /// Toggle the Logs/Stats tool page.
+    LogsStats,
+    /// Toggle the Bandwidth Intent tool page.
+    BandwidthIntent,
+    /// Toggle the Phone Pair tool page.
+    PhonePair,
+}
+
+impl ToolsMenuAction {
+    /// Parse a Tools-menu callback index into a `ToolsMenuAction`.
+    pub fn from_index(index: i32) -> Option<Self> {
+        match index {
+            0 => Some(Self::Search),
+            1 => Some(Self::Rss),
+            2 => Some(Self::Scheduler),
+            3 => Some(Self::IpFilter),
+            4 => Some(Self::LogsStats),
+            5 => Some(Self::BandwidthIntent),
+            6 => Some(Self::PhonePair),
+            _ => None,
+        }
+    }
+
+    /// Map to the corresponding palette command ID for dispatch reuse.
+    pub fn to_palette_id(self) -> crate::palette::PaletteCommandId {
+        use crate::palette::PaletteCommandId;
+        match self {
+            Self::Search => PaletteCommandId::ToggleSearch,
+            Self::Rss => PaletteCommandId::ToggleRss,
+            Self::Scheduler => PaletteCommandId::ToggleScheduler,
+            Self::IpFilter => PaletteCommandId::ToggleIpFilter,
+            Self::LogsStats => PaletteCommandId::ToggleLogsStats,
+            Self::BandwidthIntent => PaletteCommandId::ToggleBandwidthIntent,
+            Self::PhonePair => PaletteCommandId::TogglePhonePair,
+        }
+    }
+}
+
+/// Help-menu actions (M216).
+///
+/// Mirrors the `MenuAction` pattern. `KeyboardShortcuts` and
+/// `OpenLogsFolder` ship as toast-only stubs in M216 — the shortcuts dialog
+/// arrives in M217 and file logging in a later milestone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HelpMenuAction {
+    /// Show the About dialog.
+    About,
+    /// Stub: toast "Coming in M217 — try Ctrl+K for now".
+    KeyboardShortcuts,
+    /// Trigger an on-demand update check via `update_checker::check_now`.
+    CheckForUpdates,
+    /// Stub: toast "File logging not yet enabled — see stderr".
+    OpenLogsFolder,
+}
+
+impl HelpMenuAction {
+    /// Parse a Help-menu callback index into a `HelpMenuAction`.
+    pub fn from_index(index: i32) -> Option<Self> {
+        match index {
+            0 => Some(Self::About),
+            1 => Some(Self::KeyboardShortcuts),
+            2 => Some(Self::CheckForUpdates),
+            3 => Some(Self::OpenLogsFolder),
+            _ => None,
+        }
+    }
+}
+
 impl MenuAction {
     /// Parse a menu callback index into a `MenuAction`.
     /// Returns `None` for out-of-bounds indices.
@@ -974,6 +1115,130 @@ mod tests {
         assert_eq!(MenuAction::from_index(-1), None);
         assert_eq!(MenuAction::from_index(5), None);
         assert_eq!(MenuAction::from_index(100), None);
+    }
+
+    #[test]
+    fn edit_menu_action_from_index() {
+        assert_eq!(
+            EditMenuAction::from_index(0),
+            Some(EditMenuAction::SelectAll)
+        );
+        assert_eq!(EditMenuAction::from_index(-1), None);
+        assert_eq!(EditMenuAction::from_index(1), None);
+        assert_eq!(EditMenuAction::from_index(100), None);
+    }
+
+    #[test]
+    fn view_menu_action_from_index() {
+        assert_eq!(
+            ViewMenuAction::from_index(0),
+            Some(ViewMenuAction::ToggleTheme)
+        );
+        assert_eq!(
+            ViewMenuAction::from_index(1),
+            Some(ViewMenuAction::ToggleDensity)
+        );
+        assert_eq!(
+            ViewMenuAction::from_index(2),
+            Some(ViewMenuAction::ToggleSidebarLibrary)
+        );
+        assert_eq!(
+            ViewMenuAction::from_index(3),
+            Some(ViewMenuAction::ToggleSidebarCategory)
+        );
+        assert_eq!(
+            ViewMenuAction::from_index(4),
+            Some(ViewMenuAction::ToggleSidebarTag)
+        );
+        assert_eq!(
+            ViewMenuAction::from_index(5),
+            Some(ViewMenuAction::ToggleSidebarTracker)
+        );
+        assert_eq!(ViewMenuAction::from_index(-1), None);
+        assert_eq!(ViewMenuAction::from_index(6), None);
+        assert_eq!(ViewMenuAction::from_index(100), None);
+    }
+
+    #[test]
+    fn tools_menu_action_from_index() {
+        assert_eq!(ToolsMenuAction::from_index(0), Some(ToolsMenuAction::Search));
+        assert_eq!(ToolsMenuAction::from_index(1), Some(ToolsMenuAction::Rss));
+        assert_eq!(
+            ToolsMenuAction::from_index(2),
+            Some(ToolsMenuAction::Scheduler)
+        );
+        assert_eq!(
+            ToolsMenuAction::from_index(3),
+            Some(ToolsMenuAction::IpFilter)
+        );
+        assert_eq!(
+            ToolsMenuAction::from_index(4),
+            Some(ToolsMenuAction::LogsStats)
+        );
+        assert_eq!(
+            ToolsMenuAction::from_index(5),
+            Some(ToolsMenuAction::BandwidthIntent)
+        );
+        assert_eq!(
+            ToolsMenuAction::from_index(6),
+            Some(ToolsMenuAction::PhonePair)
+        );
+        assert_eq!(ToolsMenuAction::from_index(-1), None);
+        assert_eq!(ToolsMenuAction::from_index(7), None);
+        assert_eq!(ToolsMenuAction::from_index(100), None);
+    }
+
+    #[test]
+    fn tools_menu_action_to_palette_id() {
+        use crate::palette::PaletteCommandId;
+        assert_eq!(
+            ToolsMenuAction::Search.to_palette_id(),
+            PaletteCommandId::ToggleSearch
+        );
+        assert_eq!(
+            ToolsMenuAction::Rss.to_palette_id(),
+            PaletteCommandId::ToggleRss
+        );
+        assert_eq!(
+            ToolsMenuAction::Scheduler.to_palette_id(),
+            PaletteCommandId::ToggleScheduler
+        );
+        assert_eq!(
+            ToolsMenuAction::IpFilter.to_palette_id(),
+            PaletteCommandId::ToggleIpFilter
+        );
+        assert_eq!(
+            ToolsMenuAction::LogsStats.to_palette_id(),
+            PaletteCommandId::ToggleLogsStats
+        );
+        assert_eq!(
+            ToolsMenuAction::BandwidthIntent.to_palette_id(),
+            PaletteCommandId::ToggleBandwidthIntent
+        );
+        assert_eq!(
+            ToolsMenuAction::PhonePair.to_palette_id(),
+            PaletteCommandId::TogglePhonePair
+        );
+    }
+
+    #[test]
+    fn help_menu_action_from_index() {
+        assert_eq!(HelpMenuAction::from_index(0), Some(HelpMenuAction::About));
+        assert_eq!(
+            HelpMenuAction::from_index(1),
+            Some(HelpMenuAction::KeyboardShortcuts)
+        );
+        assert_eq!(
+            HelpMenuAction::from_index(2),
+            Some(HelpMenuAction::CheckForUpdates)
+        );
+        assert_eq!(
+            HelpMenuAction::from_index(3),
+            Some(HelpMenuAction::OpenLogsFolder)
+        );
+        assert_eq!(HelpMenuAction::from_index(-1), None);
+        assert_eq!(HelpMenuAction::from_index(4), None);
+        assert_eq!(HelpMenuAction::from_index(100), None);
     }
 
     #[test]

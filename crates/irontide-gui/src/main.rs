@@ -171,6 +171,262 @@ fn main() -> Result<(), error::GuiError> {
         }
     });
 
+    // 6a-edit (M216). Select All mirrors palette::DispatchAction::SelectAll.
+    {
+        let cb_state = state.clone();
+        main_window.on_menu_edit_action(move |index| {
+            let Some(action) = app::EditMenuAction::from_index(index) else {
+                return;
+            };
+            match action {
+                app::EditMenuAction::SelectAll => {
+                    let (new_selected, primary) = {
+                        let mut st = cb_state.lock();
+                        let all_hashes = st.current_order.clone();
+                        st.select_all(&all_hashes);
+                        (
+                            st.selected.clone(),
+                            st.primary_selected().map(str::to_owned),
+                        )
+                    };
+                    crate::poll::update_selection(&new_selected);
+                    crate::poll::update_primary_selection(primary.as_deref());
+                }
+            }
+        });
+    }
+
+    // 6a-view (M216). Skin cycles + sidebar collapse toggles.
+    {
+        let cb_state = state.clone();
+        let weak = main_window.as_weak();
+        main_window.on_menu_view_action(move |index| {
+            let Some(action) = app::ViewMenuAction::from_index(index) else {
+                return;
+            };
+            match action {
+                app::ViewMenuAction::ToggleTheme => {
+                    let mut st = cb_state.lock();
+                    st.skin.theme = match st.skin.theme {
+                        skin::Theme::Dark => skin::Theme::Light,
+                        skin::Theme::Light => skin::Theme::Dark,
+                    };
+                    st.skin.apply(&weak);
+                }
+                app::ViewMenuAction::ToggleDensity => {
+                    let mut st = cb_state.lock();
+                    st.skin.density = match st.skin.density {
+                        skin::Density::Compact => skin::Density::Balanced,
+                        skin::Density::Balanced => skin::Density::Spacious,
+                        skin::Density::Spacious => skin::Density::Compact,
+                    };
+                    st.skin.apply(&weak);
+                }
+                app::ViewMenuAction::ToggleSidebarLibrary => {
+                    let _ = weak.upgrade_in_event_loop({
+                        let cb_state = cb_state.clone();
+                        move |win| {
+                            win.set_sidebar_library_collapsed(!win.get_sidebar_library_collapsed());
+                            cb_state.lock().sidebar_dirty = true;
+                        }
+                    });
+                }
+                app::ViewMenuAction::ToggleSidebarCategory => {
+                    let _ = weak.upgrade_in_event_loop({
+                        let cb_state = cb_state.clone();
+                        move |win| {
+                            win.set_sidebar_category_collapsed(
+                                !win.get_sidebar_category_collapsed(),
+                            );
+                            cb_state.lock().sidebar_dirty = true;
+                        }
+                    });
+                }
+                app::ViewMenuAction::ToggleSidebarTag => {
+                    let _ = weak.upgrade_in_event_loop({
+                        let cb_state = cb_state.clone();
+                        move |win| {
+                            win.set_sidebar_tag_collapsed(!win.get_sidebar_tag_collapsed());
+                            cb_state.lock().sidebar_dirty = true;
+                        }
+                    });
+                }
+                app::ViewMenuAction::ToggleSidebarTracker => {
+                    let _ = weak.upgrade_in_event_loop({
+                        let cb_state = cb_state.clone();
+                        move |win| {
+                            win.set_sidebar_tracker_collapsed(
+                                !win.get_sidebar_tracker_collapsed(),
+                            );
+                            cb_state.lock().sidebar_dirty = true;
+                        }
+                    });
+                }
+            }
+        });
+    }
+
+    // 6a-tools (M216). Routes each item through palette::dispatch + inline
+    // duplicates the existing palette ToggleXxx arms (see plan D6: avoids
+    // 5-weak helper sprawl, keeps the existing palette callback untouched).
+    {
+        let weak = main_window.as_weak();
+        main_window.on_menu_tools_action(move |index| {
+            let Some(action) = app::ToolsMenuAction::from_index(index) else {
+                return;
+            };
+            let palette_id = action.to_palette_id();
+            let dispatched = palette::dispatch(palette_id, &[]);
+            let weak2 = weak.clone();
+            match dispatched {
+                palette::DispatchAction::ToggleSearch => {
+                    let _ = weak2.upgrade_in_event_loop(|win| {
+                        let current = win.get_show_search_page();
+                        win.set_show_search_page(!current);
+                        if !current {
+                            win.set_show_rss_page(false);
+                            win.set_show_scheduler_page(false);
+                            win.set_show_ip_filter_page(false);
+                            win.set_show_logs_stats_page(false);
+                            win.set_show_bandwidth_intent_page(false);
+                            win.set_show_phone_pair_page(false);
+                        }
+                    });
+                }
+                palette::DispatchAction::ToggleRss => {
+                    let _ = weak2.upgrade_in_event_loop(|win| {
+                        let current = win.get_show_rss_page();
+                        win.set_show_rss_page(!current);
+                        if !current {
+                            win.set_show_search_page(false);
+                            win.set_show_scheduler_page(false);
+                            win.set_show_ip_filter_page(false);
+                            win.set_show_logs_stats_page(false);
+                            win.set_show_bandwidth_intent_page(false);
+                            win.set_show_phone_pair_page(false);
+                        }
+                    });
+                }
+                palette::DispatchAction::ToggleScheduler => {
+                    let sched_weak = weak2.clone();
+                    let _ = weak2.upgrade_in_event_loop(move |win| {
+                        let current = win.get_show_scheduler_page();
+                        win.set_show_scheduler_page(!current);
+                        if !current {
+                            win.set_show_search_page(false);
+                            win.set_show_rss_page(false);
+                            win.set_show_ip_filter_page(false);
+                            win.set_show_logs_stats_page(false);
+                            win.set_show_bandwidth_intent_page(false);
+                            win.set_show_phone_pair_page(false);
+                            crate::bridge::push_scheduler_state(&sched_weak);
+                        }
+                    });
+                }
+                palette::DispatchAction::ToggleIpFilter => {
+                    let filter_weak = weak2.clone();
+                    let _ = weak2.upgrade_in_event_loop(move |win| {
+                        let current = win.get_show_ip_filter_page();
+                        win.set_show_ip_filter_page(!current);
+                        if !current {
+                            win.set_show_search_page(false);
+                            win.set_show_rss_page(false);
+                            win.set_show_scheduler_page(false);
+                            win.set_show_logs_stats_page(false);
+                            win.set_show_bandwidth_intent_page(false);
+                            win.set_show_phone_pair_page(false);
+                            crate::bridge::push_ip_filter_state(&filter_weak);
+                        }
+                    });
+                }
+                palette::DispatchAction::ToggleLogsStats => {
+                    let logs_weak = weak2.clone();
+                    let _ = weak2.upgrade_in_event_loop(move |win| {
+                        let current = win.get_show_logs_stats_page();
+                        win.set_show_logs_stats_page(!current);
+                        if !current {
+                            win.set_show_search_page(false);
+                            win.set_show_rss_page(false);
+                            win.set_show_scheduler_page(false);
+                            win.set_show_ip_filter_page(false);
+                            win.set_show_bandwidth_intent_page(false);
+                            win.set_show_phone_pair_page(false);
+                            crate::bridge::push_logs_stats_state(&logs_weak);
+                        }
+                    });
+                }
+                palette::DispatchAction::ToggleBandwidthIntent => {
+                    let intent_weak = weak2.clone();
+                    let _ = weak2.upgrade_in_event_loop(move |win| {
+                        let current = win.get_show_bandwidth_intent_page();
+                        win.set_show_bandwidth_intent_page(!current);
+                        if !current {
+                            win.set_show_search_page(false);
+                            win.set_show_rss_page(false);
+                            win.set_show_scheduler_page(false);
+                            win.set_show_ip_filter_page(false);
+                            win.set_show_logs_stats_page(false);
+                            win.set_show_phone_pair_page(false);
+                            crate::bridge::push_bandwidth_intent_state(&intent_weak);
+                        }
+                    });
+                }
+                palette::DispatchAction::TogglePhonePair => {
+                    let pair_weak = weak2.clone();
+                    let _ = weak2.upgrade_in_event_loop(move |win| {
+                        let current = win.get_show_phone_pair_page();
+                        win.set_show_phone_pair_page(!current);
+                        if !current {
+                            win.set_show_search_page(false);
+                            win.set_show_rss_page(false);
+                            win.set_show_scheduler_page(false);
+                            win.set_show_ip_filter_page(false);
+                            win.set_show_logs_stats_page(false);
+                            win.set_show_bandwidth_intent_page(false);
+                            crate::bridge::push_phone_pair_state(&pair_weak);
+                        }
+                    });
+                }
+                _ => {
+                    // ToolsMenuAction::to_palette_id() only emits the 7
+                    // Toggle* variants above; other DispatchAction variants
+                    // are unreachable here.
+                }
+            }
+        });
+    }
+
+    // 6a-help (M216). About dialog, KbShortcuts stub (full dialog M217),
+    // on-demand update check, Open Logs Folder placeholder toast.
+    {
+        let weak = main_window.as_weak();
+        main_window.on_menu_help_action(move |index| {
+            let Some(action) = app::HelpMenuAction::from_index(index) else {
+                return;
+            };
+            match action {
+                app::HelpMenuAction::About => {
+                    let _ = weak.upgrade_in_event_loop(|win| {
+                        win.set_show_about_dialog(true);
+                    });
+                }
+                app::HelpMenuAction::KeyboardShortcuts => {
+                    bridge::show_toast(&weak, "Keyboard shortcuts dialog ships in M217.", false);
+                }
+                app::HelpMenuAction::CheckForUpdates => {
+                    update_checker::check_now(weak.clone());
+                }
+                app::HelpMenuAction::OpenLogsFolder => {
+                    bridge::show_toast(
+                        &weak,
+                        "Logs stream to stderr; file logging arrives in a future milestone.",
+                        false,
+                    );
+                }
+            }
+        });
+    }
+
     // 6b. Wire sort callback.
     {
         let cb_state = state.clone();

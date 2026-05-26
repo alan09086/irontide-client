@@ -65,7 +65,8 @@ pub struct UpdateInfo {
 }
 
 /// Check for an update using a blocking HTTP client (no Tokio runtime needed).
-fn check_for_update_blocking(current_version: &str) -> Option<UpdateInfo> {
+#[must_use]
+pub fn check_for_update_blocking(current_version: &str) -> Option<UpdateInfo> {
     let current = SemVer::parse(current_version)?;
 
     let client = reqwest::blocking::Client::builder()
@@ -87,6 +88,37 @@ fn check_for_update_blocking(current_version: &str) -> Option<UpdateInfo> {
     } else {
         None
     }
+}
+
+/// One-shot on-demand update check (M216: Help → Check for Updates).
+///
+/// Spawns a single-shot background thread that runs the same check used by
+/// the periodic checker. On success, surfaces the result via the existing
+/// `update_*` Slint banner; on no-update, shows an informational toast so
+/// the user gets feedback for an explicit action.
+pub fn check_now(weak: slint::Weak<crate::MainWindow>) {
+    let version = env!("CARGO_PKG_VERSION").to_string();
+    std::thread::Builder::new()
+        .name("update-check-now".into())
+        .spawn(move || {
+            if let Some(info) = check_for_update_blocking(&version) {
+                let msg: slint::SharedString =
+                    format!("Update available: {} — {}", info.version, info.url).into();
+                let _ = weak.upgrade_in_event_loop(move |win| {
+                    win.set_update_available(true);
+                    win.set_update_version(info.version.as_str().into());
+                    win.set_update_url(info.url.as_str().into());
+                    win.set_update_message(msg);
+                });
+            } else {
+                let _ = weak.upgrade_in_event_loop(|win| {
+                    win.set_toast_text("You're up to date.".into());
+                    win.set_toast_visible(true);
+                    win.set_toast_is_error(false);
+                });
+            }
+        })
+        .expect("failed to spawn one-shot update check thread");
 }
 
 /// Spawn a background thread that periodically checks for updates and
