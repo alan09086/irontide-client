@@ -98,6 +98,30 @@ pub struct QbtPreferences {
     /// `qbt_compat.web_ui_reverse_proxies_list` to match qBt's on-wire
     /// convention.
     pub web_ui_reverse_proxies_list: String,
+
+    /// M214: NAT-PMP toggle (`IronTide` extension — qBt only exposes `UPnP`).
+    pub natpmp: bool,
+    /// M214: global connection cap (`-1` = unlimited). Distinct from qBt's
+    /// legacy `max_connec` which projects to per-torrent.
+    pub max_connec_global: i32,
+    /// M214: proxy type as qBt's wire signed integer enum. Values:
+    /// 0=None, 1=Http, 2=Socks4, 3=Socks5, 4=HttpPassword, 5=Socks5Password.
+    pub proxy_type: i32,
+    /// M214: proxy server hostname or IP.
+    pub proxy_ip: String,
+    /// M214: proxy server port.
+    pub proxy_port: u16,
+    /// M214: proxy auth username (empty string = no username configured).
+    pub proxy_username: String,
+    /// M214: route peer connections through the configured proxy.
+    pub proxy_peer_connections: bool,
+    /// M214: resolve hostnames through the proxy (SOCKS5/HTTP only).
+    pub proxy_hostnames: bool,
+    /// M214: drop traffic entirely when proxy fails.
+    pub force_proxy: bool,
+    // NOTE: `proxy_password` is intentionally NOT exposed on the GET side —
+    // same input-only convention as `web_ui_password`. The qBt v2 docs treat
+    // this field as write-only too. Tests assert its absence (M214 step 7).
 }
 
 impl From<&Settings> for QbtPreferences {
@@ -168,6 +192,24 @@ impl From<&Settings> for QbtPreferences {
             web_ui_host_header_validation_enabled: s.qbt_compat.host_header_validation_enabled,
             web_ui_reverse_proxy_enabled: s.qbt_compat.web_ui_reverse_proxy_enabled,
             web_ui_reverse_proxies_list: s.qbt_compat.web_ui_reverse_proxies_list.join(";"),
+
+            // M214: Connection + Speed round-trip.
+            natpmp: s.enable_natpmp,
+            max_connec_global: s.max_connections_global,
+            proxy_type: match s.proxy.proxy_type {
+                irontide::session::ProxyType::None => 0,
+                irontide::session::ProxyType::Http => 1,
+                irontide::session::ProxyType::Socks4 => 2,
+                irontide::session::ProxyType::Socks5 => 3,
+                irontide::session::ProxyType::HttpPassword => 4,
+                irontide::session::ProxyType::Socks5Password => 5,
+            },
+            proxy_ip: s.proxy.hostname.clone(),
+            proxy_port: s.proxy.port,
+            proxy_username: s.proxy.username.clone().unwrap_or_default(),
+            proxy_peer_connections: s.proxy.proxy_peer_connections,
+            proxy_hostnames: s.proxy.proxy_hostnames,
+            force_proxy: s.force_proxy,
         }
     }
 }

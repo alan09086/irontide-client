@@ -26,7 +26,7 @@ use axum::http::{HeaderName, HeaderValue};
 use axum::response::{IntoResponse, Response};
 
 use irontide::prelude::EncryptionMode;
-use irontide::session::MaxRatioAction;
+use irontide::session::{MaxRatioAction, ProxyType};
 use serde::Deserialize;
 
 use super::preferences::QbtPreferences;
@@ -209,6 +209,61 @@ struct QbtPreferencesPatch {
     /// authoritative source). Empty string clears the list.
     #[serde(default)]
     bypass_auth_subnet_whitelist: Option<String>,
+
+    // ── M214: Connection + Speed engine round-trip ──────────────────
+    /// M214: NAT-PMP toggle. Maps to `settings.enable_upnp`. qBt's wire
+    /// name is `upnp`.
+    #[serde(default)]
+    upnp: Option<bool>,
+    /// M214: NAT-PMP toggle. Maps to `settings.enable_natpmp`. qBt does
+    /// not expose NAT-PMP separately on the wire; this is an `IronTide`
+    /// extension so the GUI's NAT-PMP checkbox can round-trip honestly.
+    #[serde(default)]
+    natpmp: Option<bool>,
+    /// M214: global connection cap. Maps to `settings.max_connections_global`.
+    /// Distinct from qBt's legacy `max_connec` (which maps to
+    /// `max_peers_per_torrent` — that field's per-torrent semantics
+    /// pre-date the workspace-wide cap and are preserved for wire compat).
+    /// `-1` means unlimited (qBt's sentinel).
+    #[serde(default)]
+    max_connec_global: Option<i32>,
+    /// M214: proxy type. Signed integer matches qBt's wire convention;
+    /// `*arr`-family clients send `-1` as a "no proxy" sentinel which a
+    /// `u8` would silently reject at deserialise time. The match arm in
+    /// `apply_preferences_patch` rejects any value outside `0..=5` as
+    /// `QbtError::BadRequest`. Values: 0=None, 1=Http, 2=Socks4,
+    /// 3=Socks5, 4=HttpPassword, 5=Socks5Password.
+    #[serde(default)]
+    proxy_type: Option<i32>,
+    /// M214: proxy server hostname or IP. Maps to `settings.proxy.hostname`.
+    /// Wire name is qBt's `proxy_ip` even though the field accepts either.
+    #[serde(default)]
+    proxy_ip: Option<String>,
+    /// M214: proxy server port. Maps to `settings.proxy.port`.
+    #[serde(default)]
+    proxy_port: Option<u16>,
+    /// M214: proxy auth username. Maps to `settings.proxy.username`.
+    /// Empty string sets `None`; any non-empty value sets `Some(...)`.
+    #[serde(default)]
+    proxy_username: Option<String>,
+    /// M214: proxy auth password. Input-only — never echoed on the GET
+    /// side, same precedent as `web_ui_password`. Maps to
+    /// `settings.proxy.password`.
+    #[serde(default)]
+    proxy_password: Option<String>,
+    /// M214: route peer connections through the configured proxy.
+    /// Maps to `settings.proxy.proxy_peer_connections`.
+    #[serde(default)]
+    proxy_peer_connections: Option<bool>,
+    /// M214: resolve hostnames through the proxy (SOCKS5/HTTP only).
+    /// Maps to `settings.proxy.proxy_hostnames`.
+    #[serde(default)]
+    proxy_hostnames: Option<bool>,
+    /// M214: drop traffic entirely when proxy fails. Maps to
+    /// `settings.force_proxy`. Combination `force_proxy = true` + no
+    /// `proxy_type` is rejected at `settings.validate()`.
+    #[serde(default)]
+    force_proxy: Option<bool>,
 }
 
 /// `POST /api/v2/app/setPreferences` (M171 D3 + D3.5).
@@ -548,6 +603,56 @@ fn apply_preferences_patch(
             }
         }
         settings.qbt_compat.bypass_auth_subnet_whitelist = parsed;
+    }
+
+    // ── M214: Connection + Speed engine round-trip ──────────────────
+    if let Some(v) = patch.upnp {
+        settings.enable_upnp = v;
+    }
+    if let Some(v) = patch.natpmp {
+        settings.enable_natpmp = v;
+    }
+    if let Some(v) = patch.max_connec_global {
+        settings.max_connections_global = v;
+    }
+    if let Some(v) = patch.proxy_type {
+        // Negative sentinels (some *arr clients use -1) and any value > 5
+        // are rejected. The `i32` wire type lets us see negative values
+        // explicitly rather than have serde strip the sign at parse time.
+        settings.proxy.proxy_type = match v {
+            0 => ProxyType::None,
+            1 => ProxyType::Http,
+            2 => ProxyType::Socks4,
+            3 => ProxyType::Socks5,
+            4 => ProxyType::HttpPassword,
+            5 => ProxyType::Socks5Password,
+            n => return Err(QbtError::BadRequest(format!("invalid proxy_type: {n}"))),
+        };
+    }
+    if let Some(v) = patch.proxy_ip {
+        settings.proxy.hostname = v;
+    }
+    if let Some(v) = patch.proxy_port {
+        settings.proxy.port = v;
+    }
+    if let Some(v) = patch.proxy_username {
+        // Empty string clears the field (qBt convention — the UI textbox
+        // sends an empty value when the admin blanks the field).
+        settings.proxy.username = if v.is_empty() { None } else { Some(v) };
+    }
+    if let Some(v) = patch.proxy_password {
+        // Empty string clears the field. NEVER echoed on the GET side —
+        // see QbtPreferences impl which omits a password field entirely.
+        settings.proxy.password = if v.is_empty() { None } else { Some(v) };
+    }
+    if let Some(v) = patch.proxy_peer_connections {
+        settings.proxy.proxy_peer_connections = v;
+    }
+    if let Some(v) = patch.proxy_hostnames {
+        settings.proxy.proxy_hostnames = v;
+    }
+    if let Some(v) = patch.force_proxy {
+        settings.force_proxy = v;
     }
 
     Ok(())

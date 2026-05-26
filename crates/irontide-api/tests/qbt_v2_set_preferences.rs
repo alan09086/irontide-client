@@ -636,6 +636,199 @@ async fn set_preferences_graduated_fields_never_appear_in_header() {
     );
 }
 
+// ── M214: Connection + Speed round-trip ─────────────────────────────
+
+#[tokio::test]
+async fn set_preferences_round_trip_upnp_restart_required() {
+    let (router, sid) = enabled_router_with(|s| {
+        s.enable_upnp = true;
+    })
+    .await;
+    let resp = post_json(&router, &sid, serde_json::json!({"upnp": false})).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let header = resp
+        .headers()
+        .get("x-irontide-restart-pending")
+        .expect("upnp change must surface a restart header")
+        .to_str()
+        .unwrap();
+    let fields: std::collections::HashSet<&str> = header.split(',').collect();
+    assert!(
+        fields.contains("upnp"),
+        "restart header must contain 'upnp': {fields:?}"
+    );
+
+    let prefs = get_prefs(&router, &sid).await;
+    assert_eq!(prefs["upnp"], false);
+}
+
+#[tokio::test]
+async fn set_preferences_round_trip_natpmp_restart_required() {
+    let (router, sid) = enabled_router_with(|s| {
+        s.enable_natpmp = true;
+    })
+    .await;
+    let resp = post_json(&router, &sid, serde_json::json!({"natpmp": false})).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let header = resp
+        .headers()
+        .get("x-irontide-restart-pending")
+        .expect("natpmp change must surface a restart header")
+        .to_str()
+        .unwrap();
+    let fields: std::collections::HashSet<&str> = header.split(',').collect();
+    assert!(
+        fields.contains("natpmp"),
+        "restart header must contain 'natpmp': {fields:?}"
+    );
+
+    let prefs = get_prefs(&router, &sid).await;
+    assert_eq!(prefs["natpmp"], false);
+}
+
+#[tokio::test]
+async fn set_preferences_round_trip_max_connec_global() {
+    let (router, sid) = enabled_router_with(|s| {
+        s.max_connections_global = -1;
+    })
+    .await;
+    let resp = post_json(&router, &sid, serde_json::json!({"max_connec_global": 500})).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    // max_connec_global is classify_immediate — no restart header expected.
+    assert!(
+        resp.headers().get("x-irontide-restart-pending").is_none(),
+        "max_connec_global is immediate; no restart header should fire"
+    );
+    let prefs = get_prefs(&router, &sid).await;
+    assert_eq!(prefs["max_connec_global"], 500);
+}
+
+#[tokio::test]
+async fn set_preferences_proxy_type_round_trip() {
+    // Cover all six valid proxy_type wire values.
+    for (wire, expected_get_value) in [(0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5)] {
+        let (router, sid) = enabled_router_with(|s| {
+            // Force proxy_type to a value DIFFERENT from `wire` so the diff
+            // fires every iteration. Use SOCKS5 for non-0 cases, NONE for 0.
+            s.proxy.proxy_type = if wire == 0 {
+                irontide::session::ProxyType::Socks5
+            } else {
+                irontide::session::ProxyType::None
+            };
+        })
+        .await;
+        let resp = post_json(&router, &sid, serde_json::json!({"proxy_type": wire})).await;
+        assert_eq!(resp.status(), StatusCode::OK, "wire={wire}");
+        let header = resp
+            .headers()
+            .get("x-irontide-restart-pending")
+            .expect("proxy_type change must surface a restart header")
+            .to_str()
+            .unwrap();
+        assert!(
+            header.split(',').any(|f| f == "proxy_type"),
+            "restart header must include 'proxy_type' for wire={wire}: {header}"
+        );
+
+        let prefs = get_prefs(&router, &sid).await;
+        assert_eq!(prefs["proxy_type"], expected_get_value, "wire={wire}");
+    }
+}
+
+#[tokio::test]
+async fn set_preferences_proxy_full_set() {
+    let (router, sid) = enabled_router_with(|s| {
+        // Pre-existing proxy config so EVERY proxy field below produces a diff.
+        s.proxy.proxy_type = irontide::session::ProxyType::None;
+        s.proxy.hostname = "old.example.com".into();
+        s.proxy.port = 9999;
+        s.proxy.username = None;
+        s.proxy.password = None;
+        s.proxy.proxy_peer_connections = false;
+        s.proxy.proxy_hostnames = false;
+    })
+    .await;
+    let resp = post_json(
+        &router,
+        &sid,
+        serde_json::json!({
+            "proxy_type": 3,
+            "proxy_ip": "proxy.example.com",
+            "proxy_port": 1080,
+            "proxy_username": "alice",
+            "proxy_password": "s3cret",
+            "proxy_peer_connections": true,
+            "proxy_hostnames": true,
+        }),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let header = resp
+        .headers()
+        .get("x-irontide-restart-pending")
+        .expect("multi-field proxy patch must surface a restart header")
+        .to_str()
+        .unwrap();
+    let fields: std::collections::HashSet<&str> = header.split(',').collect();
+    for expected in [
+        "proxy_type",
+        "proxy_ip",
+        "proxy_port",
+        "proxy_username",
+        "proxy_password",
+        "proxy_peer_connections",
+        "proxy_hostnames",
+    ] {
+        assert!(
+            fields.contains(expected),
+            "restart header missing {expected}: {fields:?}"
+        );
+    }
+
+    let prefs = get_prefs(&router, &sid).await;
+    assert_eq!(prefs["proxy_type"], 3);
+    assert_eq!(prefs["proxy_ip"], "proxy.example.com");
+    assert_eq!(prefs["proxy_port"], 1080);
+    assert_eq!(prefs["proxy_username"], "alice");
+    assert_eq!(prefs["proxy_peer_connections"], true);
+    assert_eq!(prefs["proxy_hostnames"], true);
+
+    // Key M214 security invariant: proxy_password must NEVER round-trip
+    // back through GET, same as web_ui_password.
+    assert!(
+        prefs.get("proxy_password").is_none(),
+        "proxy_password leaked into GET response: {prefs}"
+    );
+}
+
+#[tokio::test]
+async fn set_preferences_force_proxy_validates() {
+    // force_proxy=true with proxy_type=None must be rejected at validate().
+    let (router, sid) = enabled_router_with(|s| {
+        s.proxy.proxy_type = irontide::session::ProxyType::None;
+        s.force_proxy = false;
+    })
+    .await;
+    let resp = post_json(&router, &sid, serde_json::json!({"force_proxy": true})).await;
+    assert_eq!(
+        resp.status(),
+        StatusCode::BAD_REQUEST,
+        "force_proxy=true with proxy_type=None must 400"
+    );
+}
+
+#[tokio::test]
+async fn set_preferences_proxy_type_invalid_value() {
+    let (router, sid) = enabled_router_with(|_| {}).await;
+    // Out-of-range positive.
+    let resp = post_json(&router, &sid, serde_json::json!({"proxy_type": 99})).await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "proxy_type=99");
+    // Negative sentinel — *arr clients sometimes send -1; we reject with
+    // a descriptive 400 rather than letting serde silently strip the sign.
+    let resp = post_json(&router, &sid, serde_json::json!({"proxy_type": -1})).await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "proxy_type=-1");
+}
+
 // ── Auth gate ─────────────────────────────────────────────────────────
 
 #[tokio::test]
