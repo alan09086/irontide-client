@@ -21,6 +21,8 @@ webui = [
     "dep:irontide-format",
     "dep:askama",
     "dep:askama_web",
+    "dep:reqwest",
+    "dep:thiserror",
 ]
 dev-webui = ["tower-http/fs"]
 
@@ -48,6 +50,17 @@ irontide-webui-assets = { path = "../irontide-webui-assets", version = "1.0.0-rc
 irontide-format = { workspace = true, optional = true }
 askama = { version = "0.15", optional = true }
 askama_web = { version = "0.15", features = ["axum-0.8"], optional = true }
+# M230: Web UI `/webui/add-url` fetches `.torrent` blobs from user-supplied
+# URLs. `blocking` is required because the fetch runs inside
+# `spawn_blocking` (mirrors `irontide-gui::torrent_fetch`'s pattern).
+# `rustls-tls` keeps the dep off OpenSSL. The dev-dep declaration below
+# (rustls-tls + cookies) coexists — Cargo unions the feature sets.
+reqwest = { version = "0.12", default-features = false, features = [
+    "blocking",
+    "rustls-tls",
+], optional = true }
+# M230: `WebUiFetchError` typed errors for the URL fetch handler.
+thiserror = { workspace = true, optional = true }
 
 [dev-dependencies]
 futures-util = "0.3"

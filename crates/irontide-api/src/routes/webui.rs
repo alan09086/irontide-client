@@ -410,6 +410,233 @@ pub async fn add_magnet_redirect(
     }
 }
 
+/// `POST /webui/add-file` (M230 — Phase O #8/14)
+///
+/// Accepts a single `.torrent` upload via `multipart/form-data` and adds the
+/// torrent to the session. The expected field name is `torrents` (matching
+/// the qBt v2 `/api/v2/torrents/add` convention so the same client code can
+/// target either surface). Only the first non-empty `torrents` field is
+/// honoured; additional fields are drained.
+///
+/// The 10 MiB cap is enforced primarily by the `DefaultBodyLimit` layer on
+/// this route (see `routes/mod.rs`) which rejects oversize bodies at the
+/// router with `413 Payload Too Large` before the handler runs. The
+/// handler-side `MAX_TORRENT_BYTES` guard is defence-in-depth for the
+/// (unlikely) scenario where the body slips through the router layer.
+///
+/// On success, returns 200 with `HX-Trigger: refreshList`. On failure,
+/// returns 422 with an HTML error fragment.
+pub async fn add_file_form(
+    State(session): State<AppState>,
+    mut multipart: axum::extract::Multipart,
+) -> Response {
+    let mut bytes: Option<Vec<u8>> = None;
+    loop {
+        match multipart.next_field().await {
+            Ok(Some(field)) => {
+                if field.name() == Some("torrents") && bytes.is_none() {
+                    match field.bytes().await {
+                        Ok(b) if !b.is_empty() => {
+                            if b.len() > MAX_TORRENT_BYTES {
+                                return error_fragment(
+                                    StatusCode::UNPROCESSABLE_ENTITY,
+                                    "torrent file exceeds 10 MiB limit",
+                                );
+                            }
+                            bytes = Some(b.to_vec());
+                        }
+                        Ok(_) => {}
+                        Err(e) => {
+                            return error_fragment(
+                                StatusCode::UNPROCESSABLE_ENTITY,
+                                &format!("read torrent field: {e}"),
+                            );
+                        }
+                    }
+                } else {
+                    // Drain unknown / duplicate fields so the parser advances.
+                    let _ = field.bytes().await;
+                }
+            }
+            Ok(None) => break,
+            Err(e) => {
+                return error_fragment(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    &format!("multipart parse: {e}"),
+                );
+            }
+        }
+    }
+
+    let Some(bytes) = bytes else {
+        return error_fragment(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "missing or empty 'torrents' field",
+        );
+    };
+
+    let params = irontide::session::SessionAddTorrentParams::bytes(bytes);
+    match session.add_torrent(params).await {
+        Ok(_) => refresh_response(),
+        Err(e) => error_fragment(StatusCode::UNPROCESSABLE_ENTITY, &e.to_string()),
+    }
+}
+
+/// Handler-side cap on `.torrent` body size. The primary enforcement is the
+/// `DefaultBodyLimit` layer on the route — this constant gates the (already
+/// unlikely) post-router case and stays in sync with the layer cap below.
+const MAX_TORRENT_BYTES: usize = 10 * 1024 * 1024;
+
+/// Form body for the add-url endpoint.
+#[derive(serde::Deserialize)]
+pub struct AddUrlForm {
+    url: String,
+}
+
+/// Typed errors from [`fetch_torrent_url_blocking`]. Mirrors the shape of
+/// `irontide_gui::torrent_fetch::FetchError` (M218) but lives here because
+/// `irontide-gui` depends on `irontide-api`, so a shared helper would have
+/// to land in a lower crate — deferred to a future shared-helper milestone
+/// per the M230 plan's Decision #2.
+#[derive(Debug, thiserror::Error)]
+enum WebUiFetchError {
+    #[error("{0}")]
+    UrlBlocked(String),
+    #[error("HTTP error: {0}")]
+    Http(String),
+    #[error("HTTP status {0}")]
+    Status(u16),
+    #[error("response too large: {0} bytes (max {MAX_TORRENT_BYTES})")]
+    TooLarge(u64),
+    #[error("response does not look like a .torrent file")]
+    NotTorrent,
+}
+
+impl From<irontide::url_guard::UrlGuardError> for WebUiFetchError {
+    fn from(err: irontide::url_guard::UrlGuardError) -> Self {
+        Self::UrlBlocked(err.to_string())
+    }
+}
+
+/// Blocking HTTP `GET` of a `.torrent` URL with SSRF guard + size cap +
+/// content sniff. Runs inside `tokio::task::spawn_blocking`. Mirrors
+/// `irontide_gui::torrent_fetch::fetch_torrent_blocking` (M218) in shape;
+/// duplication is forced by the `irontide-gui` → `irontide-api` Cargo
+/// direction (see M230 plan Decision #2 — extracting upward would create
+/// a cycle). Flagged for a future shared-helper milestone if a third HTTP
+/// fetcher appears.
+fn fetch_torrent_url_blocking(
+    url: &str,
+    config: irontide::url_guard::UrlSecurityConfig,
+) -> Result<Vec<u8>, WebUiFetchError> {
+    use std::io::Read as _;
+    use std::time::Duration;
+
+    const FETCH_TIMEOUT: Duration = Duration::from_secs(30);
+    const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+    // 1. Pre-flight validation (scheme, SSRF, IDNA).
+    irontide::url_guard::validate_user_url(url, config)?;
+
+    // 2. Build blocking client with shared SSRF redirect policy.
+    let client = reqwest::blocking::Client::builder()
+        .timeout(FETCH_TIMEOUT)
+        .connect_timeout(CONNECT_TIMEOUT)
+        .redirect(irontide::url_guard::build_redirect_policy(config))
+        .user_agent(concat!("irontide-webui/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|e| WebUiFetchError::Http(e.to_string()))?;
+
+    // 3. Issue GET.
+    let mut resp = client
+        .get(url)
+        .send()
+        .map_err(|e| WebUiFetchError::Http(e.to_string()))?;
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(WebUiFetchError::Status(status.as_u16()));
+    }
+
+    // 4. Content-Length pre-check.
+    if let Some(len) = resp.content_length()
+        && len > MAX_TORRENT_BYTES as u64
+    {
+        return Err(WebUiFetchError::TooLarge(len));
+    }
+
+    // 5. Capture Content-Type before consuming the body.
+    let content_type = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+
+    // 6. Stream body with hard read cap (lying Content-Length cannot OOM).
+    let mut body = Vec::new();
+    let cap = (MAX_TORRENT_BYTES as u64).saturating_add(1);
+    (&mut resp)
+        .take(cap)
+        .read_to_end(&mut body)
+        .map_err(|e| WebUiFetchError::Http(e.to_string()))?;
+    if body.len() > MAX_TORRENT_BYTES {
+        return Err(WebUiFetchError::TooLarge(body.len() as u64));
+    }
+
+    // 7. Sniff: accept if Content-Type matches OR first byte is 'd'.
+    let ct_ok = content_type.as_deref().is_some_and(|s| {
+        s.starts_with("application/x-bittorrent") || s.starts_with("application/octet-stream")
+    });
+    let magic_ok = body.first() == Some(&b'd');
+    if !ct_ok && !magic_ok {
+        return Err(WebUiFetchError::NotTorrent);
+    }
+
+    Ok(body)
+}
+
+/// `POST /webui/add-url` (M230 — Phase O #8/14)
+///
+/// Accepts a `url=` form field, fetches the `.torrent` from the URL with
+/// the same SSRF guards M218 wired into the GUI, and adds the resulting
+/// torrent to the session. Returns 200 with `HX-Trigger: refreshList` on
+/// success, 422 with an HTML error fragment on any pre-flight, fetch, or
+/// engine error.
+pub async fn add_url_form(
+    State(session): State<AppState>,
+    axum::Form(form): axum::Form<AddUrlForm>,
+) -> Response {
+    let config = irontide::url_guard::UrlSecurityConfig::default();
+    // Pre-flight SSRF before crossing the spawn_blocking boundary so a bad
+    // URL fails immediately and synchronously.
+    if let Err(e) = irontide::url_guard::validate_user_url(&form.url, config) {
+        return error_fragment(StatusCode::UNPROCESSABLE_ENTITY, &e.to_string());
+    }
+
+    let url = form.url.clone();
+    let bytes = match tokio::task::spawn_blocking(move || {
+        fetch_torrent_url_blocking(&url, config)
+    })
+    .await
+    {
+        Ok(Ok(b)) => b,
+        Ok(Err(e)) => {
+            return error_fragment(StatusCode::UNPROCESSABLE_ENTITY, &e.to_string());
+        }
+        Err(e) => {
+            return error_fragment(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("fetch task: {e}"),
+            );
+        }
+    };
+
+    let params = irontide::session::SessionAddTorrentParams::bytes(bytes);
+    match session.add_torrent(params).await {
+        Ok(_) => refresh_response(),
+        Err(e) => error_fragment(StatusCode::UNPROCESSABLE_ENTITY, &e.to_string()),
+    }
+}
+
 /// `POST /webui/torrents/{hash}/pause`
 ///
 /// Pause an active torrent. On success, emits `HX-Trigger: refreshList` so
@@ -1085,6 +1312,57 @@ pub async fn serve_static(req: Request) -> impl IntoResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// M230: drive the private `fetch_torrent_url_blocking` helper against a
+    /// one-shot loopback HTTP server. Bypasses the SSRF pre-flight via a
+    /// permissive `UrlSecurityConfig` (loopback is allowed only when
+    /// `ssrf_mitigation: false`). This is the ONLY test in this binary that
+    /// reaches the private helper — the 6 router-level tests (file happy /
+    /// file oversize / file bad-bencode / URL pre-flight 3-way) live in
+    /// `tests/webui_add_torrent.rs`. See M230 plan Decision #3 + #7.
+    #[test]
+    fn m230_fetch_torrent_url_blocking_happy_path() {
+        use std::io::{Read as _, Write as _};
+        use std::net::TcpListener;
+        use std::thread;
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind 127.0.0.1:0");
+        let port = listener.local_addr().expect("local_addr").port();
+        let url = format!("http://127.0.0.1:{port}/x.torrent");
+        let handle = thread::spawn(move || {
+            if let Ok((mut sock, _)) = listener.accept() {
+                let mut buf = [0u8; 4096];
+                let _ = sock.read(&mut buf);
+                let _ = sock.write_all(
+                    b"HTTP/1.1 200 OK\r\n\
+                      Content-Type: application/octet-stream\r\n\
+                      Content-Length: 14\r\n\
+                      Connection: close\r\n\
+                      \r\n\
+                      d4:spam4:eggse",
+                );
+                let _ = sock.flush();
+            }
+        });
+
+        // Permissive config: loopback addresses are blocked by default
+        // (ssrf_mitigation: true). The handler in production runs with
+        // defaults; this test exercises the fetch logic itself, not the
+        // pre-flight guard (which has its own router-level test).
+        let config = irontide::url_guard::UrlSecurityConfig {
+            ssrf_mitigation: false,
+            allow_idna: true,
+            validate_https_trackers: false,
+        };
+        let result = fetch_torrent_url_blocking(&url, config);
+        handle.join().expect("server thread join");
+        let bytes = result.expect("fetch should succeed");
+        assert_eq!(
+            bytes,
+            b"d4:spam4:eggse",
+            "round-tripped bencode body must match"
+        );
+    }
 
     #[allow(
         clippy::fn_params_excessive_bools,

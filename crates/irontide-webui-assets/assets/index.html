@@ -13,8 +13,8 @@
     <nav>
       <a href="/" class="nav-link nav-link-active">Torrents</a>
       <a href="/settings" class="nav-link">Settings</a>
-      <button onclick="document.getElementById('add-magnet-dialog').showModal()">
-        Add Magnet
+      <button onclick="document.getElementById('add-torrent-dialog').showModal()">
+        Add Torrent
       </button>
     </nav>
   </header>
@@ -37,8 +37,8 @@
     </div>
   </footer>
 
-  <!-- Add Magnet Dialog -->
-  <dialog id="add-magnet-dialog">
+  <!-- Add Torrent Dialog: File / URL / Magnet -->
+  <dialog id="add-torrent-dialog">
     <article>
       <header>
         <button
@@ -46,11 +46,82 @@
           rel="prev"
           onclick="this.closest('dialog').close()">
         </button>
-        <p>Add Magnet Link</p>
+        <p>Add Torrent</p>
       </header>
+      <div class="add-torrent-tabs" role="tablist" aria-label="Add torrent source">
+        <button
+          type="button"
+          role="tab"
+          id="add-tab-file"
+          class="add-torrent-tab add-torrent-tab-active"
+          aria-controls="add-panel-file"
+          aria-selected="true"
+          onclick="switchAddTab('file')">File</button>
+        <button
+          type="button"
+          role="tab"
+          id="add-tab-url"
+          class="add-torrent-tab"
+          aria-controls="add-panel-url"
+          aria-selected="false"
+          onclick="switchAddTab('url')">URL</button>
+        <button
+          type="button"
+          role="tab"
+          id="add-tab-magnet"
+          class="add-torrent-tab"
+          aria-controls="add-panel-magnet"
+          aria-selected="false"
+          onclick="switchAddTab('magnet')">Magnet</button>
+      </div>
+
       <form
+        id="add-panel-file"
+        class="add-torrent-panel"
+        role="tabpanel"
+        aria-labelledby="add-tab-file"
+        enctype="multipart/form-data"
+        hx-encoding="multipart/form-data"
+        hx-post="/webui/add-file"
+        hx-target="#add-torrent-error"
+        hx-swap="innerHTML"
+        hx-on::after-request="if(event.detail.successful) { this.closest('dialog').close(); this.reset(); }">
+        <input
+          type="file"
+          name="torrents"
+          accept=".torrent,application/x-bittorrent"
+          required
+          autocomplete="off">
+        <button type="submit">Add Torrent</button>
+      </form>
+
+      <form
+        id="add-panel-url"
+        class="add-torrent-panel add-torrent-panel-hidden"
+        role="tabpanel"
+        aria-labelledby="add-tab-url"
+        hidden
+        hx-post="/webui/add-url"
+        hx-target="#add-torrent-error"
+        hx-swap="innerHTML"
+        hx-on::after-request="if(event.detail.successful) { this.closest('dialog').close(); this.reset(); }">
+        <input
+          type="url"
+          name="url"
+          placeholder="https://example.com/file.torrent"
+          required
+          autocomplete="off">
+        <button type="submit">Fetch &amp; Add</button>
+      </form>
+
+      <form
+        id="add-panel-magnet"
+        class="add-torrent-panel add-torrent-panel-hidden"
+        role="tabpanel"
+        aria-labelledby="add-tab-magnet"
+        hidden
         hx-post="/webui/add-magnet"
-        hx-target="#add-magnet-error"
+        hx-target="#add-torrent-error"
         hx-swap="innerHTML"
         hx-on::after-request="if(event.detail.successful) { this.closest('dialog').close(); this.reset(); }">
         <input
@@ -58,11 +129,11 @@
           name="uri"
           placeholder="magnet:?xt=urn:btih:..."
           required
-          autofocus
           autocomplete="off">
-        <div id="add-magnet-error"></div>
-        <button type="submit">Add Torrent</button>
+        <button type="submit">Add Magnet</button>
       </form>
+
+      <div id="add-torrent-error" aria-live="polite"></div>
     </article>
   </dialog>
 
@@ -91,6 +162,27 @@
     document.body.addEventListener('refreshList', function () {
       showToast('Torrent added successfully.');
     });
+
+    // Switch the active tab in #add-torrent-dialog (file / url / magnet).
+    // Clears the shared error fragment so a 422 from one tab doesn't bleed
+    // into the next; focuses the first input in the newly-active panel.
+    function switchAddTab(name) {
+      var tabs = ['file', 'url', 'magnet'];
+      tabs.forEach(function (t) {
+        var tab = document.getElementById('add-tab-' + t);
+        var panel = document.getElementById('add-panel-' + t);
+        var active = (t === name);
+        tab.classList.toggle('add-torrent-tab-active', active);
+        tab.setAttribute('aria-selected', active ? 'true' : 'false');
+        panel.classList.toggle('add-torrent-panel-hidden', !active);
+        if (active) { panel.removeAttribute('hidden'); }
+        else { panel.setAttribute('hidden', ''); }
+      });
+      document.getElementById('add-torrent-error').innerHTML = '';
+      var activePanel = document.getElementById('add-panel-' + name);
+      var firstInput = activePanel.querySelector('input');
+      if (firstInput) { firstInput.focus(); }
+    }
   </script>
 </body>
 </html>
