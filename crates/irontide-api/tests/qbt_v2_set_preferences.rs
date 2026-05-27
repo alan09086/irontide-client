@@ -704,6 +704,60 @@ async fn set_preferences_round_trip_max_connec_global() {
 }
 
 #[tokio::test]
+async fn set_preferences_round_trip_max_uploads_per_torrent() {
+    // M224: per-torrent unchoke-slot cap. Wire field is `-1` for unlimited;
+    // `n >= 1` caps the choker's regular unchoke set. Classified as
+    // `classify_immediate` because handle_update_settings can propagate the
+    // new cap to live torrents without a restart.
+    let (router, sid) = enabled_router_with(|s| {
+        s.max_uploads_per_torrent = -1;
+    })
+    .await;
+    let resp = post_json(
+        &router,
+        &sid,
+        serde_json::json!({"max_uploads_per_torrent": 6}),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(
+        resp.headers().get("x-irontide-restart-pending").is_none(),
+        "max_uploads_per_torrent is immediate; no restart header should fire"
+    );
+    let prefs = get_prefs(&router, &sid).await;
+    assert_eq!(prefs["max_uploads_per_torrent"], 6);
+
+    // Round-trip back to unlimited; GET projection must emit `-1`.
+    let resp = post_json(
+        &router,
+        &sid,
+        serde_json::json!({"max_uploads_per_torrent": -1}),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let prefs = get_prefs(&router, &sid).await;
+    assert_eq!(prefs["max_uploads_per_torrent"], -1);
+}
+
+#[tokio::test]
+async fn set_preferences_max_uploads_per_torrent_zero_is_rejected() {
+    // 0 is explicitly rejected by Settings::validate (choking every peer would
+    // deadlock every torrent — almost certainly a wire-format mistake).
+    let (router, sid) = enabled_router_with(|_| {}).await;
+    let resp = post_json(
+        &router,
+        &sid,
+        serde_json::json!({"max_uploads_per_torrent": 0}),
+    )
+    .await;
+    assert_eq!(
+        resp.status(),
+        StatusCode::BAD_REQUEST,
+        "max_uploads_per_torrent=0 must surface as 400 Bad Request"
+    );
+}
+
+#[tokio::test]
 async fn set_preferences_proxy_type_round_trip() {
     // Cover all six valid proxy_type wire values.
     for (wire, expected_get_value) in [(0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5)] {

@@ -104,6 +104,9 @@ pub struct QbtPreferences {
     /// M214: global connection cap (`-1` = unlimited). Distinct from qBt's
     /// legacy `max_connec` which projects to per-torrent.
     pub max_connec_global: i32,
+    /// M224: per-torrent unchoke-slot cap (`-1` = unlimited). Mirrors qBt's
+    /// `max_uploads_per_torrent` wire field.
+    pub max_uploads_per_torrent: i32,
     /// M214: proxy type as qBt's wire signed integer enum. Values:
     /// 0=None, 1=Http, 2=Socks4, 3=Socks5, 4=HttpPassword, 5=Socks5Password.
     pub proxy_type: i32,
@@ -208,6 +211,8 @@ impl From<&Settings> for QbtPreferences {
             // M214: Connection + Speed round-trip.
             natpmp: s.enable_natpmp,
             max_connec_global: s.max_connections_global,
+            // M224: per-torrent unchoke-slot cap.
+            max_uploads_per_torrent: s.max_uploads_per_torrent,
             proxy_type: match s.proxy.proxy_type {
                 irontide::session::ProxyType::None => 0,
                 irontide::session::ProxyType::Http => 1,
@@ -376,6 +381,24 @@ mod tests {
     }
 
     #[test]
+    fn max_uploads_per_torrent_projects_default_minus_one_sentinel() {
+        // M224: default is `-1` ("unlimited"); the GET-side wire field must
+        // emit it verbatim so qBt-compatible clients see the canonical
+        // sentinel rather than `0` (which means "choke everyone" on POST).
+        let s = base_settings();
+        let p = QbtPreferences::from(&s);
+        assert_eq!(p.max_uploads_per_torrent, -1);
+    }
+
+    #[test]
+    fn max_uploads_per_torrent_projects_positive_cap_verbatim() {
+        let mut s = base_settings();
+        s.max_uploads_per_torrent = 6;
+        let p = QbtPreferences::from(&s);
+        assert_eq!(p.max_uploads_per_torrent, 6);
+    }
+
+    #[test]
     fn dto_roundtrips_through_json_losslessly() {
         // The DTO is Serialize + Deserialize, so *arr clients that echo
         // a prefs payload back to us must produce the same struct. This
@@ -402,5 +425,6 @@ mod tests {
         assert_eq!(p.max_seeding_time, p2.max_seeding_time);
         assert!((p.max_ratio - p2.max_ratio).abs() < f64::EPSILON);
         assert_eq!(p.max_ratio_act, p2.max_ratio_act);
+        assert_eq!(p.max_uploads_per_torrent, p2.max_uploads_per_torrent);
     }
 }
