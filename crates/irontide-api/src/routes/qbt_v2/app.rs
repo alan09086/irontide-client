@@ -116,10 +116,13 @@ struct QbtPreferencesPatch {
     max_connec_per_torrent: Option<u32>,
     #[serde(default)]
     max_uploads: Option<u32>,
+    /// M224: per-torrent unchoke-slot cap. Maps to
+    /// `settings.max_uploads_per_torrent`. `-1` is qBt's "unlimited" sentinel;
+    /// `n >= 1` caps the choker's regular unchoke set. `0` is rejected by
+    /// `Settings::validate` (almost certainly a wire-format mistake — choking
+    /// every peer would deadlock every torrent).
     #[serde(default)]
-    #[allow(dead_code)] // reserved — qBt exposes per-torrent upload slot caps;
-    // IronTide has no Settings-wide field for this yet.
-    max_uploads_per_torrent: Option<u32>,
+    max_uploads_per_torrent: Option<i32>,
     #[serde(default)]
     dl_limit: Option<i64>,
     #[serde(default)]
@@ -432,6 +435,13 @@ fn apply_preferences_patch(
     }
     if let Some(v) = patch.max_uploads {
         settings.auto_upload_slots_max = v as usize;
+    }
+    // M224: per-torrent unchoke-slot cap. Settings::validate rejects 0 and
+    // n < -1 at the session boundary; we forward the wire value verbatim so
+    // the validation error surfaces as 400 Bad Request via the standard
+    // settings-update path rather than being silently coerced here.
+    if let Some(v) = patch.max_uploads_per_torrent {
+        settings.max_uploads_per_torrent = v;
     }
     if let Some(v) = patch.dl_limit {
         settings.download_rate_limit = if v < 0 { 0 } else { v as u64 };
