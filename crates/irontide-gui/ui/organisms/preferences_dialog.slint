@@ -93,6 +93,7 @@ export component PreferencesDialog {
     in-out property <bool> pref-ip-filter-enabled: false;
     in-out property <string> pref-ip-filter-path: "";
     in-out property <bool> pref-ip-filter-auto-refresh: false;
+    in-out property <string> pref-port-mapping-status: "No port mapping active";
 
     // ── Speed tab fields ─────────────────────────────────────────────
     in-out property <bool> pref-dl-limit-enabled: false;
@@ -120,6 +121,8 @@ export component PreferencesDialog {
     in-out property <bool> pref-inactive-seed-time-enabled: false;
     in-out property <string> pref-inactive-seed-time-value: "60";
     in-out property <bool> pref-queueing-enabled: false;
+    in-out property <string> pref-slow-torrent-dl-threshold: "2048";
+    in-out property <string> pref-slow-torrent-ul-threshold: "2048";
 
     // ── RSS tab fields ──────────────────────────────────────────────
     in-out property <bool> pref-rss-enabled: false;
@@ -151,6 +154,7 @@ export component PreferencesDialog {
     in-out property <string> pref-save-resume-interval: "5";
     in-out property <string> pref-storage-mode: "Auto";
     in-out property <string> pref-disk-cache-size: "-1";
+    in-out property <string> pref-network-interface: "";
     in-out property <bool> pref-enable-utp: true;
     in-out property <bool> pref-enable-fast-ext: true;
     in-out property <bool> pref-enable-holepunch: true;
@@ -369,13 +373,11 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Double-click action";
-                                        not-yet-active: true;
                                         PrefSelect {
                                             current-value: root.pref-double-click-action;
                                             options: ["Show Details", "Open Folder", "Start/Stop"];
                                             select-id: "dblclick";
                                             popup-open: root.popup-visible && root.popup-id == "dblclick";
-                                            select-enabled: false;
                                             value-changed(v) => {
                                                 root.pref-double-click-action = v;
                                                 root.dirty = true;
@@ -402,10 +404,8 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Confirm before pausing all";
-                                        not-yet-active: true;
                                         PrefToggle {
                                             checked: root.pref-confirm-pause-all;
-                                            toggle-enabled: false;
                                             toggled(v) => {
                                                 root.pref-confirm-pause-all = v;
                                                 root.dirty = true;
@@ -415,10 +415,8 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Show torrent-added toast";
-                                        not-yet-active: true;
                                         PrefToggle {
                                             checked: root.pref-show-torrent-added-toast;
-                                            toggle-enabled: false;
                                             toggled(v) => {
                                                 root.pref-show-torrent-added-toast = v;
                                                 root.dirty = true;
@@ -431,10 +429,8 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Start minimised";
-                                        not-yet-active: true;
                                         PrefToggle {
                                             checked: root.pref-start-minimized;
-                                            toggle-enabled: false;
                                             toggled(v) => {
                                                 root.pref-start-minimized = v;
                                                 root.dirty = true;
@@ -444,10 +440,8 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Minimise to system tray";
-                                        not-yet-active: true;
                                         PrefToggle {
                                             checked: root.pref-minimize-to-tray;
-                                            toggle-enabled: false;
                                             toggled(v) => {
                                                 root.pref-minimize-to-tray = v;
                                                 root.dirty = true;
@@ -457,10 +451,8 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Resume previous session";
-                                        not-yet-active: true;
                                         PrefToggle {
                                             checked: root.pref-resume-previous-session;
-                                            toggle-enabled: false;
                                             toggled(v) => {
                                                 root.pref-resume-previous-session = v;
                                                 root.dirty = true;
@@ -473,10 +465,8 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Notify on download complete";
-                                        not-yet-active: true;
                                         PrefToggle {
                                             checked: root.pref-notify-on-complete;
-                                            toggle-enabled: false;
                                             toggled(v) => {
                                                 root.pref-notify-on-complete = v;
                                                 root.dirty = true;
@@ -486,10 +476,8 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Notify on error";
-                                        not-yet-active: true;
                                         PrefToggle {
                                             checked: root.pref-notify-on-error;
-                                            toggle-enabled: false;
                                             toggled(v) => {
                                                 root.pref-notify-on-error = v;
                                                 root.dirty = true;
@@ -499,11 +487,9 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Run external program on completion";
-                                        not-yet-active: true;
                                         PrefTextInput {
                                             value: root.pref-on-complete-program;
                                             placeholder: "/path/to/program";
-                                            input-enabled: false;
                                             edited(v) => {
                                                 root.pref-on-complete-program = v;
                                                 root.dirty = true;
@@ -561,10 +547,8 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Keep incomplete in separate folder";
-                                        not-yet-active: true;
                                         PrefToggle {
                                             checked: root.pref-use-incomplete-dir;
-                                            toggle-enabled: false;
                                             toggled(v) => {
                                                 root.pref-use-incomplete-dir = v;
                                                 root.dirty = true;
@@ -574,7 +558,6 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Incomplete folder";
-                                        not-yet-active: true;
                                         field-enabled: root.pref-use-incomplete-dir;
                                         HorizontalLayout {
                                             spacing: Tokens.sp-4;
@@ -583,7 +566,6 @@ export component PreferencesDialog {
                                             PrefTextInput {
                                                 value: root.pref-incomplete-dir;
                                                 placeholder: "/path/to/incomplete";
-                                                input-enabled: false;
                                                 edited(v) => {
                                                     root.pref-incomplete-dir = v;
                                                     root.dirty = true;
@@ -624,10 +606,8 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Show add-torrent dialog";
-                                        not-yet-active: true;
                                         PrefToggle {
                                             checked: root.pref-show-add-torrent-dialog;
-                                            toggle-enabled: false;
                                             toggled(v) => {
                                                 root.pref-show-add-torrent-dialog = v;
                                                 root.dirty = true;
@@ -637,10 +617,8 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Skip hash check";
-                                        not-yet-active: true;
                                         PrefToggle {
                                             checked: root.pref-skip-hash-check;
-                                            toggle-enabled: false;
                                             toggled(v) => {
                                                 root.pref-skip-hash-check = v;
                                                 root.dirty = true;
@@ -650,10 +628,8 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Pre-allocate disk space";
-                                        not-yet-active: true;
                                         PrefToggle {
                                             checked: root.pref-pre-allocate;
-                                            toggle-enabled: false;
                                             toggled(v) => {
                                                 root.pref-pre-allocate = v;
                                                 root.dirty = true;
@@ -663,10 +639,8 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Append .!it extension to incomplete files";
-                                        not-yet-active: true;
                                         PrefToggle {
                                             checked: root.pref-incomplete-extension;
-                                            toggle-enabled: false;
                                             toggled(v) => {
                                                 root.pref-incomplete-extension = v;
                                                 root.dirty = true;
@@ -679,7 +653,6 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Watched folder";
-                                        not-yet-active: true;
                                         HorizontalLayout {
                                             spacing: Tokens.sp-4;
                                             horizontal-stretch: 1;
@@ -687,7 +660,6 @@ export component PreferencesDialog {
                                             PrefTextInput {
                                                 value: root.pref-watched-folder;
                                                 placeholder: "/path/to/watch";
-                                                input-enabled: false;
                                                 edited(v) => {
                                                     root.pref-watched-folder = v;
                                                     root.dirty = true;
@@ -714,10 +686,8 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Delete .torrent file after adding";
-                                        not-yet-active: true;
                                         PrefToggle {
                                             checked: root.pref-delete-torrent-after-add;
-                                            toggle-enabled: false;
                                             toggled(v) => {
                                                 root.pref-delete-torrent-after-add = v;
                                                 root.dirty = true;
@@ -730,10 +700,8 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Move completed downloads";
-                                        not-yet-active: true;
                                         PrefToggle {
                                             checked: root.pref-move-completed-enabled;
-                                            toggle-enabled: false;
                                             toggled(v) => {
                                                 root.pref-move-completed-enabled = v;
                                                 root.dirty = true;
@@ -743,7 +711,6 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Move to";
-                                        not-yet-active: true;
                                         field-enabled: root.pref-move-completed-enabled;
                                         HorizontalLayout {
                                             spacing: Tokens.sp-4;
@@ -752,7 +719,6 @@ export component PreferencesDialog {
                                             PrefTextInput {
                                                 value: root.pref-move-completed-to;
                                                 placeholder: "/path/to/completed";
-                                                input-enabled: false;
                                                 edited(v) => {
                                                     root.pref-move-completed-to = v;
                                                     root.dirty = true;
@@ -779,11 +745,9 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Run external program";
-                                        not-yet-active: true;
                                         PrefTextInput {
                                             value: root.pref-dl-on-complete-program;
                                             placeholder: "/path/to/program";
-                                            input-enabled: false;
                                             edited(v) => {
                                                 root.pref-dl-on-complete-program = v;
                                                 root.dirty = true;
@@ -839,9 +803,8 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Port mapping status";
-                                        not-yet-active: true;
                                         Text {
-                                            text: "Unknown";
+                                            text: root.pref-port-mapping-status;
                                             color: Tokens.fg-3;
                                             font-size: Tokens.fs-13;
                                             vertical-alignment: center;
@@ -1014,10 +977,8 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Enable IP filter";
-                                        not-yet-active: true;
                                         PrefToggle {
                                             checked: root.pref-ip-filter-enabled;
-                                            toggle-enabled: false;
                                             toggled(v) => {
                                                 root.pref-ip-filter-enabled = v;
                                                 root.dirty = true;
@@ -1027,12 +988,10 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Filter file";
-                                        not-yet-active: true;
                                         field-enabled: root.pref-ip-filter-enabled;
                                         PrefTextInput {
                                             value: root.pref-ip-filter-path;
                                             placeholder: "/path/to/ipfilter.dat";
-                                            input-enabled: false;
                                             edited(v) => {
                                                 root.pref-ip-filter-path = v;
                                                 root.dirty = true;
@@ -1042,11 +1001,9 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Automatically refresh filter on startup";
-                                        not-yet-active: true;
                                         field-enabled: root.pref-ip-filter-enabled;
                                         PrefToggle {
                                             checked: root.pref-ip-filter-auto-refresh;
-                                            toggle-enabled: false;
                                             toggled(v) => {
                                                 root.pref-ip-filter-auto-refresh = v;
                                                 root.dirty = true;
@@ -1153,11 +1110,20 @@ export component PreferencesDialog {
                                     PrefField {
                                         label: "Scheduled hours";
                                         not-yet-active: true;
-                                        Text {
-                                            text: "See Tools → Scheduler for time-based rate limits";
-                                            color: Tokens.fg-3;
-                                            font-size: Tokens.fs-13;
-                                            vertical-alignment: center;
+                                        HorizontalLayout {
+                                            spacing: Tokens.sp-2;
+                                            Text {
+                                                text: "See Tools → Scheduler for time-based rate limits";
+                                                color: Tokens.fg-3;
+                                                font-size: Tokens.fs-13;
+                                                vertical-alignment: center;
+                                            }
+                                            Text {
+                                                text: "M229";
+                                                color: Tokens.fg-3;
+                                                font-size: Tokens.fs-12;
+                                                vertical-alignment: center;
+                                            }
                                         }
                                     }
 
@@ -1166,10 +1132,8 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Transport overhead";
-                                        not-yet-active: true;
                                         PrefToggle {
                                             checked: root.pref-rate-limit-overhead;
-                                            toggle-enabled: false;
                                             toggled(v) => {
                                                 root.pref-rate-limit-overhead = v;
                                                 root.dirty = true;
@@ -1179,10 +1143,8 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "\u{00b5}TP connections";
-                                        not-yet-active: true;
                                         PrefToggle {
                                             checked: root.pref-rate-limit-utp;
-                                            toggle-enabled: false;
                                             toggled(v) => {
                                                 root.pref-rate-limit-utp = v;
                                                 root.dirty = true;
@@ -1192,10 +1154,8 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Peers on the same LAN";
-                                        not-yet-active: true;
                                         PrefToggle {
                                             checked: root.pref-rate-limit-lan;
-                                            toggle-enabled: false;
                                             toggled(v) => {
                                                 root.pref-rate-limit-lan = v;
                                                 root.dirty = true;
@@ -1407,25 +1367,45 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Slow torrent DL threshold";
-                                        not-yet-active: true;
                                         field-enabled: root.pref-queueing-enabled;
-                                        PrefTextInput {
-                                            value: "2";
-                                            placeholder: "2";
-                                            input-enabled: false;
-                                            edited(v) => { root.dirty = true; }
+                                        HorizontalLayout {
+                                            spacing: Tokens.sp-4;
+                                            PrefTextInput {
+                                                value: root.pref-slow-torrent-dl-threshold;
+                                                placeholder: "2048";
+                                                edited(v) => {
+                                                    root.pref-slow-torrent-dl-threshold = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+                                            Text {
+                                                text: "B/s";
+                                                color: Tokens.fg-3;
+                                                font-size: Tokens.fs-13;
+                                                vertical-alignment: center;
+                                            }
                                         }
                                     }
 
                                     PrefField {
                                         label: "Slow torrent UL threshold";
-                                        not-yet-active: true;
                                         field-enabled: root.pref-queueing-enabled;
-                                        PrefTextInput {
-                                            value: "2";
-                                            placeholder: "2";
-                                            input-enabled: false;
-                                            edited(v) => { root.dirty = true; }
+                                        HorizontalLayout {
+                                            spacing: Tokens.sp-4;
+                                            PrefTextInput {
+                                                value: root.pref-slow-torrent-ul-threshold;
+                                                placeholder: "2048";
+                                                edited(v) => {
+                                                    root.pref-slow-torrent-ul-threshold = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+                                            Text {
+                                                text: "B/s";
+                                                color: Tokens.fg-3;
+                                                font-size: Tokens.fs-13;
+                                                vertical-alignment: center;
+                                            }
                                         }
                                     }
 
@@ -1438,17 +1418,41 @@ export component PreferencesDialog {
                                 if root.active-tab == "rss": VerticalLayout {
                                     spacing: Tokens.sp-4;
 
+                                    Rectangle {
+                                        height: 32px;
+                                        background: Tokens.bg-2;
+                                        HorizontalLayout {
+                                            padding-left: 12px;
+                                            padding-right: 12px;
+                                            Text {
+                                                text: "RSS reader behaviour ships in v1.x — see M239.";
+                                                color: Tokens.status-queued;
+                                                font-size: Tokens.fs-13;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
+
                                     PrefGroup { title: "RSS READER"; }
 
                                     PrefField {
                                         label: "Enable fetching";
                                         not-yet-active: true;
-                                        PrefToggle {
-                                            checked: root.pref-rss-enabled;
-                                            toggle-enabled: false;
-                                            toggled(v) => {
-                                                root.pref-rss-enabled = v;
-                                                root.dirty = true;
+                                        HorizontalLayout {
+                                            spacing: Tokens.sp-2;
+                                            PrefToggle {
+                                                checked: root.pref-rss-enabled;
+                                                toggle-enabled: false;
+                                                toggled(v) => {
+                                                    root.pref-rss-enabled = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+                                            Text {
+                                                text: "v1.x — see M239";
+                                                color: Tokens.fg-3;
+                                                font-size: Tokens.fs-12;
+                                                vertical-alignment: center;
                                             }
                                         }
                                     }
@@ -1474,6 +1478,12 @@ export component PreferencesDialog {
                                                 font-size: Tokens.fs-13;
                                                 vertical-alignment: center;
                                             }
+                                            Text {
+                                                text: "v1.x — see M239";
+                                                color: Tokens.fg-3;
+                                                font-size: Tokens.fs-12;
+                                                vertical-alignment: center;
+                                            }
                                         }
                                     }
 
@@ -1481,13 +1491,22 @@ export component PreferencesDialog {
                                         label: "Maximum articles per feed";
                                         not-yet-active: true;
                                         field-enabled: root.pref-rss-enabled;
-                                        PrefTextInput {
-                                            value: root.pref-rss-max-articles;
-                                            placeholder: "50";
-                                            input-enabled: false;
-                                            edited(v) => {
-                                                root.pref-rss-max-articles = v;
-                                                root.dirty = true;
+                                        HorizontalLayout {
+                                            spacing: Tokens.sp-2;
+                                            PrefTextInput {
+                                                value: root.pref-rss-max-articles;
+                                                placeholder: "50";
+                                                input-enabled: false;
+                                                edited(v) => {
+                                                    root.pref-rss-max-articles = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+                                            Text {
+                                                text: "v1.x — see M239";
+                                                color: Tokens.fg-3;
+                                                font-size: Tokens.fs-12;
+                                                vertical-alignment: center;
                                             }
                                         }
                                     }
@@ -1497,12 +1516,21 @@ export component PreferencesDialog {
                                     PrefField {
                                         label: "Enable auto-downloading";
                                         not-yet-active: true;
-                                        PrefToggle {
-                                            checked: root.pref-rss-auto-download;
-                                            toggle-enabled: false;
-                                            toggled(v) => {
-                                                root.pref-rss-auto-download = v;
-                                                root.dirty = true;
+                                        HorizontalLayout {
+                                            spacing: Tokens.sp-2;
+                                            PrefToggle {
+                                                checked: root.pref-rss-auto-download;
+                                                toggle-enabled: false;
+                                                toggled(v) => {
+                                                    root.pref-rss-auto-download = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+                                            Text {
+                                                text: "v1.x — see M239";
+                                                color: Tokens.fg-3;
+                                                font-size: Tokens.fs-12;
+                                                vertical-alignment: center;
                                             }
                                         }
                                     }
@@ -1510,12 +1538,21 @@ export component PreferencesDialog {
                                     PrefField {
                                         label: "Smart episode filter";
                                         not-yet-active: true;
-                                        PrefToggle {
-                                            checked: root.pref-rss-smart-filter;
-                                            toggle-enabled: false;
-                                            toggled(v) => {
-                                                root.pref-rss-smart-filter = v;
-                                                root.dirty = true;
+                                        HorizontalLayout {
+                                            spacing: Tokens.sp-2;
+                                            PrefToggle {
+                                                checked: root.pref-rss-smart-filter;
+                                                toggle-enabled: false;
+                                                toggled(v) => {
+                                                    root.pref-rss-smart-filter = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+                                            Text {
+                                                text: "v1.x — see M239";
+                                                color: Tokens.fg-3;
+                                                font-size: Tokens.fs-12;
+                                                vertical-alignment: center;
                                             }
                                         }
                                     }
@@ -1523,12 +1560,21 @@ export component PreferencesDialog {
                                     PrefField {
                                         label: "Download repacks/proper";
                                         not-yet-active: true;
-                                        PrefToggle {
-                                            checked: root.pref-rss-download-repacks;
-                                            toggle-enabled: false;
-                                            toggled(v) => {
-                                                root.pref-rss-download-repacks = v;
-                                                root.dirty = true;
+                                        HorizontalLayout {
+                                            spacing: Tokens.sp-2;
+                                            PrefToggle {
+                                                checked: root.pref-rss-download-repacks;
+                                                toggle-enabled: false;
+                                                toggled(v) => {
+                                                    root.pref-rss-download-repacks = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+                                            Text {
+                                                text: "v1.x — see M239";
+                                                color: Tokens.fg-3;
+                                                font-size: Tokens.fs-12;
+                                                vertical-alignment: center;
                                             }
                                         }
                                     }
@@ -1586,12 +1632,21 @@ export component PreferencesDialog {
                                     PrefField {
                                         label: "Use HTTPS";
                                         not-yet-active: true;
-                                        PrefToggle {
-                                            checked: root.pref-webui-https;
-                                            toggle-enabled: false;
-                                            toggled(v) => {
-                                                root.pref-webui-https = v;
-                                                root.dirty = true;
+                                        HorizontalLayout {
+                                            spacing: Tokens.sp-2;
+                                            PrefToggle {
+                                                checked: root.pref-webui-https;
+                                                toggle-enabled: false;
+                                                toggled(v) => {
+                                                    root.pref-webui-https = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+                                            Text {
+                                                text: "v1.x — M232";
+                                                color: Tokens.fg-3;
+                                                font-size: Tokens.fs-12;
+                                                vertical-alignment: center;
                                             }
                                         }
                                     }
@@ -1613,11 +1668,20 @@ export component PreferencesDialog {
                                     PrefField {
                                         label: "Password";
                                         not-yet-active: true;
-                                        Text {
-                                            text: "Change via config file (argon2 hashed)";
-                                            color: Tokens.fg-3;
-                                            font-size: Tokens.fs-13;
-                                            vertical-alignment: center;
+                                        HorizontalLayout {
+                                            spacing: Tokens.sp-2;
+                                            Text {
+                                                text: "Change via config file (argon2 hashed)";
+                                                color: Tokens.fg-3;
+                                                font-size: Tokens.fs-13;
+                                                vertical-alignment: center;
+                                            }
+                                            Text {
+                                                text: "v1.x — M232";
+                                                color: Tokens.fg-3;
+                                                font-size: Tokens.fs-12;
+                                                vertical-alignment: center;
+                                            }
                                         }
                                     }
 
@@ -1726,12 +1790,21 @@ export component PreferencesDialog {
                                     PrefField {
                                         label: "Enable";
                                         not-yet-active: true;
-                                        PrefToggle {
-                                            checked: root.pref-ddns-enabled;
-                                            toggle-enabled: false;
-                                            toggled(v) => {
-                                                root.pref-ddns-enabled = v;
-                                                root.dirty = true;
+                                        HorizontalLayout {
+                                            spacing: Tokens.sp-2;
+                                            PrefToggle {
+                                                checked: root.pref-ddns-enabled;
+                                                toggle-enabled: false;
+                                                toggled(v) => {
+                                                    root.pref-ddns-enabled = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+                                            Text {
+                                                text: "v1.x — coming";
+                                                color: Tokens.fg-3;
+                                                font-size: Tokens.fs-12;
+                                                vertical-alignment: center;
                                             }
                                         }
                                     }
@@ -1740,18 +1813,27 @@ export component PreferencesDialog {
                                         label: "Service";
                                         not-yet-active: true;
                                         field-enabled: root.pref-ddns-enabled;
-                                        PrefSelect {
-                                            current-value: root.pref-ddns-service == "" ? "dyndns.org" : root.pref-ddns-service;
-                                            options: ["dyndns.org", "no-ip.com", "duckdns.org", "cloudflare"];
-                                            select-id: "ddns";
-                                            popup-open: root.popup-visible && root.popup-id == "ddns";
-                                            select-enabled: false;
-                                            value-changed(v) => {
-                                                root.pref-ddns-service = v;
-                                                root.dirty = true;
+                                        HorizontalLayout {
+                                            spacing: Tokens.sp-2;
+                                            PrefSelect {
+                                                current-value: root.pref-ddns-service == "" ? "dyndns.org" : root.pref-ddns-service;
+                                                options: ["dyndns.org", "no-ip.com", "duckdns.org", "cloudflare"];
+                                                select-id: "ddns";
+                                                popup-open: root.popup-visible && root.popup-id == "ddns";
+                                                select-enabled: false;
+                                                value-changed(v) => {
+                                                    root.pref-ddns-service = v;
+                                                    root.dirty = true;
+                                                }
+                                                request-popup(id, x, y, w) => {
+                                                    root.show-select-popup(id, x, y, w, self.options, self.current-value);
+                                                }
                                             }
-                                            request-popup(id, x, y, w) => {
-                                                root.show-select-popup(id, x, y, w, self.options, self.current-value);
+                                            Text {
+                                                text: "v1.x — coming";
+                                                color: Tokens.fg-3;
+                                                font-size: Tokens.fs-12;
+                                                vertical-alignment: center;
                                             }
                                         }
                                     }
@@ -1760,13 +1842,22 @@ export component PreferencesDialog {
                                         label: "Domain";
                                         not-yet-active: true;
                                         field-enabled: root.pref-ddns-enabled;
-                                        PrefTextInput {
-                                            value: root.pref-ddns-domain;
-                                            placeholder: "my-seed.duckdns.org";
-                                            input-enabled: false;
-                                            edited(v) => {
-                                                root.pref-ddns-domain = v;
-                                                root.dirty = true;
+                                        HorizontalLayout {
+                                            spacing: Tokens.sp-2;
+                                            PrefTextInput {
+                                                value: root.pref-ddns-domain;
+                                                placeholder: "my-seed.duckdns.org";
+                                                input-enabled: false;
+                                                edited(v) => {
+                                                    root.pref-ddns-domain = v;
+                                                    root.dirty = true;
+                                                }
+                                            }
+                                            Text {
+                                                text: "v1.x — coming";
+                                                color: Tokens.fg-3;
+                                                font-size: Tokens.fs-12;
+                                                vertical-alignment: center;
                                             }
                                         }
                                     }
@@ -1817,7 +1908,6 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Disk I/O backend";
-                                        not-yet-active: true;
                                         Text {
                                             text: root.pref-storage-mode;
                                             color: Tokens.fg-3;
@@ -1828,13 +1918,11 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Disk cache size";
-                                        not-yet-active: true;
                                         HorizontalLayout {
                                             spacing: Tokens.sp-4;
                                             PrefTextInput {
                                                 value: root.pref-disk-cache-size;
                                                 placeholder: "-1";
-                                                input-enabled: false;
                                                 edited(v) => {
                                                     root.pref-disk-cache-size = v;
                                                     root.dirty = true;
@@ -1853,12 +1941,13 @@ export component PreferencesDialog {
 
                                     PrefField {
                                         label: "Network interface";
-                                        not-yet-active: true;
-                                        Text {
-                                            text: "Any (not yet configurable)";
-                                            color: Tokens.fg-3;
-                                            font-size: Tokens.fs-13;
-                                            vertical-alignment: center;
+                                        PrefTextInput {
+                                            value: root.pref-network-interface;
+                                            placeholder: "Any (leave blank)";
+                                            edited(v) => {
+                                                root.pref-network-interface = v;
+                                                root.dirty = true;
+                                            }
                                         }
                                     }
 

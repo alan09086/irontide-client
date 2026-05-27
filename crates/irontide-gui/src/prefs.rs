@@ -134,6 +134,8 @@ pub struct PreferencesState {
     pub inactive_seed_time_enabled: bool,
     pub inactive_seed_time_value: u64,
     pub queueing_enabled: bool,
+    pub slow_torrent_dl_threshold: u64,
+    pub slow_torrent_ul_threshold: u64,
     // RSS (not-yet-active, persisted to GuiConfig)
     pub rss_enabled: bool,
     pub rss_refresh_interval: u32,
@@ -167,6 +169,7 @@ pub struct PreferencesState {
     pub enable_holepunch: bool,
     pub enable_bep40: bool,
     pub config_path: String,
+    pub network_interface: String,
 }
 
 impl Default for PreferencesState {
@@ -249,6 +252,8 @@ impl Default for PreferencesState {
             inactive_seed_time_enabled: false,
             inactive_seed_time_value: 60,
             queueing_enabled: false,
+            slow_torrent_dl_threshold: 2048,
+            slow_torrent_ul_threshold: 2048,
             // RSS
             rss_enabled: false,
             rss_refresh_interval: 15,
@@ -282,6 +287,7 @@ impl Default for PreferencesState {
             enable_holepunch: true,
             enable_bep40: true,
             config_path: String::new(),
+            network_interface: String::new(),
         }
     }
 }
@@ -439,6 +445,8 @@ impl PreferencesState {
             inactive_seed_time_enabled: settings.inactive_seed_time_limit_secs.is_some(),
             inactive_seed_time_value: settings.inactive_seed_time_limit_secs.unwrap_or(3600) / 60,
             queueing_enabled: settings.queueing_enabled,
+            slow_torrent_dl_threshold: settings.inactive_down_rate,
+            slow_torrent_ul_threshold: settings.inactive_up_rate,
             // RSS — from GuiConfig (not-yet-active)
             rss_enabled: gui.rss_enabled.unwrap_or(false),
             rss_refresh_interval: gui.rss_refresh_interval_min.unwrap_or(15),
@@ -474,6 +482,7 @@ impl PreferencesState {
             config_path: irontide_config::resolve_config_path(None)
                 .to_string_lossy()
                 .into_owned(),
+            network_interface: settings.network_interface.clone().unwrap_or_default(),
         }
     }
 
@@ -562,6 +571,8 @@ impl PreferencesState {
         win.set_pref_inactive_seed_time_enabled(self.inactive_seed_time_enabled);
         win.set_pref_inactive_seed_time_value(self.inactive_seed_time_value.to_string().into());
         win.set_pref_queueing_enabled(self.queueing_enabled);
+        win.set_pref_slow_torrent_dl_threshold(self.slow_torrent_dl_threshold.to_string().into());
+        win.set_pref_slow_torrent_ul_threshold(self.slow_torrent_ul_threshold.to_string().into());
         // RSS
         win.set_pref_rss_enabled(self.rss_enabled);
         win.set_pref_rss_refresh_interval(self.rss_refresh_interval.to_string().into());
@@ -595,6 +606,7 @@ impl PreferencesState {
         win.set_pref_enable_holepunch(self.enable_holepunch);
         win.set_pref_enable_bep40(self.enable_bep40);
         win.set_pref_config_path(self.config_path.as_str().into());
+        win.set_pref_network_interface(self.network_interface.as_str().into());
         win.set_pref_dirty(false);
     }
 
@@ -690,6 +702,8 @@ impl PreferencesState {
                 self.inactive_seed_time_enabled = d.inactive_seed_time_enabled;
                 self.inactive_seed_time_value = d.inactive_seed_time_value;
                 self.queueing_enabled = d.queueing_enabled;
+                self.slow_torrent_dl_threshold = d.slow_torrent_dl_threshold;
+                self.slow_torrent_ul_threshold = d.slow_torrent_ul_threshold;
                 true
             }
             "rss" => {
@@ -728,6 +742,7 @@ impl PreferencesState {
                 self.enable_fast_extension = d.enable_fast_extension;
                 self.enable_holepunch = d.enable_holepunch;
                 self.enable_bep40 = d.enable_bep40;
+                self.network_interface = d.network_interface;
                 true
             }
             _ => false,
@@ -825,6 +840,12 @@ impl PreferencesState {
                     self.inactive_seed_time_value.to_string().into(),
                 );
                 win.set_pref_queueing_enabled(self.queueing_enabled);
+                win.set_pref_slow_torrent_dl_threshold(
+                    self.slow_torrent_dl_threshold.to_string().into(),
+                );
+                win.set_pref_slow_torrent_ul_threshold(
+                    self.slow_torrent_ul_threshold.to_string().into(),
+                );
             }
             "rss" => {
                 win.set_pref_rss_enabled(self.rss_enabled);
@@ -861,6 +882,7 @@ impl PreferencesState {
                 win.set_pref_enable_holepunch(self.enable_holepunch);
                 win.set_pref_enable_bep40(self.enable_bep40);
                 win.set_pref_config_path(self.config_path.as_str().into());
+                win.set_pref_network_interface(self.network_interface.as_str().into());
             }
             _ => {}
         }
@@ -1182,6 +1204,30 @@ impl PreferencesState {
             None
         });
 
+        // Slow-torrent thresholds (M227 — pushed to engine via inactive_down/up_rate;
+        // EnginePrefs + bridge translation added in this milestone). Guard against 0 —
+        // zero would classify every torrent as slow immediately.
+        let new_slow_dl = win
+            .get_pref_slow_torrent_dl_threshold()
+            .as_str()
+            .parse::<u64>()
+            .ok()
+            .map_or(self.slow_torrent_dl_threshold, |v| v.max(1));
+        let new_slow_ul = win
+            .get_pref_slow_torrent_ul_threshold()
+            .as_str()
+            .parse::<u64>()
+            .ok()
+            .map_or(self.slow_torrent_ul_threshold, |v| v.max(1));
+        if new_slow_dl != self.slow_torrent_dl_threshold {
+            ep.inactive_down_rate = Some(new_slow_dl);
+            self.slow_torrent_dl_threshold = new_slow_dl;
+        }
+        if new_slow_ul != self.slow_torrent_ul_threshold {
+            ep.inactive_up_rate = Some(new_slow_ul);
+            self.slow_torrent_ul_threshold = new_slow_ul;
+        }
+
         // RSS (not-yet-active — just persist to state)
         self.rss_enabled = win.get_pref_rss_enabled();
         self.rss_refresh_interval = win
@@ -1325,6 +1371,16 @@ impl PreferencesState {
             .as_str()
             .parse()
             .unwrap_or(self.disk_cache_size);
+
+        let new_network_interface = win.get_pref_network_interface().to_string();
+        if new_network_interface != self.network_interface {
+            ep.network_interface = Some(if new_network_interface.is_empty() {
+                None
+            } else {
+                Some(new_network_interface.clone())
+            });
+            self.network_interface = new_network_interface;
+        }
 
         result.engine_prefs = Some(Box::new(ep));
 
@@ -1825,5 +1881,50 @@ mod tests {
                 std::mem::discriminant(action)
             );
         }
+    }
+
+    #[test]
+    fn m227_from_app_reads_slow_torrent_thresholds() {
+        let skin = skin::SkinSettings::default();
+        let gui = irontide_config::GuiConfig::default();
+        let settings = irontide::session::Settings {
+            inactive_down_rate: 4096,
+            inactive_up_rate: 1024,
+            ..Default::default()
+        };
+        let state = PreferencesState::from_app(skin, &gui, "", &settings);
+        assert_eq!(state.slow_torrent_dl_threshold, 4096);
+        assert_eq!(state.slow_torrent_ul_threshold, 1024);
+    }
+
+    #[test]
+    fn m227_from_app_reads_network_interface_set() {
+        let skin = skin::SkinSettings::default();
+        let gui = irontide_config::GuiConfig::default();
+        let settings = irontide::session::Settings {
+            network_interface: Some("eth0".to_owned()),
+            ..Default::default()
+        };
+        let state = PreferencesState::from_app(skin, &gui, "", &settings);
+        assert_eq!(state.network_interface, "eth0");
+    }
+
+    #[test]
+    fn m227_from_app_reads_network_interface_none_as_empty() {
+        let skin = skin::SkinSettings::default();
+        let gui = irontide_config::GuiConfig::default();
+        let settings = irontide::session::Settings {
+            network_interface: None,
+            ..Default::default()
+        };
+        let state = PreferencesState::from_app(skin, &gui, "", &settings);
+        assert!(state.network_interface.is_empty());
+    }
+
+    #[test]
+    fn m227_slow_torrent_thresholds_default_to_2048() {
+        let state = PreferencesState::default();
+        assert_eq!(state.slow_torrent_dl_threshold, 2048);
+        assert_eq!(state.slow_torrent_ul_threshold, 2048);
     }
 }

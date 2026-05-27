@@ -142,6 +142,12 @@ async fn run_session(
         weak.clone(),
     ));
 
+    // M227: port-mapping status feed (Class E).
+    let _port_mapping_task = tokio::spawn(port_mapping_status_pump(
+        session.subscribe_filtered(irontide::session::AlertCategory::PORT_MAPPING),
+        weak.clone(),
+    ));
+
     // Start poll loop and wait for shutdown or commands.
     let poll_handle = tokio::spawn(crate::poll::poll_loop(
         session.clone(),
@@ -246,6 +252,45 @@ pub fn show_toast(weak: &slint::Weak<crate::MainWindow>, msg: &str, is_error: bo
             }
         });
     });
+}
+
+/// Format a port-mapping alert into the status string shown in the
+/// Preferences > Connection tab (M227 Class E). Returns `None` for any
+/// alert kind that isn't a port-mapping variant so the pump can ignore it
+/// without rebinding the property.
+#[must_use]
+pub fn format_port_mapping_status(kind: &irontide::session::AlertKind) -> Option<String> {
+    match kind {
+        irontide::session::AlertKind::PortMappingSucceeded { port, protocol } => {
+            Some(format!("{protocol}: succeeded (port {port})"))
+        }
+        irontide::session::AlertKind::PortMappingFailed { port, message } => {
+            Some(format!("port {port}: failed — {message}"))
+        }
+        _ => None,
+    }
+}
+
+/// Drain port-mapping alerts and push the formatted status to the
+/// Preferences dialog's `pref-port-mapping-status` property. Exits when
+/// the broadcast channel closes (session shutdown).
+async fn port_mapping_status_pump(
+    mut stream: irontide::session::AlertStream,
+    weak: slint::Weak<crate::MainWindow>,
+) {
+    loop {
+        match stream.recv().await {
+            Ok(alert) => {
+                if let Some(status) = format_port_mapping_status(&alert.kind) {
+                    let _ = weak.upgrade_in_event_loop(move |win| {
+                        win.set_pref_port_mapping_status(status.into());
+                    });
+                }
+            }
+            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+            Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+        }
+    }
 }
 
 /// Handle a "Browse..." button click for selecting a download directory.
@@ -1574,6 +1619,18 @@ async fn handle_apply_engine_prefs(
     }
     if let Some(ref v) = ep.inactive_seed_time_limit_secs {
         settings.inactive_seed_time_limit_secs = *v;
+        changed = true;
+    }
+    if let Some(v) = ep.inactive_down_rate {
+        settings.inactive_down_rate = v;
+        changed = true;
+    }
+    if let Some(v) = ep.inactive_up_rate {
+        settings.inactive_up_rate = v;
+        changed = true;
+    }
+    if let Some(ref v) = ep.network_interface {
+        settings.network_interface.clone_from(v);
         changed = true;
     }
 
@@ -3364,5 +3421,35 @@ mod tests {
         std::fs::create_dir(&sub).unwrap();
         std::fs::write(sub.join("c.txt"), b"nested").unwrap();
         assert_eq!(dir_total_size(dir.path()), 5 + 6 + 6);
+    }
+
+    #[test]
+    fn m227_format_port_mapping_succeeded() {
+        let kind = irontide::session::AlertKind::PortMappingSucceeded {
+            port: 6881,
+            protocol: "TCP".into(),
+        };
+        assert_eq!(
+            format_port_mapping_status(&kind).as_deref(),
+            Some("TCP: succeeded (port 6881)")
+        );
+    }
+
+    #[test]
+    fn m227_format_port_mapping_failed() {
+        let kind = irontide::session::AlertKind::PortMappingFailed {
+            port: 6881,
+            message: "gateway timeout".into(),
+        };
+        assert_eq!(
+            format_port_mapping_status(&kind).as_deref(),
+            Some("port 6881: failed — gateway timeout")
+        );
+    }
+
+    #[test]
+    fn m227_format_port_mapping_ignores_unrelated_alerts() {
+        let kind = irontide::session::AlertKind::DhtBootstrapComplete;
+        assert!(format_port_mapping_status(&kind).is_none());
     }
 }
