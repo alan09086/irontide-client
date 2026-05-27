@@ -23,8 +23,8 @@ iocp = ["irontide/iocp"]
 tokio-console = ["dep:console-subscriber", "tokio/tracing"]
 
 [dependencies]
-irontide = { path = "../irontide", version = "1.0.0-rc2", default-features = false }
-irontide-api = { path = "../irontide-api", version = "1.0.0-rc2" }
+irontide = { path = "../irontide", version = "1.0.0-rc3", default-features = false }
+irontide-api = { path = "../irontide-api", version = "1.0.0-rc3" }
 irontide-config = { workspace = true }
 irontide-format = { workspace = true }
 clap = { version = "4", features = ["derive"] }
