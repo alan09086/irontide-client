@@ -310,6 +310,101 @@ struct QbtPreferencesPatch {
     /// [`BruteForceRegistry::grow_capacity`]: super::brute_force::BruteForceRegistry::grow_capacity
     #[serde(default)]
     brute_force_registry_capacity: Option<u32>,
+
+    // ── M228: M226 engine fields round-trip ─────────────────────────
+    /// M228: Fire an OS notification when a torrent finishes downloading.
+    /// `IronTide` extension (qBt has no direct analogue). Maps to
+    /// `settings.notify_on_complete`.
+    #[serde(default)]
+    notify_on_complete: Option<bool>,
+    /// M228: Fire an OS notification when a torrent enters an error state.
+    /// `IronTide` extension. Maps to `settings.notify_on_error`.
+    #[serde(default)]
+    notify_on_error: Option<bool>,
+    /// M228: Path to a program to run on torrent completion (qBt parity —
+    /// matches qBt's `autorun_program` wire field). Maps to
+    /// `settings.on_complete_program`. Empty string clears (`None`);
+    /// non-empty sets `Some(PathBuf::from(s))`. STORED ONLY engine-side
+    /// (subprocess spawning deferred — exec-safety audit pending).
+    #[serde(default)]
+    autorun_program: Option<String>,
+    /// M228: Use a separate incomplete-downloads directory (qBt parity:
+    /// `temp_path_enabled`). Maps to `settings.use_incomplete_dir`.
+    /// STORED ONLY (storage-layer wiring deferred).
+    #[serde(default)]
+    temp_path_enabled: Option<bool>,
+    /// M228: Incomplete-downloads directory path (qBt parity: `temp_path`).
+    /// Maps to `settings.incomplete_dir`. Empty string clears; non-empty
+    /// must be absolute (`Settings::validate` enforces). STORED ONLY.
+    #[serde(default)]
+    temp_path: Option<String>,
+    /// M228: Default value for `AddTorrentParams.skip_checking`. `IronTide`
+    /// extension. Maps to `settings.default_skip_hash_check`.
+    #[serde(default)]
+    add_skip_check: Option<bool>,
+    /// M228: Append `.!it`/`.!qB` extension to in-flight downloads (qBt
+    /// parity: `incomplete_files_ext`). Maps to
+    /// `settings.incomplete_extension_enabled`. STORED ONLY.
+    #[serde(default)]
+    incomplete_files_ext: Option<bool>,
+    /// M228: Single-folder watched-directory path. `IronTide` simplified
+    /// projection of qBt's `scan_dirs` (which is an object map of
+    /// `path → 0/1/2` modes). The `_v2` suffix signals we don't claim
+    /// full parity with qBt's object form. Maps to
+    /// `settings.watched_folder`. Empty string clears.
+    #[serde(default)]
+    scan_dirs_v2: Option<String>,
+    /// M228: Whether to delete the source `.torrent` after auto-add (qBt
+    /// parity: `auto_delete_mode` with `0=manual, 1=if-added, 2=always`).
+    /// We compress to bool: wire `0 → false`, wire `1|2 → true`. On the
+    /// GET side we emit `2` for `true` and `0` for `false` — round-trip
+    /// of wire value `1` is lossy (becomes `2`). Maps to
+    /// `settings.delete_torrent_after_add`.
+    #[serde(default)]
+    auto_delete_mode: Option<i32>,
+    /// M228: Whether to move completed torrents to a destination directory.
+    /// `IronTide` extension wire name (corrected post-Sonnet review — qBt's
+    /// `auto_tmm_enabled` is already wired at `preferences.rs:91` for a
+    /// different toggle). Maps to `settings.move_completed_enabled`.
+    /// STORED ONLY (mover worker deferred).
+    #[serde(default)]
+    move_completed_enabled: Option<bool>,
+    /// M228: Destination for completed torrents. `IronTide` extension. Maps
+    /// to `settings.move_completed_to`. Empty string clears. STORED ONLY.
+    #[serde(default)]
+    save_path_completed: Option<String>,
+    /// M228: Enable HTTPS for the qBt v2 `WebUI` listener (qBt parity:
+    /// `use_https`). Maps to `settings.web_ui_https_enabled`. STORED ONLY
+    /// (rustls integration deferred to Phase O M232 or Phase P).
+    #[serde(default)]
+    use_https: Option<bool>,
+    /// M228: Bind peer listeners to a specific network interface (qBt
+    /// parity: `current_network_interface`). Maps to
+    /// `settings.network_interface`. Empty string clears. STORED ONLY
+    /// (`SO_BINDTODEVICE` wiring deferred).
+    #[serde(default)]
+    current_network_interface: Option<String>,
+    /// M228: Default for `AddTorrentParams.paused` when not specified.
+    /// **Asymmetric wire names** — setPreferences accepts
+    /// `add_stopped_enabled`; GET emits `start_paused_enabled` (wired by
+    /// M226 at `preferences.rs:211`). Maps to `settings.default_add_paused`.
+    #[serde(default)]
+    add_stopped_enabled: Option<bool>,
+    /// M228: Preallocate full file extents on add (qBt parity:
+    /// `preallocate_all`). qBt's wire is bool: `true=Full`, `false=Sparse`.
+    /// Maps to `settings.preallocate_mode: Option<PreallocateMode>`.
+    /// Wire `true → Some(Full)`, wire `false → None` (let derivation from
+    /// `storage_mode` take over). Round-trip of explicit `Some(Sparse)` is
+    /// lossy — becomes `None` on next write (documented in plan §Risk).
+    #[serde(default)]
+    preallocate_all: Option<bool>,
+    /// M228: Auto-refresh the IP-filter file on the configured interval.
+    /// `IronTide` extension wire name (corrected post-Sonnet review — qBt's
+    /// real `ip_filter_trackers` wire field maps to a *different* engine
+    /// field `apply_ip_filter_to_trackers`, which is out of scope for
+    /// M228). Maps to `settings.ip_filter_auto_refresh`.
+    #[serde(default)]
+    ip_filter_auto_refresh: Option<bool>,
 }
 
 /// `POST /api/v2/app/setPreferences` (M171 D3 + D3.5).
@@ -754,6 +849,79 @@ fn apply_preferences_patch(
     // can reject `< 100`.
     if let Some(v) = patch.brute_force_registry_capacity {
         settings.qbt_compat.brute_force_registry_capacity = Some(v as usize);
+    }
+
+    // ── M228: M226 engine fields round-trip ─────────────────────────
+    if let Some(v) = patch.notify_on_complete {
+        settings.notify_on_complete = v;
+    }
+    if let Some(v) = patch.notify_on_error {
+        settings.notify_on_error = v;
+    }
+    if let Some(v) = patch.autorun_program {
+        settings.on_complete_program = if v.is_empty() {
+            None
+        } else {
+            Some(std::path::PathBuf::from(v))
+        };
+    }
+    if let Some(v) = patch.temp_path_enabled {
+        settings.use_incomplete_dir = v;
+    }
+    if let Some(v) = patch.temp_path {
+        settings.incomplete_dir = if v.is_empty() {
+            None
+        } else {
+            Some(std::path::PathBuf::from(v))
+        };
+    }
+    if let Some(v) = patch.add_skip_check {
+        settings.default_skip_hash_check = v;
+    }
+    if let Some(v) = patch.incomplete_files_ext {
+        settings.incomplete_extension_enabled = v;
+    }
+    if let Some(v) = patch.scan_dirs_v2 {
+        settings.watched_folder = if v.is_empty() {
+            None
+        } else {
+            Some(std::path::PathBuf::from(v))
+        };
+    }
+    if let Some(v) = patch.auto_delete_mode {
+        // qBt `0=manual, 1=if-added, 2=always`. Collapse: 0 → false, ≥1 → true.
+        // Negative values are not legal qBt but we tolerate via < 1 → false.
+        settings.delete_torrent_after_add = v >= 1;
+    }
+    if let Some(v) = patch.move_completed_enabled {
+        settings.move_completed_enabled = v;
+    }
+    if let Some(v) = patch.save_path_completed {
+        settings.move_completed_to = if v.is_empty() {
+            None
+        } else {
+            Some(std::path::PathBuf::from(v))
+        };
+    }
+    if let Some(v) = patch.use_https {
+        settings.web_ui_https_enabled = v;
+    }
+    if let Some(v) = patch.current_network_interface {
+        settings.network_interface = if v.is_empty() { None } else { Some(v) };
+    }
+    if let Some(v) = patch.add_stopped_enabled {
+        settings.default_add_paused = v;
+    }
+    if let Some(v) = patch.preallocate_all {
+        // Wire `true` → `Some(Full)`; wire `false` → `None` (derive from storage_mode).
+        settings.preallocate_mode = if v {
+            Some(irontide::storage::PreallocateMode::Full)
+        } else {
+            None
+        };
+    }
+    if let Some(v) = patch.ip_filter_auto_refresh {
+        settings.ip_filter_auto_refresh = v;
     }
 
     Ok(())

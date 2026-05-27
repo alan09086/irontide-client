@@ -145,6 +145,57 @@ pub struct QbtPreferences {
     /// outer `Arc<RwLock<IpFilter>>` write-lock and `is_blocked` short-
     /// circuits to `false` on the next admit gate without a session restart.
     pub ip_filter_enabled: bool,
+
+    // ── M228: M226 engine fields GET projection ─────────────────────
+    /// M228: Fire an OS notification when a torrent finishes. Wired from
+    /// `settings.notify_on_complete`. `IronTide` extension (no qBt analogue).
+    pub notify_on_complete: bool,
+    /// M228: Fire an OS notification on torrent error. Wired from
+    /// `settings.notify_on_error`. `IronTide` extension.
+    pub notify_on_error: bool,
+    /// M228: Program path run on torrent completion (qBt parity:
+    /// `autorun_program`). Wired from `settings.on_complete_program`; empty
+    /// string when None.
+    pub autorun_program: String,
+    /// M228: Whether incomplete downloads use a separate directory (qBt
+    /// parity: `temp_path_enabled`). Wired from `settings.use_incomplete_dir`.
+    pub temp_path_enabled: bool,
+    /// M228: Incomplete-downloads directory (qBt parity: `temp_path`).
+    /// Wired from `settings.incomplete_dir`; empty when None.
+    pub temp_path: String,
+    /// M228: Default for `AddTorrentParams.skip_checking`. `IronTide`
+    /// extension. Wired from `settings.default_skip_hash_check`.
+    pub add_skip_check: bool,
+    /// M228: Append `.!it`/`.!qB` to in-flight downloads (qBt parity:
+    /// `incomplete_files_ext`). Wired from `settings.incomplete_extension_enabled`.
+    pub incomplete_files_ext: bool,
+    /// M228: Single-folder watched-directory path. `IronTide` simplified
+    /// projection of qBt's `scan_dirs` object map. Wired from
+    /// `settings.watched_folder`; empty when None.
+    pub scan_dirs_v2: String,
+    /// M228: qBt `auto_delete_mode` (`0=manual, 2=always`). Wired from
+    /// `settings.delete_torrent_after_add`: `false → 0`, `true → 2`. Round-
+    /// trip of wire value `1` is lossy (becomes `2`).
+    pub auto_delete_mode: i32,
+    /// M228: Move completed torrents to a destination directory. `IronTide`
+    /// extension wire name. Wired from `settings.move_completed_enabled`.
+    pub move_completed_enabled: bool,
+    /// M228: Destination for completed-torrent moves. `IronTide` extension.
+    /// Wired from `settings.move_completed_to`; empty when None.
+    pub save_path_completed: String,
+    /// M228: Enable HTTPS for the qBt v2 `WebUI` (qBt parity: `use_https`).
+    /// Wired from `settings.web_ui_https_enabled`. STORED ONLY engine-side.
+    pub use_https: bool,
+    /// M228: Bind peer listeners to a specific network interface (qBt
+    /// parity: `current_network_interface`). Wired from
+    /// `settings.network_interface`; empty when None.
+    pub current_network_interface: String,
+    /// M228: Preallocate full file extents (qBt parity: `preallocate_all`).
+    /// Wired: `Some(Full) → true`, anything else → `false`.
+    pub preallocate_all: bool,
+    /// M228: Auto-refresh the IP-filter file. `IronTide` extension wire name.
+    /// Wired from `settings.ip_filter_auto_refresh`.
+    pub ip_filter_auto_refresh: bool,
 }
 
 impl From<&Settings> for QbtPreferences {
@@ -243,6 +294,42 @@ impl From<&Settings> for QbtPreferences {
 
             // M225: live IP filter / ban-list enable switch.
             ip_filter_enabled: s.ip_filter_enabled,
+
+            // ── M228: M226 engine fields GET projection ─────────────
+            notify_on_complete: s.notify_on_complete,
+            notify_on_error: s.notify_on_error,
+            autorun_program: s
+                .on_complete_program
+                .as_ref()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            temp_path_enabled: s.use_incomplete_dir,
+            temp_path: s
+                .incomplete_dir
+                .as_ref()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            add_skip_check: s.default_skip_hash_check,
+            incomplete_files_ext: s.incomplete_extension_enabled,
+            scan_dirs_v2: s
+                .watched_folder
+                .as_ref()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            auto_delete_mode: if s.delete_torrent_after_add { 2 } else { 0 },
+            move_completed_enabled: s.move_completed_enabled,
+            save_path_completed: s
+                .move_completed_to
+                .as_ref()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            use_https: s.web_ui_https_enabled,
+            current_network_interface: s.network_interface.clone().unwrap_or_default(),
+            preallocate_all: matches!(
+                s.preallocate_mode,
+                Some(irontide::storage::PreallocateMode::Full)
+            ),
+            ip_filter_auto_refresh: s.ip_filter_auto_refresh,
         }
     }
 }

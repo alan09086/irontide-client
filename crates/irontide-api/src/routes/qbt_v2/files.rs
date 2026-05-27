@@ -47,15 +47,17 @@ pub struct QbtFile {
     pub size: u64,
     /// Fraction of this file that is verified on disk, in [0.0, 1.0].
     pub progress: f64,
-    /// Per-file priority. Hardcoded to `1` (Normal) until M171 wires
-    /// `set_file_priority` into the qBt surface.
+    /// Per-file priority on the qBt v4.x `WebUI` v2 wire:
+    /// `0=Skip, 1=Normal, 6=High, 7=Maximum`. Sourced from
+    /// `session.file_priorities` and mapped by `file_priority_to_qbt`.
     pub priority: i64,
     /// `true` once `progress >= 1.0`.
     pub is_seed: bool,
     /// Inclusive `[first_piece, last_piece]` range covering this file's bytes.
     pub piece_range: [u32; 2],
-    /// Fraction of peers that have every piece covering this file. Hardcoded
-    /// to `0.0` until M171 wires peer bitfield aggregation into the API layer.
+    /// Average peer have-count per piece across this file's piece range.
+    /// Values > 1.0 are valid and mean multiple peers hold each piece.
+    /// Sourced from `session.piece_availability`.
     pub availability: f64,
 }
 
@@ -113,6 +115,23 @@ pub async fn list(
         .await
         .map_err(|e| QbtError::Internal(format!("file_progress: {e}")))?;
 
+    // M228: per-file priority (closes FIXME(M171) at the `priority` field below).
+    // Ordering matches `info.files` — pre-pad-filter — so `raw_idx` is the
+    // correct index. A magnet-still-resolving race where priorities is shorter
+    // than the file list falls back to Normal via `unwrap_or` in the loop.
+    let priorities = state
+        .session
+        .file_priorities(id)
+        .await
+        .map_err(|e| QbtError::Internal(format!("file_priorities: {e}")))?;
+
+    // M228: per-piece have-count (closes FIXME(M171) at the `availability` field).
+    let piece_avail = state
+        .session
+        .piece_availability(id)
+        .await
+        .map_err(|e| QbtError::Internal(format!("piece_availability: {e}")))?;
+
     let piece_length = info.piece_length;
     let max_piece = info.num_pieces.saturating_sub(1);
 
@@ -157,18 +176,58 @@ pub async fn list(
             name,
             size: file.length,
             progress,
-            // FIXME(M171): per-file priority
-            priority: 1,
+            // M228: closes FIXME(M171). Wire format is qBt v4.x — see
+            // `file_priority_to_qbt` for the IronTide↔qBt mapping. Falls back
+            // to Normal=1 when the engine vec is shorter than the file list
+            // (magnet race; matches the pre-M228 hardcode).
+            priority: file_priority_to_qbt(
+                priorities
+                    .get(raw_idx)
+                    .copied()
+                    .unwrap_or(irontide::core::FilePriority::Normal),
+            ),
             is_seed: progress >= 1.0,
             piece_range: [first_piece, last_piece],
-            // FIXME(M171): peer bitfield aggregation
-            availability: 0.0,
+            // M228: closes FIXME(M171). Average have-count per piece in the
+            // file's range. Values > 1.0 mean multiple peers hold each piece.
+            availability: compute_availability(&piece_avail, first_piece, last_piece),
         });
     }
 
     Ok(QbtResponse::Json(serde_json::to_value(&rows).map_err(
         |e| QbtError::Internal(format!("serialise: {e}")),
     )?))
+}
+
+/// M228: qBt v4.x `WebUI` v2 file-priority wire encoding for
+/// `/api/v2/torrents/files`: `0=Skip, 1=Normal, 6=High, 7=Maximum`.
+/// `IronTide`'s `FilePriority` enum lacks a `Maximum` variant; `Low` collapses
+/// to qBt's `1` (qBt v4.x deprecated the Low file priority).
+fn file_priority_to_qbt(p: irontide::core::FilePriority) -> i64 {
+    match p {
+        irontide::core::FilePriority::Skip => 0,
+        irontide::core::FilePriority::Low | irontide::core::FilePriority::Normal => 1,
+        irontide::core::FilePriority::High => 6,
+    }
+}
+
+/// M228: qBt v4.x `availability` for a file: average have-count per piece
+/// across the inclusive `[first, last]` piece range. Empty or collapsed
+/// ranges return `0.0`. Values > 1.0 are valid and mean multiple peers
+/// hold each piece in the range.
+fn compute_availability(piece_avail: &[u32], first: u32, last: u32) -> f64 {
+    if piece_avail.is_empty() || last < first {
+        return 0.0;
+    }
+    let start = first as usize;
+    let end_inclusive = (last as usize).min(piece_avail.len().saturating_sub(1));
+    if end_inclusive < start {
+        return 0.0;
+    }
+    let slice = &piece_avail[start..=end_inclusive];
+    let len = slice.len() as f64;
+    let sum: u64 = slice.iter().map(|&c| u64::from(c)).sum();
+    sum as f64 / len
 }
 
 /// Compute the inclusive `(first_piece, last_piece)` range that covers the
@@ -226,5 +285,38 @@ mod tests {
         // synthetic file past the end still returns a valid u32.
         let (_, last) = piece_range_for(0, 1_000_000, 100, 9_999);
         assert!(last <= 9_999);
+    }
+
+    // ── M228: file_priority_to_qbt + compute_availability helpers ─────
+
+    #[test]
+    fn m228_file_priority_to_qbt_full_mapping() {
+        use irontide::core::FilePriority;
+        // qBt v4.x WebUI v2 wire: Skip=0, Normal=1, High=6 (no Low or Maximum).
+        assert_eq!(file_priority_to_qbt(FilePriority::Skip), 0);
+        assert_eq!(file_priority_to_qbt(FilePriority::Low), 1);
+        assert_eq!(file_priority_to_qbt(FilePriority::Normal), 1);
+        assert_eq!(file_priority_to_qbt(FilePriority::High), 6);
+    }
+
+    #[test]
+    fn m228_compute_availability_empty_returns_zero() {
+        // Empty piece_avail (no peers known yet) → 0.0.
+        assert!(compute_availability(&[], 0, 0).abs() < 1e-9);
+        // Inverted range (last < first) → 0.0.
+        assert!(compute_availability(&[1, 2, 3], 2, 1).abs() < 1e-9);
+    }
+
+    #[test]
+    fn m228_compute_availability_mean_have_count() {
+        // piece_avail = [2, 4, 6], range first=0 last=2 → mean (2+4+6)/3 = 4.0.
+        assert!((compute_availability(&[2, 4, 6], 0, 2) - 4.0).abs() < 1e-9);
+        // Single-piece range first=last=1 → just that element (4.0).
+        assert!((compute_availability(&[2, 4, 6], 1, 1) - 4.0).abs() < 1e-9);
+        // Range clamps to slice end if last > len-1: last=10, len=3, end clamps
+        // to 2 → mean over indices 0..=2.
+        assert!((compute_availability(&[2, 4, 6], 0, 10) - 4.0).abs() < 1e-9);
+        // Values > 1.0 (multiple peers per piece) preserved.
+        assert!((compute_availability(&[10, 20], 0, 1) - 15.0).abs() < 1e-9);
     }
 }
