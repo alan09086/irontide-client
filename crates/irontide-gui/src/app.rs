@@ -571,8 +571,9 @@ impl ToolsMenuAction {
 /// Help-menu actions (M216).
 ///
 /// Mirrors the `MenuAction` pattern. M217 wired `KeyboardShortcuts` to a
-/// real modal (replacing the M216 toast stub); `OpenLogsFolder` remains a
-/// stub until file logging lands.
+/// real modal (replacing the M216 toast stub); `OpenLogsFolder` remains an
+/// intentional honest stub per M229 — file logging is not enabled in v1.0,
+/// so the action surfaces a toast directing users to stderr redirection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HelpMenuAction {
     /// Show the About dialog.
@@ -581,7 +582,8 @@ pub enum HelpMenuAction {
     KeyboardShortcuts,
     /// Trigger an on-demand update check via `update_checker::check_now`.
     CheckForUpdates,
-    /// Stub: toast "File logging not yet enabled — see stderr".
+    /// Intentional honest stub: file logging is not enabled in v1.0; the
+    /// action surfaces a toast pointing to stderr redirection (M229).
     OpenLogsFolder,
 }
 

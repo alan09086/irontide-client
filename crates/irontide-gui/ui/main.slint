@@ -80,6 +80,11 @@ component MenuBar {
     callback menu-tools-action(int);
     callback menu-help-action(int);
 
+    // M229: column visibility toggle from the Columns submenu (D3). Index
+    // matches ColumnId::to_index (0=Name..9=Ratio). MainWindow forwards
+    // upward to its own column-visibility-toggled callback.
+    callback column-visibility-toggled(int);
+
     // M216: View-menu label state — bound from MainWindow root so menu items
     // reflect the current pref-theme / pref-density / sidebar-*-collapsed
     // values.
@@ -89,6 +94,21 @@ component MenuBar {
     in property <bool> sidebar-category-collapsed: false;
     in property <bool> sidebar-tag-collapsed: false;
     in property <bool> sidebar-tracker-collapsed: false;
+
+    // M229: column-visibility check-mark booleans, set from Rust on every
+    // column-config change via push_column_visibility(). Order matches
+    // ColumnId::to_index (Name=0..Ratio=9). Name is always-visible per the
+    // toggle_visibility invariant; its property is shown for UX completeness.
+    in property <bool> col-name-visible: true;
+    in property <bool> col-progress-visible: true;
+    in property <bool> col-state-visible: true;
+    in property <bool> col-down-rate-visible: true;
+    in property <bool> col-up-rate-visible: true;
+    in property <bool> col-seeds-visible: true;
+    in property <bool> col-peers-visible: true;
+    in property <bool> col-eta-visible: true;
+    in property <bool> col-size-visible: true;
+    in property <bool> col-ratio-visible: true;
 
     height: Tokens.chrome-h;
 
@@ -463,6 +483,196 @@ component MenuBar {
 
                     view-sb-trk-touch := TouchArea {
                         clicked => { root.menu-view-action(5); }
+                    }
+                }
+
+                // ── M229: Columns submenu (D3) ─────────────────────────
+                Rectangle {           // divider
+                    height: 1px;
+                    background: Tokens.border-1;
+                }
+
+                Rectangle {           // section header
+                    height: Tokens.row-h;
+                    background: Tokens.bg-1;
+
+                    Text {
+                        text: "── Columns ──";
+                        color: Tokens.fg-2;
+                        font-size: Tokens.fs-12;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+                }
+
+                Rectangle {           // Name (always visible — required)
+                    height: Tokens.row-h;
+                    background: view-col-name-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+                    Text {
+                        text: root.col-name-visible ? "✓ Name (required)" : "  Name (required)";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+                    view-col-name-touch := TouchArea {
+                        clicked => { root.column-visibility-toggled(0); }
+                    }
+                }
+
+                Rectangle {           // Progress
+                    height: Tokens.row-h;
+                    background: view-col-progress-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+                    Text {
+                        text: root.col-progress-visible ? "✓ Progress" : "  Progress";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+                    view-col-progress-touch := TouchArea {
+                        clicked => { root.column-visibility-toggled(1); }
+                    }
+                }
+
+                Rectangle {           // State
+                    height: Tokens.row-h;
+                    background: view-col-state-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+                    Text {
+                        text: root.col-state-visible ? "✓ State" : "  State";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+                    view-col-state-touch := TouchArea {
+                        clicked => { root.column-visibility-toggled(2); }
+                    }
+                }
+
+                Rectangle {           // DownRate
+                    height: Tokens.row-h;
+                    background: view-col-dn-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+                    Text {
+                        text: root.col-down-rate-visible ? "✓ Down Rate" : "  Down Rate";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+                    view-col-dn-touch := TouchArea {
+                        clicked => { root.column-visibility-toggled(3); }
+                    }
+                }
+
+                Rectangle {           // UpRate
+                    height: Tokens.row-h;
+                    background: view-col-up-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+                    Text {
+                        text: root.col-up-rate-visible ? "✓ Up Rate" : "  Up Rate";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+                    view-col-up-touch := TouchArea {
+                        clicked => { root.column-visibility-toggled(4); }
+                    }
+                }
+
+                Rectangle {           // Seeds
+                    height: Tokens.row-h;
+                    background: view-col-seeds-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+                    Text {
+                        text: root.col-seeds-visible ? "✓ Seeds" : "  Seeds";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+                    view-col-seeds-touch := TouchArea {
+                        clicked => { root.column-visibility-toggled(5); }
+                    }
+                }
+
+                Rectangle {           // Peers
+                    height: Tokens.row-h;
+                    background: view-col-peers-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+                    Text {
+                        text: root.col-peers-visible ? "✓ Peers" : "  Peers";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+                    view-col-peers-touch := TouchArea {
+                        clicked => { root.column-visibility-toggled(6); }
+                    }
+                }
+
+                Rectangle {           // Eta
+                    height: Tokens.row-h;
+                    background: view-col-eta-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+                    Text {
+                        text: root.col-eta-visible ? "✓ ETA" : "  ETA";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+                    view-col-eta-touch := TouchArea {
+                        clicked => { root.column-visibility-toggled(7); }
+                    }
+                }
+
+                Rectangle {           // Size
+                    height: Tokens.row-h;
+                    background: view-col-size-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+                    Text {
+                        text: root.col-size-visible ? "✓ Size" : "  Size";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+                    view-col-size-touch := TouchArea {
+                        clicked => { root.column-visibility-toggled(8); }
+                    }
+                }
+
+                Rectangle {           // Ratio
+                    height: Tokens.row-h;
+                    background: view-col-ratio-touch.has-hover ? Tokens.bg-hover : Tokens.bg-1;
+                    border-radius: Tokens.r-sm;
+                    Text {
+                        text: root.col-ratio-visible ? "✓ Ratio" : "  Ratio";
+                        color: Tokens.fg-0;
+                        font-size: Tokens.fs-13;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: Tokens.sp-4;
+                    }
+                    view-col-ratio-touch := TouchArea {
+                        clicked => { root.column-visibility-toggled(9); }
                     }
                 }
             }
@@ -1226,6 +1436,23 @@ export component MainWindow inherits Window {
     callback column-move-requested(/* from */ int, /* to */ int);
     callback column-visibility-toggled(/* column index */ int);
 
+    // M229: column visibility booleans pushed from Rust via
+    // push_column_visibility() on every column-config change. Bound
+    // downward into MenuBar so the Columns submenu rows render ✓ vs
+    // spacer accurately. Order matches ColumnId::to_index (Name=0..
+    // Ratio=9). col-name-visible is shown for UX completeness but
+    // toggle_visibility enforces the Name-can't-hide invariant.
+    in property <bool> col-name-visible: true;
+    in property <bool> col-progress-visible: true;
+    in property <bool> col-state-visible: true;
+    in property <bool> col-down-rate-visible: true;
+    in property <bool> col-up-rate-visible: true;
+    in property <bool> col-seeds-visible: true;
+    in property <bool> col-peers-visible: true;
+    in property <bool> col-eta-visible: true;
+    in property <bool> col-size-visible: true;
+    in property <bool> col-ratio-visible: true;
+
     // ── FocusScope for keyboard shortcuts + modifier key tracking ──
     focus-scope := FocusScope {
         key-pressed(event) => {
@@ -1408,6 +1635,19 @@ export component MainWindow inherits Window {
         VerticalLayout {
             // Menu bar at top
             menu := MenuBar {
+                // M229: bind column-visibility check-mark state down so
+                // the Columns submenu rows render ✓ vs spacer accurately.
+                col-name-visible: root.col-name-visible;
+                col-progress-visible: root.col-progress-visible;
+                col-state-visible: root.col-state-visible;
+                col-down-rate-visible: root.col-down-rate-visible;
+                col-up-rate-visible: root.col-up-rate-visible;
+                col-seeds-visible: root.col-seeds-visible;
+                col-peers-visible: root.col-peers-visible;
+                col-eta-visible: root.col-eta-visible;
+                col-size-visible: root.col-size-visible;
+                col-ratio-visible: root.col-ratio-visible;
+
                 menu-file-action(index) => {
                     root.menu-file-action(index);
                 }
@@ -1422,6 +1662,11 @@ export component MainWindow inherits Window {
                 }
                 menu-help-action(index) => {
                     root.menu-help-action(index);
+                }
+                // M229: forward column toggles up to the existing
+                // MainWindow callback wired into the M188 dispatcher.
+                column-visibility-toggled(c) => {
+                    root.column-visibility-toggled(c);
                 }
             }
 

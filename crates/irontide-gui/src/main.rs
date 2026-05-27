@@ -46,6 +46,25 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 use slint::Model as _;
 
+/// M229: push column visibility booleans to the Slint root for menu
+/// check-mark rendering. Sibling of [`push_column_widths`] — both are
+/// called on startup (after `ColumnConfig::from_gui_config`) and inside
+/// the `on_column_visibility_toggled` dispatcher (after the toggle
+/// + `columns_dirty` set).
+fn push_column_visibility(cols: &columns::ColumnConfig, win: &MainWindow) {
+    use columns::ColumnId;
+    win.set_col_name_visible(cols.visible.contains(&ColumnId::Name));
+    win.set_col_progress_visible(cols.visible.contains(&ColumnId::Progress));
+    win.set_col_state_visible(cols.visible.contains(&ColumnId::State));
+    win.set_col_down_rate_visible(cols.visible.contains(&ColumnId::DownRate));
+    win.set_col_up_rate_visible(cols.visible.contains(&ColumnId::UpRate));
+    win.set_col_seeds_visible(cols.visible.contains(&ColumnId::Seeds));
+    win.set_col_peers_visible(cols.visible.contains(&ColumnId::Peers));
+    win.set_col_eta_visible(cols.visible.contains(&ColumnId::Eta));
+    win.set_col_size_visible(cols.visible.contains(&ColumnId::Size));
+    win.set_col_ratio_visible(cols.visible.contains(&ColumnId::Ratio));
+}
+
 fn push_column_widths(cols: &columns::ColumnConfig, win: &MainWindow) {
     use columns::ColumnId;
     win.set_col_progress_width(cols.effective_width(ColumnId::Progress));
@@ -140,6 +159,13 @@ fn main() -> Result<(), error::GuiError> {
         main_window.set_sidebar_category_collapsed(st.sidebar_category_collapsed);
         main_window.set_sidebar_tag_collapsed(st.sidebar_tag_collapsed);
         main_window.set_sidebar_tracker_collapsed(st.sidebar_tracker_collapsed);
+        // M229: seed column-visibility check-mark booleans from the
+        // restored ColumnConfig so the new View → Columns submenu shows
+        // accurate state on first paint. The Slint defaults assume all
+        // columns visible; without this call, hidden columns persisted
+        // via [gui] config would still be checked in the menu (but
+        // correctly hidden in the table — driving an inconsistency).
+        push_column_visibility(&st.columns, &main_window);
         // M184: initialise PreferencesState from loaded config.
         st.prefs = prefs::PreferencesState::from_app(
             st.skin,
@@ -438,7 +464,7 @@ fn main() -> Result<(), error::GuiError> {
                 app::HelpMenuAction::OpenLogsFolder => {
                     bridge::show_toast(
                         &weak,
-                        "Logs stream to stderr; file logging arrives in a future milestone.",
+                        "Logs go to stderr — redirect with `irontide 2> file`",
                         false,
                     );
                 }
@@ -482,7 +508,8 @@ fn main() -> Result<(), error::GuiError> {
         });
     }
 
-    // 6c-vis. Wire column-visibility toggle callback (M188).
+    // 6c-vis. Wire column-visibility toggle callback (M188; M229 added
+    // the View → Columns submenu as a second producer for this callback).
     {
         let cb_state = state.clone();
         let weak = main_window.as_weak();
@@ -495,6 +522,11 @@ fn main() -> Result<(), error::GuiError> {
             st.columns_dirty = true;
             if let Some(win) = weak.upgrade() {
                 push_column_widths(&st.columns, &win);
+                // M229: refresh the View → Columns submenu check-marks so
+                // the boolean properties stay in sync with ColumnConfig
+                // across toggles (drag-resize callbacks at the column
+                // header don't need this; the menu does).
+                push_column_visibility(&st.columns, &win);
             }
         });
     }

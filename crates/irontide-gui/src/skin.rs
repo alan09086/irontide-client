@@ -563,9 +563,11 @@ impl SkinSettings {
                     RadiusPreset::default()
                 })
             });
-        // layout, l3_sidebar_mode, inspector_shown are kept in GuiConfig
-        // for backward-compat deserialization but ignored on read — L1
-        // (3-pane) is the only layout now.
+        // layout, l3_sidebar_mode, inspector_shown are reserved for
+        // backward-compat deserialization but never read. L1 (3-pane) is
+        // the only layout; the Inspector concept was retired with the L2/L3
+        // layouts. M229 formally closed the M216-deferred Inspector menu
+        // toggle (D2) as resolved-by-removal — see CHANGELOG M229 entry.
 
         Self {
             skin,
@@ -584,8 +586,9 @@ impl SkinSettings {
         gui.density = Some(self.density.to_string());
         gui.radius_preset = Some(self.radius.to_string());
         // layout, l3_sidebar_mode, inspector_shown are no longer written —
-        // L1 (3-pane) is the only layout. Old config fields are kept for
-        // backward-compat deserialization.
+        // L1 (3-pane) is the only layout. The fields persist in GuiConfig
+        // for backward-compat deserialization of pre-collapse config files
+        // but are never read by the runtime (M229 formal-close of D2).
     }
 }
 
