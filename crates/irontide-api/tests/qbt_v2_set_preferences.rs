@@ -982,35 +982,35 @@ async fn m215_bittorrent_advanced_group_round_trips() {
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
 
-    // Restart_required fields: pex, encryption, anonymous_mode,
-    // hashing_threads, save_resume_interval.
+    // Restart_required fields: pex, encryption, anonymous_mode.
+    // M225 reclassifies hashing_threads + save_resume_interval to immediate
+    // (live wiring through SettingsDelta + Notify), so they no longer appear
+    // in the header — see set_preferences_round_trip_hashing_threads and
+    // set_preferences_round_trip_save_resume_interval for direct coverage.
     let header = resp
         .headers()
         .get("x-irontide-restart-pending")
-        .expect("M215 group includes 5 restart_required fields; header must fire")
+        .expect("M215 group still includes 3 restart_required fields; header must fire")
         .to_str()
         .unwrap();
     let restart_fields: std::collections::HashSet<&str> = header.split(',').collect();
-    for expected in [
-        "pex",
-        "encryption",
-        "anonymous_mode",
-        "hashing_threads",
-        "save_resume_interval",
-    ] {
+    for expected in ["pex", "encryption", "anonymous_mode"] {
         assert!(
             restart_fields.contains(expected),
             "restart header missing {expected}: {restart_fields:?}"
         );
     }
     // Immediate fields (dht, lsd, queueing_enabled, max_seeding_time,
-    // max_inactive_seeding_time) MUST NOT appear in the header.
+    // max_inactive_seeding_time, hashing_threads, save_resume_interval)
+    // MUST NOT appear in the header.
     for forbidden in [
         "dht",
         "lsd",
         "queueing_enabled",
         "max_seeding_time",
         "max_inactive_seeding_time",
+        "hashing_threads",
+        "save_resume_interval",
     ] {
         assert!(
             !restart_fields.contains(forbidden),
@@ -1032,6 +1032,133 @@ async fn m215_bittorrent_advanced_group_round_trips() {
     assert_eq!(prefs["max_inactive_seeding_time"], 30);
     assert_eq!(prefs["hashing_threads"], 8);
     assert_eq!(prefs["save_resume_interval"], 600);
+}
+
+// ── M225: classify_immediate reclassification for live timer / threads / bans ─
+
+#[tokio::test]
+async fn set_preferences_round_trip_save_resume_interval() {
+    // M225 reclassifies `save_resume_interval` from M215's `restart_required`
+    // to `classify_immediate`. The session select! loop arms a
+    // `tokio::sync::Notify` arm that rebuilds the timer on the next tick.
+    // No `x-irontide-restart-pending` header must surface.
+    let (router, sid) = enabled_router_with(|s| {
+        s.save_resume_interval_secs = 300;
+    })
+    .await;
+    let resp = post_json(&router, &sid, serde_json::json!({"save_resume_interval": 60})).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(
+        resp.headers().get("x-irontide-restart-pending").is_none(),
+        "M225: save_resume_interval is classify_immediate; no restart header"
+    );
+    let prefs = get_prefs(&router, &sid).await;
+    assert_eq!(prefs["save_resume_interval"], 60);
+
+    // Round-trip back to a different value; still no restart header.
+    let resp = post_json(&router, &sid, serde_json::json!({"save_resume_interval": 0})).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(resp.headers().get("x-irontide-restart-pending").is_none());
+    let prefs = get_prefs(&router, &sid).await;
+    assert_eq!(prefs["save_resume_interval"], 0);
+}
+
+#[tokio::test]
+async fn set_preferences_round_trip_hashing_threads() {
+    // M225 reclassifies `hashing_threads` from M215's `restart_required` to
+    // `classify_immediate`. The new value flows through
+    // `SettingsDelta::hashing_threads` and `TorrentCommand::UpdateSettings`
+    // to every active `TorrentActor::handle_update_settings`. No
+    // `x-irontide-restart-pending` header must surface.
+    let (router, sid) = enabled_router_with(|s| {
+        s.hashing_threads = 2;
+    })
+    .await;
+    let resp = post_json(&router, &sid, serde_json::json!({"hashing_threads": 8})).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(
+        resp.headers().get("x-irontide-restart-pending").is_none(),
+        "M225: hashing_threads is classify_immediate; no restart header"
+    );
+    let prefs = get_prefs(&router, &sid).await;
+    assert_eq!(prefs["hashing_threads"], 8);
+}
+
+#[tokio::test]
+async fn set_preferences_round_trip_ip_filter_enabled() {
+    // M225: live ban-list / IP-filter enable switch. Wired through
+    // `apply_settings` — the outer `Arc<RwLock<IpFilter>>` is rewritten so
+    // the next admit gate observes the new state. Classified as
+    // `classify_immediate`.
+    let (router, sid) = enabled_router_with(|s| {
+        s.ip_filter_enabled = false;
+    })
+    .await;
+    let resp = post_json(&router, &sid, serde_json::json!({"ip_filter_enabled": true})).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(
+        resp.headers().get("x-irontide-restart-pending").is_none(),
+        "M225: ip_filter_enabled is classify_immediate; no restart header"
+    );
+    let prefs = get_prefs(&router, &sid).await;
+    assert_eq!(prefs["ip_filter_enabled"], true);
+
+    // Round-trip back to disabled; still no restart header.
+    let resp = post_json(&router, &sid, serde_json::json!({"ip_filter_enabled": false})).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(resp.headers().get("x-irontide-restart-pending").is_none());
+    let prefs = get_prefs(&router, &sid).await;
+    assert_eq!(prefs["ip_filter_enabled"], false);
+}
+
+#[tokio::test]
+async fn set_preferences_round_trip_brute_force_registry_capacity() {
+    // M225 Step 4: IronTide extension (no qBt analogue). Shrinking the cap
+    // dispatches to `BruteForceRegistry::shrink_preserving_recent_bans`,
+    // growing to `grow_capacity` — Tier A preservation (active bans always
+    // survive) is covered by the unit tests in
+    // `crates/irontide-api/src/routes/qbt_v2/brute_force.rs`. This test
+    // only asserts the wire field round-trips cleanly through the
+    // setPreferences validate + apply pipeline without firing
+    // `x-irontide-restart-pending`.
+    let (router, sid) = enabled_router_with(|s| {
+        s.qbt_compat.brute_force_registry_capacity = Some(500);
+    })
+    .await;
+    let resp = post_json(
+        &router,
+        &sid,
+        serde_json::json!({"brute_force_registry_capacity": 200}),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(
+        resp.headers().get("x-irontide-restart-pending").is_none(),
+        "M225: brute_force_registry_capacity is classify_immediate; no restart header"
+    );
+
+    // Grow path: also no restart header.
+    let resp = post_json(
+        &router,
+        &sid,
+        serde_json::json!({"brute_force_registry_capacity": 5000}),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(resp.headers().get("x-irontide-restart-pending").is_none());
+
+    // Sub-100 is rejected by Settings::validate.
+    let resp = post_json(
+        &router,
+        &sid,
+        serde_json::json!({"brute_force_registry_capacity": 50}),
+    )
+    .await;
+    assert_eq!(
+        resp.status(),
+        StatusCode::BAD_REQUEST,
+        "brute_force_registry_capacity < 100 must surface as 400"
+    );
 }
 
 // ── Auth gate ─────────────────────────────────────────────────────────
