@@ -82,8 +82,10 @@ pub struct QbtPreferences {
     pub queueing_enabled: bool,
     /// M171: Wired to `create_subfolder` (D1+D2).
     pub create_subfolder_enabled: bool,
-    /// Hardcoded safe default — `IronTide` adds torrents running by default.
-    /// TODO(M174): wire once we have an "add paused" toggle in Settings.
+    /// M226: wired to `settings.default_add_paused`. qBt's wire name uses
+    /// the "start paused" phrasing; the engine field uses the "default
+    /// add paused" phrasing — they describe the same boolean. Previously
+    /// hardcoded `false` (pre-M226), now reads through to the engine value.
     pub start_paused_enabled: bool,
     /// M171: Wired to `auto_manage_torrents` (D1+D2).
     pub auto_tmm_enabled: bool,
@@ -205,8 +207,8 @@ impl From<&Settings> for QbtPreferences {
             create_subfolder_enabled: s.create_subfolder,
             auto_tmm_enabled: s.auto_manage_torrents,
 
-            // Hardcoded safe default until M174.
-            start_paused_enabled: false,
+            // M226: live read from engine `default_add_paused`.
+            start_paused_enabled: s.default_add_paused,
 
             // M172a Lane B: CSRF + reverse-proxy toggles.
             web_ui_csrf_protection_enabled: s.qbt_compat.csrf_protection_enabled,
