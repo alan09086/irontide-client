@@ -18,6 +18,8 @@ use axum::Router;
 use axum::middleware::from_fn_with_state;
 use axum::routing::{any, delete, get, patch, post};
 use irontide::session::SessionHandle;
+#[cfg(feature = "webui")]
+use axum::extract::DefaultBodyLimit;
 
 /// Shared application state passed to every handler via axum's `State` extractor.
 pub(crate) type AppState = Arc<SessionHandle>;
@@ -140,6 +142,17 @@ pub fn build_router(session: SessionHandle) -> Router {
             )
             .route("/webui/fragments/settings", get(webui::settings_fragment))
             .route("/webui/add-magnet", post(webui::add_magnet_redirect))
+            // M230: file upload — Axum's default 2 MiB `DefaultBodyLimit`
+            // rejects oversized bodies at the router with `413 Payload Too
+            // Large` BEFORE the handler runs. Lifting the cap to 10 MiB
+            // (matches `webui::MAX_TORRENT_BYTES`) is per-route to keep the
+            // small-payload magnet + URL forms on the default cap.
+            .route(
+                "/webui/add-file",
+                post(webui::add_file_form)
+                    .layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
+            )
+            .route("/webui/add-url", post(webui::add_url_form))
             .route("/webui/settings", patch(webui::patch_settings_webui))
             .route("/webui/torrents/{hash}/pause", post(webui::pause_action))
             .route("/webui/torrents/{hash}/resume", post(webui::resume_action))

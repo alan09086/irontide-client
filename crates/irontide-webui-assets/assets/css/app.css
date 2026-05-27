@@ -70,30 +70,73 @@ progress[data-state="paused"]::-moz-progress-bar {
   }
 }
 
-/* ─── Add-magnet dialog ───────────────────────────────────────── */
-dialog#add-magnet-dialog article {
+/* ─── Add-torrent dialog (file / url / magnet) ────────────────── */
+dialog#add-torrent-dialog article {
   width: 100%;
   max-width: 500px;
   margin-inline: auto;
 }
 
 @media (max-width: 768px) {
-  dialog#add-magnet-dialog article {
+  dialog#add-torrent-dialog article {
     max-width: 100%;
     margin: 0;
   }
 }
 
-dialog#add-magnet-dialog input[name="uri"] {
+.add-torrent-tabs {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--pico-muted-border-color, #424242);
+  margin-bottom: 1rem;
+}
+
+.add-torrent-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--pico-muted-color, #9ca3af);
+  cursor: pointer;
+  font-size: 0.95rem;
+  padding: 0.5rem 1rem;
+  margin: 0;
+}
+
+.add-torrent-tab:hover {
+  color: var(--pico-color, #e5e7eb);
+}
+
+.add-torrent-tab.add-torrent-tab-active {
+  color: var(--pico-color, #e5e7eb);
+  border-bottom-color: var(--pico-primary, #60a5fa);
+}
+
+.add-torrent-tab:focus-visible {
+  outline: 2px solid var(--pico-primary, #60a5fa);
+  outline-offset: -2px;
+}
+
+.add-torrent-panel-hidden {
+  display: none;
+}
+
+dialog#add-torrent-dialog input[name="uri"],
+dialog#add-torrent-dialog input[name="url"] {
   width: 100%;
   font-family: monospace;
   font-size: 0.875rem;
 }
 
-#add-magnet-error {
+dialog#add-torrent-dialog input[type="file"] {
+  width: 100%;
+  font-size: 0.875rem;
+}
+
+#add-torrent-error {
   color: var(--pico-del-color, #c0392b);
   font-size: 0.875rem;
   min-height: 1.25rem;
+  margin-top: 0.5rem;
 }
 
 /* ─── Toast notifications ─────────────────────────────────────── */
