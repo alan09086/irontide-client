@@ -71,6 +71,12 @@ pub struct EnginePrefs {
     pub seed_time_limit_secs: Option<Option<u64>>,
     #[allow(clippy::option_option)]
     pub inactive_seed_time_limit_secs: Option<Option<u64>>,
+    // M227: slow-torrent thresholds (queueing inactivity gate, bytes/sec)
+    pub inactive_down_rate: Option<u64>,
+    pub inactive_up_rate: Option<u64>,
+    // M227: bind peer listeners to a specific network interface (None = clear / Any).
+    #[allow(clippy::option_option)]
+    pub network_interface: Option<Option<String>>,
     // M187: Web UI tab
     pub qbt_compat_enabled: Option<bool>,
     pub qbt_compat_username: Option<String>,

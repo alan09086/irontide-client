@@ -1124,6 +1124,7 @@ export component MainWindow inherits Window {
     in-out property <bool> pref-ip-filter-enabled: false;
     in-out property <string> pref-ip-filter-path: "";
     in-out property <bool> pref-ip-filter-auto-refresh: false;
+    in-out property <string> pref-port-mapping-status: "No port mapping active";
     // ── M185: Speed tab ──
     in-out property <bool> pref-dl-limit-enabled: false;
     in-out property <string> pref-dl-limit-value: "0";
@@ -1149,6 +1150,8 @@ export component MainWindow inherits Window {
     in-out property <bool> pref-inactive-seed-time-enabled: false;
     in-out property <string> pref-inactive-seed-time-value: "60";
     in-out property <bool> pref-queueing-enabled: false;
+    in-out property <string> pref-slow-torrent-dl-threshold: "2048";
+    in-out property <string> pref-slow-torrent-ul-threshold: "2048";
     // ── M187: RSS tab ──
     in-out property <bool> pref-rss-enabled: false;
     in-out property <string> pref-rss-refresh-interval: "15";
@@ -1182,6 +1185,7 @@ export component MainWindow inherits Window {
     in-out property <bool> pref-enable-holepunch: true;
     in-out property <bool> pref-enable-bep40: true;
     in-out property <string> pref-config-path: "";
+    in-out property <string> pref-network-interface: "";
     in-out property <bool> pref-dirty: false;
     callback preferences-apply-requested();
     callback preferences-cancel-requested();
@@ -1993,6 +1997,7 @@ export component MainWindow inherits Window {
         pref-ip-filter-enabled <=> root.pref-ip-filter-enabled;
         pref-ip-filter-path <=> root.pref-ip-filter-path;
         pref-ip-filter-auto-refresh <=> root.pref-ip-filter-auto-refresh;
+        pref-port-mapping-status <=> root.pref-port-mapping-status;
         // M185 Speed
         pref-dl-limit-enabled <=> root.pref-dl-limit-enabled;
         pref-dl-limit-value <=> root.pref-dl-limit-value;
@@ -2018,6 +2023,8 @@ export component MainWindow inherits Window {
         pref-inactive-seed-time-enabled <=> root.pref-inactive-seed-time-enabled;
         pref-inactive-seed-time-value <=> root.pref-inactive-seed-time-value;
         pref-queueing-enabled <=> root.pref-queueing-enabled;
+        pref-slow-torrent-dl-threshold <=> root.pref-slow-torrent-dl-threshold;
+        pref-slow-torrent-ul-threshold <=> root.pref-slow-torrent-ul-threshold;
         // M187: RSS
         pref-rss-enabled <=> root.pref-rss-enabled;
         pref-rss-refresh-interval <=> root.pref-rss-refresh-interval;
@@ -2051,6 +2058,7 @@ export component MainWindow inherits Window {
         pref-enable-holepunch <=> root.pref-enable-holepunch;
         pref-enable-bep40 <=> root.pref-enable-bep40;
         pref-config-path <=> root.pref-config-path;
+        pref-network-interface <=> root.pref-network-interface;
         apply-requested => { root.preferences-apply-requested(); }
         cancel-requested => { root.preferences-cancel-requested(); }
         ok-requested => { root.preferences-ok-requested(); }
