@@ -28,10 +28,15 @@ pub struct QbtState {
     /// memory under a login-flood at `permits * 19 MiB ≈ 300 MiB` worst case.
     /// Overrideable via `Settings.qbt_compat.max_concurrent_argon2_ops`.
     pub argon2_semaphore: Arc<Semaphore>,
-    /// M172a A7 scaffold: CIDRs trusted to supply `X-Forwarded-For` headers,
-    /// consulted by [`resolve_client_ip`]. Populated by Lane B (`webUiReverseProxiesEnabled`
-    /// / `webUiReverseProxiesList`) — Lane A ships this empty.
-    /// FIXME(M172b Lane B): populate from `Settings.qbt_compat.web_ui_reverse_proxies_list`.
+    /// M172a A7 / M172b Lane B: CIDRs trusted to supply `X-Forwarded-For`
+    /// headers, consulted by [`resolve_client_ip`]. Hydrated from
+    /// `Settings.qbt_compat.web_ui_reverse_proxies_list` by a best-effort
+    /// startup task in [`super::build_router`] (boot seed; the list is
+    /// empty until the task completes — equivalent to "no trusted proxies",
+    /// which is the safe default). Subsequent `setPreferences` patches
+    /// refresh the list atomically via [`super::app::set_preferences`]
+    /// (M224 Step 5 closes the original `FIXME(M172b Lane B)` marker —
+    /// the work shipped, only the marker remained).
     pub reverse_proxies_list: Arc<RwLock<Vec<IpNet>>>,
     /// M172a Lane C: CIDRs that bypass qBt v2 authentication entirely.
     /// Populated at router construction from
