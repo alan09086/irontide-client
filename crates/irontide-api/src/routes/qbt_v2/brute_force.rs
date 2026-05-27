@@ -29,6 +29,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::net::IpAddr;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use parking_lot::RwLock;
@@ -86,7 +87,16 @@ pub struct BruteForceRegistry {
     /// `inner` — coarse-grained but cheap (single login per request).
     lru: RwLock<VecDeque<IpAddr>>,
     /// LRU cap. When full and a new IP is admitted, pop the tail.
-    capacity: usize,
+    ///
+    /// **Atomic, not plain `usize` (M225 OV F2d).** Live capacity reconfig
+    /// via `shrink_preserving_recent_bans` / `grow_capacity` updates the
+    /// cap behind the same `Arc<BruteForceRegistry>` already shared with
+    /// the auth handler. Plain `usize` could not be mutated; without
+    /// interior mutability the shrink would rebuild the maps but the
+    /// next eviction would re-grow back to the original cap. Ordering is
+    /// `Relaxed` — capacity has no cross-field consistency invariant with
+    /// `inner`/`lru` (those operations are guarded by their own `RwLock`s).
+    capacity: AtomicUsize,
 }
 
 /// RAII guard proving admission into the argon2 verify pipeline.
@@ -148,7 +158,7 @@ impl BruteForceRegistry {
         Arc::new(Self {
             inner: RwLock::new(HashMap::with_capacity(cap.min(1024))),
             lru: RwLock::new(VecDeque::with_capacity(cap.min(1024))),
-            capacity: cap,
+            capacity: AtomicUsize::new(cap),
         })
     }
 
@@ -219,7 +229,8 @@ impl BruteForceRegistry {
             move_to_front(&mut lru, ip);
         } else {
             // New IP: evict LRU tail if at capacity.
-            evict_until_under_capacity(&mut map, &mut lru, self.capacity);
+            let cap = self.capacity.load(Ordering::Relaxed);
+            evict_until_under_capacity(&mut map, &mut lru, cap);
             let state = FailedAuthState {
                 attempts: 0,
                 pending: 1,
@@ -346,10 +357,100 @@ impl BruteForceRegistry {
         self.inner.read().is_empty()
     }
 
-    /// Registry LRU cap. Fixed at construction time.
+    /// Registry LRU cap. Mutable at runtime via
+    /// [`shrink_preserving_recent_bans`] / [`grow_capacity`] (M225 closes
+    /// the M173+ FIXME at session.rs:1015). Reads with `Relaxed` ordering
+    /// — capacity has no cross-field consistency invariant with `inner`
+    /// or `lru`.
+    ///
+    /// [`shrink_preserving_recent_bans`]: Self::shrink_preserving_recent_bans
+    /// [`grow_capacity`]: Self::grow_capacity
     #[must_use]
     pub fn capacity(&self) -> usize {
-        self.capacity
+        self.capacity.load(Ordering::Relaxed)
+    }
+
+    /// Grow the LRU cap to `new_capacity`. Idempotent: if `new_capacity`
+    /// is less than or equal to the current cap, this is a no-op (use
+    /// [`shrink_preserving_recent_bans`] to shrink). Pure capacity update
+    /// — `inner` and `lru` are untouched.
+    ///
+    /// [`shrink_preserving_recent_bans`]: Self::shrink_preserving_recent_bans
+    pub fn grow_capacity(&self, new_capacity: usize) {
+        let new = new_capacity.max(1);
+        let cur = self.capacity.load(Ordering::Relaxed);
+        if new > cur {
+            self.capacity.store(new, Ordering::Relaxed);
+        }
+    }
+
+    /// Shrink the LRU cap to `new_capacity`, preserving two tiers
+    /// (M225 — closes the M173+ FIXME at session.rs:1015):
+    ///
+    /// * **Tier A — currently-banned**: every entry where
+    ///   `banned_until.is_some() && banned_until > Instant::now()` is an
+    ///   active security ban. ALL Tier A entries are retained, even when
+    ///   `count(Tier A) >= new_capacity`. Losing an active ban is a
+    ///   security regression worse than a transient cap violation.
+    /// * **Tier B — most-recent partial-violation entries**: the remainder
+    ///   of the budget (`new_capacity - count(Tier A)`) is filled from the
+    ///   not-currently-banned entries, sorted by `last_touch` descending
+    ///   (most recent first).
+    ///
+    /// Both maps are rebuilt from the union (Tier A first, Tier B in
+    /// `last_touch` descending order). New cap is stored atomically.
+    ///
+    /// If `new_capacity` is greater than or equal to the current
+    /// `inner.len()`, this is a no-op apart from the cap store (no need to
+    /// touch the maps).
+    pub fn shrink_preserving_recent_bans(&self, new_capacity: usize) {
+        let new = new_capacity.max(1);
+        let cur = self.capacity.load(Ordering::Relaxed);
+        if new >= cur {
+            return;
+        }
+        let now = Instant::now();
+        let mut map = self.inner.write();
+        let mut lru = self.lru.write();
+
+        if map.len() <= new {
+            self.capacity.store(new, Ordering::Relaxed);
+            return;
+        }
+
+        let mut tier_a: Vec<IpAddr> = Vec::new();
+        let mut tier_b: Vec<(IpAddr, Instant)> = Vec::new();
+        for (ip, state) in map.iter() {
+            let actively_banned = state
+                .banned_until
+                .is_some_and(|until| now < until);
+            if actively_banned {
+                tier_a.push(*ip);
+            } else {
+                tier_b.push((*ip, state.last_touch));
+            }
+        }
+        tier_b.sort_by_key(|b| std::cmp::Reverse(b.1));
+
+        let tier_b_budget = new.saturating_sub(tier_a.len());
+        tier_b.truncate(tier_b_budget);
+
+        let keep: std::collections::HashSet<IpAddr> = tier_a
+            .iter()
+            .copied()
+            .chain(tier_b.iter().map(|(ip, _)| *ip))
+            .collect();
+        map.retain(|ip, _| keep.contains(ip));
+
+        lru.clear();
+        for ip in &tier_a {
+            lru.push_back(*ip);
+        }
+        for (ip, _) in &tier_b {
+            lru.push_back(*ip);
+        }
+
+        self.capacity.store(new, Ordering::Relaxed);
     }
 
     /// Current attempt count for the given IP. Returns 0 when the IP has
@@ -812,5 +913,133 @@ mod tests {
             1,
             "active ban must survive a prune; dropping it would reset the attacker's counter"
         );
+    }
+
+    // ── M225 Step 4: shrink + grow with AtomicUsize capacity ───────────
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn brute_force_registry_shrink_preserves_all_active_bans() {
+        // Tier A invariant: every currently-banned IP MUST survive a
+        // shrink even when their count exceeds the new capacity. A 5-cap
+        // shrink applied to 10 active bans + 90 partials must keep all 10
+        // bans (cap is a soft floor for security) and zero partials.
+        let reg = BruteForceRegistry::new(100);
+        for i in 0..10u8 {
+            let addr = ip(10, 0, 0, i);
+            for _ in 0..5 {
+                let _g = reg.check_and_admit(addr, 5, 60).expect("admit");
+                reg.record_failure(addr, 5, 60);
+            }
+            assert!(reg.is_banned(addr), "ip {i} should be banned");
+        }
+        for i in 0..90u8 {
+            let addr = ip(192, 168, 0, i);
+            let _g = reg.check_and_admit(addr, 5, 60).expect("admit");
+            reg.record_failure(addr, 5, 60);
+        }
+        assert_eq!(reg.len(), 100);
+
+        reg.shrink_preserving_recent_bans(5);
+
+        assert_eq!(reg.capacity(), 5, "new cap must be stored atomically");
+        for i in 0..10u8 {
+            assert!(
+                reg.is_banned(ip(10, 0, 0, i)),
+                "ban {i} dropped — security regression"
+            );
+        }
+        assert_eq!(
+            reg.len(),
+            10,
+            "shrink kept all 10 bans (cap exceeded by design), zero partials"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn brute_force_registry_shrink_fills_remainder_with_recent_partials() {
+        // With 2 active bans + 8 partials at cap 10, shrinking to cap 5
+        // keeps both bans and fills the remaining 3 slots with the most-
+        // recent partials (by last_touch). Pre-OV-F5, a naive sort by
+        // last_touch would have evicted bans in favour of fresher
+        // partials — Tier A preservation prevents that.
+        let reg = BruteForceRegistry::new(10);
+        for i in 0..2u8 {
+            let addr = ip(10, 0, 0, i);
+            for _ in 0..5 {
+                let _g = reg.check_and_admit(addr, 5, 60).expect("admit");
+                reg.record_failure(addr, 5, 60);
+            }
+        }
+        for i in 0..8u8 {
+            let addr = ip(192, 168, 0, i);
+            let _g = reg.check_and_admit(addr, 5, 60).expect("admit");
+            reg.record_failure(addr, 5, 60);
+            tokio::time::advance(Duration::from_millis(10)).await;
+        }
+        assert_eq!(reg.len(), 10);
+
+        reg.shrink_preserving_recent_bans(5);
+
+        assert_eq!(reg.capacity(), 5);
+        assert_eq!(reg.len(), 5, "2 bans + 3 most-recent partials");
+        for i in 0..2u8 {
+            assert!(reg.is_banned(ip(10, 0, 0, i)), "ban {i} must survive");
+        }
+        for i in 5..8u8 {
+            assert_eq!(
+                reg.attempts_for(ip(192, 168, 0, i)),
+                1,
+                "most-recent partial {i} must survive"
+            );
+        }
+        for i in 0..5u8 {
+            assert_eq!(
+                reg.attempts_for(ip(192, 168, 0, i)),
+                0,
+                "older partial {i} must be evicted"
+            );
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn brute_force_registry_grow_is_idempotent() {
+        // Grow updates the atomic cap but never touches the maps. Grow
+        // smaller than the current cap is a no-op (use shrink instead).
+        let reg = BruteForceRegistry::new(100);
+        let addr = ip(10, 0, 0, 1);
+        let _g = reg.check_and_admit(addr, 5, 60).expect("admit");
+        reg.record_failure(addr, 5, 60);
+
+        reg.grow_capacity(500);
+        assert_eq!(reg.capacity(), 500);
+        assert_eq!(reg.len(), 1, "grow never drops entries");
+
+        reg.grow_capacity(500);
+        assert_eq!(reg.capacity(), 500, "second grow is idempotent");
+
+        reg.grow_capacity(50);
+        assert_eq!(reg.capacity(), 500, "grow-smaller is a no-op");
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn brute_force_registry_shrink_no_op_when_below_capacity() {
+        // shrink_preserving_recent_bans called with new >= cur is a no-op
+        // for the maps; the cap store path also short-circuits.
+        let reg = BruteForceRegistry::new(100);
+        for i in 0..10u8 {
+            let addr = ip(192, 168, 0, i);
+            let _g = reg.check_and_admit(addr, 5, 60).expect("admit");
+            reg.record_failure(addr, 5, 60);
+        }
+        let len_before = reg.len();
+        reg.shrink_preserving_recent_bans(200);
+        assert_eq!(reg.capacity(), 100, "shrink-larger is a no-op");
+        assert_eq!(reg.len(), len_before);
+
+        // Shrink to a value larger than current occupancy: cap drops, no
+        // entries evicted.
+        reg.shrink_preserving_recent_bans(50);
+        assert_eq!(reg.capacity(), 50);
+        assert_eq!(reg.len(), len_before, "shrink-cap-above-occupancy keeps all entries");
     }
 }

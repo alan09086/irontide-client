@@ -48,10 +48,14 @@ pub struct QbtState {
     /// M172a Lane C: per-IP brute-force-ban registry. Shared across the
     /// auth handler and the `setPreferences` apply path so runtime-reconfig
     /// of `max_failed_auth_count` / `ban_duration_secs` takes effect on the
-    /// next login attempt. The registry's *capacity* is fixed at router
-    /// construction — runtime changes to
-    /// `qbt_compat.brute_force_registry_capacity` only affect the daemon
-    /// on next restart (documented in `classify_immediate`).
+    /// next login attempt. M225 closes the M173+ FIXME at session.rs:1015
+    /// — runtime changes to `qbt_compat.brute_force_registry_capacity` now
+    /// flow through [`BruteForceRegistry::shrink_preserving_recent_bans`]
+    /// / [`BruteForceRegistry::grow_capacity`] in the `setPreferences`
+    /// handler.
+    ///
+    /// [`BruteForceRegistry::shrink_preserving_recent_bans`]: super::brute_force::BruteForceRegistry::shrink_preserving_recent_bans
+    /// [`BruteForceRegistry::grow_capacity`]: super::brute_force::BruteForceRegistry::grow_capacity
     pub brute_force: Arc<BruteForceRegistry>,
 }
 

@@ -294,6 +294,22 @@ struct QbtPreferencesPatch {
     /// a session restart. Classified as `classify_immediate`.
     #[serde(default)]
     ip_filter_enabled: Option<bool>,
+
+    // ── M225: brute-force registry capacity live shrink/grow ────────
+    /// M225 (`IronTide` extension — no qBt analogue): runtime cap on the
+    /// brute-force-ban LRU registry. Maps to
+    /// `settings.qbt_compat.brute_force_registry_capacity`. The
+    /// `setPreferences` handler diffs old vs new: shrinking calls
+    /// [`BruteForceRegistry::shrink_preserving_recent_bans`] (Tier A
+    /// preservation — every active ban survives even when the cap is
+    /// exceeded), growing calls [`BruteForceRegistry::grow_capacity`].
+    /// Closes the M173+ FIXME at `session.rs:1015` ("rebuilding the
+    /// `HashMap`, losing live bans"). `Settings::validate` rejects `< 100`.
+    ///
+    /// [`BruteForceRegistry::shrink_preserving_recent_bans`]: super::brute_force::BruteForceRegistry::shrink_preserving_recent_bans
+    /// [`BruteForceRegistry::grow_capacity`]: super::brute_force::BruteForceRegistry::grow_capacity
+    #[serde(default)]
+    brute_force_registry_capacity: Option<u32>,
 }
 
 /// `POST /api/v2/app/setPreferences` (M171 D3 + D3.5).
@@ -332,6 +348,12 @@ pub async fn set_preferences(
     // mutation after apply — the RwLock cache must be refreshed atomically
     // when the CIDRs change so new requests see the new trust set.
     let prev_proxies = settings.qbt_compat.web_ui_reverse_proxies_list.clone();
+    // M225 Step 4: snapshot the brute-force-registry cap pre-patch so the
+    // handler can shrink/grow the live registry AFTER `apply_settings`
+    // lands. Reads the current atomic cap (which may differ from the
+    // setting if an earlier patch already mutated it) rather than the
+    // Settings field — the registry is source-of-truth.
+    let prev_bf_capacity = state.brute_force.capacity();
 
     apply_preferences_patch(&mut settings, patch)?;
 
@@ -341,6 +363,10 @@ pub async fn set_preferences(
 
     let proxies_changed = settings.qbt_compat.web_ui_reverse_proxies_list != prev_proxies;
     let new_proxies_raw = settings.qbt_compat.web_ui_reverse_proxies_list.clone();
+    // M225 Step 4: snapshot the post-patch cap so we can still apply
+    // shrink/grow after the engine has consumed `settings` via the move
+    // into `apply_settings_classified` below.
+    let new_bf_capacity = settings.qbt_compat.brute_force_registry_capacity;
 
     // M172a Lane C: sync the shared bypass-whitelist RwLock BEFORE the
     // engine applies the settings. Failing validation above aborts early
@@ -383,6 +409,22 @@ pub async fn set_preferences(
             .filter_map(|s| s.parse::<ipnet::IpNet>().ok())
             .collect();
         *state.reverse_proxies_list.write() = parsed;
+    }
+
+    // M225 Step 4: live shrink/grow on the brute-force registry. Runs
+    // AFTER `apply_settings_classified` so a failed engine apply leaves
+    // both the Settings AND the registry on the pre-patch baseline.
+    // `validate()` (run before apply) has already rejected `< 100`.
+    if let Some(new_cap) = new_bf_capacity {
+        match new_cap.cmp(&prev_bf_capacity) {
+            std::cmp::Ordering::Less => {
+                state.brute_force.shrink_preserving_recent_bans(new_cap);
+            }
+            std::cmp::Ordering::Greater => {
+                state.brute_force.grow_capacity(new_cap);
+            }
+            std::cmp::Ordering::Equal => {}
+        }
     }
 
     let mut response = QbtResponse::ok().into_response();
@@ -703,6 +745,15 @@ fn apply_preferences_patch(
     // ── M225: IP filter / live bans enable switch ───────────────────
     if let Some(v) = patch.ip_filter_enabled {
         settings.ip_filter_enabled = v;
+    }
+
+    // ── M225: brute-force registry capacity (validation only) ───────
+    // The actual shrink/grow call lands in `set_preferences` AFTER apply
+    // because it needs the registry handle from `QbtState`. Here we just
+    // forward the wire value into the Settings snapshot so `validate()`
+    // can reject `< 100`.
+    if let Some(v) = patch.brute_force_registry_capacity {
+        settings.qbt_compat.brute_force_registry_capacity = Some(v as usize);
     }
 
     Ok(())

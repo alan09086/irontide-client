@@ -1111,6 +1111,56 @@ async fn set_preferences_round_trip_ip_filter_enabled() {
     assert_eq!(prefs["ip_filter_enabled"], false);
 }
 
+#[tokio::test]
+async fn set_preferences_round_trip_brute_force_registry_capacity() {
+    // M225 Step 4: IronTide extension (no qBt analogue). Shrinking the cap
+    // dispatches to `BruteForceRegistry::shrink_preserving_recent_bans`,
+    // growing to `grow_capacity` — Tier A preservation (active bans always
+    // survive) is covered by the unit tests in
+    // `crates/irontide-api/src/routes/qbt_v2/brute_force.rs`. This test
+    // only asserts the wire field round-trips cleanly through the
+    // setPreferences validate + apply pipeline without firing
+    // `x-irontide-restart-pending`.
+    let (router, sid) = enabled_router_with(|s| {
+        s.qbt_compat.brute_force_registry_capacity = Some(500);
+    })
+    .await;
+    let resp = post_json(
+        &router,
+        &sid,
+        serde_json::json!({"brute_force_registry_capacity": 200}),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(
+        resp.headers().get("x-irontide-restart-pending").is_none(),
+        "M225: brute_force_registry_capacity is classify_immediate; no restart header"
+    );
+
+    // Grow path: also no restart header.
+    let resp = post_json(
+        &router,
+        &sid,
+        serde_json::json!({"brute_force_registry_capacity": 5000}),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(resp.headers().get("x-irontide-restart-pending").is_none());
+
+    // Sub-100 is rejected by Settings::validate.
+    let resp = post_json(
+        &router,
+        &sid,
+        serde_json::json!({"brute_force_registry_capacity": 50}),
+    )
+    .await;
+    assert_eq!(
+        resp.status(),
+        StatusCode::BAD_REQUEST,
+        "brute_force_registry_capacity < 100 must surface as 400"
+    );
+}
+
 // ── Auth gate ─────────────────────────────────────────────────────────
 
 #[tokio::test]
