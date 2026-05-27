@@ -269,18 +269,31 @@ struct QbtPreferencesPatch {
     force_proxy: Option<bool>,
 
     // ── M215: BitTorrent + Advanced engine round-trip ───────────────
-    /// M215: piece-hashing worker count. Maps to `settings.hashing_threads`
-    /// (`u32` on the wire; cast to `usize` on apply). `0` is rejected by
-    /// `Settings::validate()` at the call site (`app.rs:307-310`); no
-    /// redundant pre-check inside `apply_preferences_patch`.
+    /// M215 + M225: piece-hashing worker count. Maps to
+    /// `settings.hashing_threads` (`u32` on the wire; cast to `usize` on
+    /// apply). `0` is rejected by `Settings::validate()` at the call site
+    /// (`app.rs:307-310`); no redundant pre-check inside
+    /// `apply_preferences_patch`. M225 reclassifies as `classify_immediate`
+    /// — the new value flows through `SettingsDelta::hashing_threads` and
+    /// `TorrentCommand::UpdateSettings` to every active `TorrentActor`.
     #[serde(default)]
     hashing_threads: Option<u32>,
-    /// M215: periodic resume-save interval (seconds). Maps to
+    /// M215 + M225: periodic resume-save interval (seconds). Maps to
     /// `settings.save_resume_interval_secs`. `0` is a valid value that
     /// disables the timer entirely (matches the consumer at
-    /// `session.rs:3696`); no validation.
+    /// `session.rs:3696`); no validation. M225 reclassifies as
+    /// `classify_immediate` — `apply_settings` pings a `tokio::sync::Notify`
+    /// that the `SessionActor` select! loop rebuilds the timer from.
     #[serde(default)]
     save_resume_interval: Option<u64>,
+
+    // ── M225: live IP filter / ban-list enable switch ───────────────
+    /// M225: master enable switch for `settings.ip_filter_enabled`. Maps
+    /// directly through `apply_settings` — the outer `Arc<RwLock<IpFilter>>`
+    /// is rewritten and the next admit gate observes the new state without
+    /// a session restart. Classified as `classify_immediate`.
+    #[serde(default)]
+    ip_filter_enabled: Option<bool>,
 }
 
 /// `POST /api/v2/app/setPreferences` (M171 D3 + D3.5).
@@ -685,6 +698,11 @@ fn apply_preferences_patch(
     }
     if let Some(v) = patch.save_resume_interval {
         settings.save_resume_interval_secs = v;
+    }
+
+    // ── M225: IP filter / live bans enable switch ───────────────────
+    if let Some(v) = patch.ip_filter_enabled {
+        settings.ip_filter_enabled = v;
     }
 
     Ok(())

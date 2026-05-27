@@ -128,15 +128,21 @@ pub struct QbtPreferences {
     /// M215: anonymous-mode peer ID. Set via setPreferences, classified as
     /// `restart_required` (handshake/peer-id rotation at session boot).
     pub anonymous_mode: bool,
-    /// M215: piece-hashing worker count. Per-torrent snapshot at add-time;
-    /// changing it via setPreferences only affects subsequently-added
-    /// torrents (in-flight retain their original count). Classified as
-    /// `restart_required` to match qBt convention.
+    /// M215 + M225: piece-hashing worker count. M225 reclassifies as
+    /// `classify_immediate` — the live `SettingsDelta::hashing_threads` path
+    /// propagates the new value through `TorrentCommand::UpdateSettings` to
+    /// every active `TorrentActor::handle_update_settings`. Per-torrent fan-
+    /// out replaces the M215 boot-time snapshot.
     pub hashing_threads: u32,
-    /// M215: periodic resume-save interval (seconds). Boot-time consumer
-    /// at session.rs:3696 builds the timer from this value; live timer-
-    /// rebuild defers to a future milestone. Classified as `restart_required`.
+    /// M215 + M225: periodic resume-save interval (seconds). M225 wires a
+    /// `tokio::sync::Notify` so the `SessionActor` select! arm rebuilds the
+    /// timer on the next loop tick — classified as `classify_immediate`.
     pub save_resume_interval: u64,
+    /// M225: master enable switch for the IP filter / live ban list.
+    /// Classified as `classify_immediate` — flipping the bit takes the
+    /// outer `Arc<RwLock<IpFilter>>` write-lock and `is_blocked` short-
+    /// circuits to `false` on the next admit gate without a session restart.
+    pub ip_filter_enabled: bool,
 }
 
 impl From<&Settings> for QbtPreferences {
@@ -232,6 +238,9 @@ impl From<&Settings> for QbtPreferences {
             anonymous_mode: s.anonymous_mode,
             hashing_threads: s.hashing_threads as u32,
             save_resume_interval: s.save_resume_interval_secs,
+
+            // M225: live IP filter / ban-list enable switch.
+            ip_filter_enabled: s.ip_filter_enabled,
         }
     }
 }
