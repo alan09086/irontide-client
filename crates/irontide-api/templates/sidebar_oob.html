@@ -1,0 +1,31 @@
+<div id="sidebar-sections" hx-swap-oob="innerHTML">
+  {% for section in sections %}
+  <section class="sidebar-section" data-axis="{{ section.axis }}">
+    <header>
+      <button
+        type="button"
+        class="sidebar-section-toggle"
+        aria-expanded="true"
+        onclick="toggleSidebarSection('{{ section.axis }}')">
+        {{ section.title }}
+      </button>
+    </header>
+    <ul class="sidebar-chip-list">
+      {% for chip in section.chips %}
+      <li>
+        <button
+          type="button"
+          class="sidebar-chip"
+          data-axis="{{ section.axis }}"
+          data-value="{{ chip.value }}"
+          data-count="{{ chip.count }}"
+          aria-pressed="false"
+          onclick="toggleFilter('{{ section.axis }}', '{{ chip.value }}')">
+          {{ chip.label }} <span class="sidebar-chip-count">{{ chip.count }}</span>
+        </button>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endfor %}
+</div>

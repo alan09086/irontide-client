@@ -651,3 +651,162 @@ body > header nav {
   }
 }
 
+/* ============================================================
+ * M231 — WebUI sidebar IA + filters
+ * 240px sidebar column on >=768px screens; stacks vertically
+ * on narrow viewports. Chips are buttons (aria-pressed for
+ * active state). Sections collapse via data-collapsed attr,
+ * persisted in localStorage by sidebar.js.
+ * ============================================================ */
+
+main.sidebar-layout {
+  display: block;
+}
+
+#sidebar {
+  margin-bottom: 1rem;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.sidebar-header h2 {
+  font-size: 1rem;
+  margin: 0;
+}
+
+#clear-filters {
+  font-size: 0.85rem;
+  padding: 0.25rem 0.5rem;
+  background: transparent;
+  border: 1px solid var(--pico-muted-border-color);
+  color: var(--pico-muted-color);
+  cursor: pointer;
+}
+
+#clear-filters:hover {
+  color: var(--pico-color);
+  border-color: var(--pico-color);
+}
+
+.sidebar-loading {
+  font-size: 0.85rem;
+  color: var(--pico-muted-color);
+  margin: 0.5rem 0;
+}
+
+.sidebar-section {
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+  padding-bottom: 0.5rem;
+}
+
+.sidebar-section:last-child {
+  border-bottom: none;
+}
+
+.sidebar-section header {
+  margin: 0;
+}
+
+.sidebar-section-toggle {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--pico-muted-color);
+  padding: 0.25rem 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.sidebar-section-toggle::before {
+  content: "▼";
+  font-size: 0.7em;
+  transition: transform 0.15s ease;
+}
+
+.sidebar-section-toggle[aria-expanded="false"]::before {
+  transform: rotate(-90deg);
+}
+
+.sidebar-section[data-collapsed="true"] .sidebar-chip-list {
+  display: none;
+}
+
+.sidebar-chip-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.25rem 0 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.sidebar-chip {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--pico-color);
+  padding: 0.25rem 0.5rem;
+  font-size: 0.9rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.sidebar-chip:hover {
+  background: var(--pico-muted-border-color);
+}
+
+.sidebar-chip[aria-pressed="true"] {
+  background: var(--pico-primary);
+  color: var(--pico-primary-inverse);
+  border-color: var(--pico-primary);
+}
+
+.sidebar-chip[data-count="0"] {
+  opacity: 0.55;
+}
+
+.sidebar-chip-count {
+  font-size: 0.8em;
+  color: var(--pico-muted-color);
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebar-chip[aria-pressed="true"] .sidebar-chip-count {
+  color: var(--pico-primary-inverse);
+}
+
+@media (min-width: 768px) {
+  main.sidebar-layout {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 1rem;
+    align-items: start;
+  }
+
+  #sidebar {
+    margin-bottom: 0;
+    position: sticky;
+    top: 1rem;
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+  }
+}
+

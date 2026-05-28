@@ -19,7 +19,16 @@
     </nav>
   </header>
 
-  <main class="container-fluid">
+  <main class="container-fluid sidebar-layout">
+    <aside id="sidebar" aria-label="Filter sidebar">
+      <div class="sidebar-header">
+        <h2>Filters</h2>
+        <button type="button" id="clear-filters" onclick="clearAllFilters()">Clear</button>
+      </div>
+      <div id="sidebar-sections">
+        <p class="sidebar-loading">Loading...</p>
+      </div>
+    </aside>
     <div id="torrent-list"
          hx-get="/webui/fragments/torrent-list"
          hx-trigger="load, every 2s, refreshList from:body"
@@ -143,6 +152,7 @@
   <script src="/webui/static/js/htmx.min.js"></script>
   <script src="/webui/static/js/ws-live.js"></script>
   <script src="/webui/static/js/col-resize.js"></script>
+  <script src="/webui/static/js/sidebar.js"></script>
   <script>
     // Show a toast message
     function showToast(message, durationMs) {

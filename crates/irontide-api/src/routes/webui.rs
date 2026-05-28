@@ -78,6 +78,33 @@ pub(crate) struct StatsBarOobTemplate {
     pub ratio: String,
 }
 
+/// M231 — Phase O #9/14: a single chip in a sidebar filter section.
+/// `value` is the raw filter token (incl. sentinels); `label` is the
+/// display string; `count` is the size of the filtered subset matching
+/// this chip. Chips at `count == 0` are still rendered so the user can
+/// broaden the filter.
+pub(crate) struct SidebarChip {
+    pub value: String,
+    pub label: String,
+    pub count: usize,
+}
+
+/// M231 — one section of the sidebar filter panel (state / category /
+/// tag / tracker).
+pub(crate) struct SidebarSection {
+    pub axis: &'static str,
+    pub title: &'static str,
+    pub chips: Vec<SidebarChip>,
+}
+
+/// M231 — Askama template for the out-of-band sidebar update; emitted
+/// alongside the torrent list + stats bar in `torrent_list_fragment`.
+#[derive(Template)]
+#[template(path = "sidebar_oob.html")]
+pub(crate) struct SidebarOobTemplate {
+    pub sections: Vec<SidebarSection>,
+}
+
 /// Askama template that renders the full detail page for a single torrent.
 ///
 /// The Info panel is rendered server-side via `{% include "info_tab.html" %}`
@@ -307,6 +334,353 @@ fn html_escape(s: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// M231 — Phase O #9/14: WebUI Sidebar IA + filters
+// ---------------------------------------------------------------------------
+
+/// M231 sentinel value matching torrents with no category set.
+const SENTINEL_UNCATEGORISED: &str = "uncategorised";
+/// M231 sentinel value matching torrents with an empty tag list.
+const SENTINEL_UNTAGGED: &str = "untagged";
+/// M231 sentinel value matching torrents with an empty tracker list.
+const SENTINEL_NO_TRACKER: &str = "no_tracker";
+
+/// M231 — query parameters for the sidebar filter. Each field is a
+/// comma-separated list (OR within section); empty/absent = no filter
+/// on that axis.
+#[derive(Debug, Default, Deserialize)]
+pub struct FilterParams {
+    #[serde(default)]
+    state: Option<String>,
+    #[serde(default)]
+    category: Option<String>,
+    #[serde(default)]
+    tag: Option<String>,
+    #[serde(default)]
+    tracker: Option<String>,
+}
+
+impl FilterParams {
+    fn parse_list(value: Option<&String>) -> Vec<String> {
+        match value {
+            Some(s) if !s.is_empty() => s
+                .split(',')
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty())
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+}
+
+/// M231 — enriched torrent record carrying the four filter axes alongside
+/// the summary. Built in `build_enriched_rows`; not exposed beyond the
+/// webui module.
+struct EnrichedRow {
+    summary: irontide::session::TorrentSummary,
+    category: Option<String>,
+    tags: Vec<String>,
+    tracker_hosts: Vec<String>,
+}
+
+/// M231 — extract a tracker URL's host. Falls back to scheme-stripped raw
+/// string if `url::Url::parse` fails (e.g. for malformed tracker entries).
+#[cfg(feature = "webui")]
+fn extract_host(tracker_url: &str) -> String {
+    if let Ok(parsed) = ::url::Url::parse(tracker_url)
+        && let Some(host) = parsed.host_str()
+    {
+        return host.to_string();
+    }
+    let stripped = tracker_url
+        .trim_start_matches("udp://")
+        .trim_start_matches("http://")
+        .trim_start_matches("https://")
+        .trim_start_matches("ws://")
+        .trim_start_matches("wss://");
+    stripped
+        .split('/')
+        .next()
+        .unwrap_or(stripped)
+        .split(':')
+        .next()
+        .unwrap_or(stripped)
+        .to_string()
+}
+
+/// M231 — build the enriched row set by walking all torrents and pulling
+/// stats + `tracker_list` per torrent. Errors on individual torrents are
+/// skipped (a torrent that drops mid-iteration is excluded rather than
+/// erroring the whole fragment).
+async fn build_enriched_rows(session: &irontide::session::SessionHandle) -> Vec<EnrichedRow> {
+    let Ok(ids) = session.list_torrents().await else {
+        return Vec::new();
+    };
+    let mut rows = Vec::with_capacity(ids.len());
+    for id in ids {
+        let Ok(stats) = session.torrent_stats(id).await else {
+            continue;
+        };
+        let tracker_hosts = match session.tracker_list(id).await {
+            Ok(infos) => infos.iter().map(|t| extract_host(&t.url)).collect(),
+            Err(_) => Vec::new(),
+        };
+        let summary = irontide::session::TorrentSummary::from(&stats);
+        rows.push(EnrichedRow {
+            summary,
+            category: stats.category.clone(),
+            tags: stats.tags.clone(),
+            tracker_hosts,
+        });
+    }
+    rows
+}
+
+/// M231 — does this row's state match any of the requested state filters?
+/// Empty filter list passes through.
+fn match_state(row: &EnrichedRow, wanted: &[String]) -> bool {
+    if wanted.is_empty() {
+        return true;
+    }
+    let label = irontide_format::format_state(&row.summary.state, row.summary.user_seed_mode)
+        .to_lowercase();
+    wanted.iter().any(|w| w.to_lowercase() == label)
+}
+
+fn match_category(row: &EnrichedRow, wanted: &[String]) -> bool {
+    if wanted.is_empty() {
+        return true;
+    }
+    wanted.iter().any(|w| match w.as_str() {
+        SENTINEL_UNCATEGORISED => row.category.is_none(),
+        other => row.category.as_deref() == Some(other),
+    })
+}
+
+fn match_tag(row: &EnrichedRow, wanted: &[String]) -> bool {
+    if wanted.is_empty() {
+        return true;
+    }
+    wanted.iter().any(|w| match w.as_str() {
+        SENTINEL_UNTAGGED => row.tags.is_empty(),
+        other => row.tags.iter().any(|t| t == other),
+    })
+}
+
+fn match_tracker(row: &EnrichedRow, wanted: &[String]) -> bool {
+    if wanted.is_empty() {
+        return true;
+    }
+    wanted.iter().any(|w| match w.as_str() {
+        SENTINEL_NO_TRACKER => row.tracker_hosts.is_empty(),
+        other => row.tracker_hosts.iter().any(|h| h == other),
+    })
+}
+
+/// M231 — build the sidebar OOB template against unfiltered (for distinct
+/// values) + filtered (for counts) row sets. Chips at count=0 stay
+/// visible so the user can broaden the filter.
+async fn build_sidebar_oob(
+    session: &irontide::session::SessionHandle,
+    unfiltered: &[EnrichedRow],
+    filtered: &[&EnrichedRow],
+) -> SidebarOobTemplate {
+    // State: hardcoded list of all client-visible labels in stable order.
+    // We seed the chip list from the existing `format_state` outputs so
+    // the labels match what the table cell shows. Counts come from
+    // filtered rows.
+    let state_chips = build_state_chips(unfiltered, filtered);
+
+    // Category: union of session.list_categories() + sentinel iff any
+    // unfiltered row has category=None.
+    let category_chips = build_category_chips(session, unfiltered, filtered).await;
+
+    // Tag: union of session.list_tags() + sentinel iff any unfiltered
+    // row has empty tags.
+    let tag_chips = build_tag_chips(session, unfiltered, filtered).await;
+
+    // Tracker: union of distinct hosts across unfiltered rows + sentinel
+    // iff any row has empty tracker_hosts.
+    let tracker_chips = build_tracker_chips(unfiltered, filtered);
+
+    SidebarOobTemplate {
+        sections: vec![
+            SidebarSection {
+                axis: "state",
+                title: "State",
+                chips: state_chips,
+            },
+            SidebarSection {
+                axis: "category",
+                title: "Category",
+                chips: category_chips,
+            },
+            SidebarSection {
+                axis: "tag",
+                title: "Tag",
+                chips: tag_chips,
+            },
+            SidebarSection {
+                axis: "tracker",
+                title: "Tracker",
+                chips: tracker_chips,
+            },
+        ],
+    }
+}
+
+fn build_state_chips(unfiltered: &[EnrichedRow], filtered: &[&EnrichedRow]) -> Vec<SidebarChip> {
+    use std::collections::BTreeSet;
+    let mut labels: BTreeSet<String> = BTreeSet::new();
+    for r in unfiltered {
+        let l = irontide_format::format_state(&r.summary.state, r.summary.user_seed_mode);
+        labels.insert(l.to_lowercase());
+    }
+    let mut chips: Vec<SidebarChip> = labels
+        .into_iter()
+        .map(|label| {
+            let count = filtered
+                .iter()
+                .filter(|r| {
+                    irontide_format::format_state(&r.summary.state, r.summary.user_seed_mode)
+                        .to_lowercase()
+                        == label
+                })
+                .count();
+            SidebarChip {
+                value: label.clone(),
+                label: capitalise_first(&label),
+                count,
+            }
+        })
+        .collect();
+    chips.sort_by(|a, b| a.label.cmp(&b.label));
+    chips
+}
+
+async fn build_category_chips(
+    session: &irontide::session::SessionHandle,
+    unfiltered: &[EnrichedRow],
+    filtered: &[&EnrichedRow],
+) -> Vec<SidebarChip> {
+    use std::collections::BTreeSet;
+    let mut names: BTreeSet<String> = session
+        .list_categories()
+        .await
+        .into_iter()
+        .map(|c| c.name)
+        .collect();
+    // Also pull in any category names that appear on rows but aren't
+    // in the registry (defensive — should be a no-op in practice).
+    for r in unfiltered {
+        if let Some(name) = &r.category {
+            names.insert(name.clone());
+        }
+    }
+    let mut chips: Vec<SidebarChip> = names
+        .into_iter()
+        .map(|name| {
+            let count = filtered
+                .iter()
+                .filter(|r| r.category.as_deref() == Some(&name))
+                .count();
+            SidebarChip {
+                value: name.clone(),
+                label: name,
+                count,
+            }
+        })
+        .collect();
+    if unfiltered.iter().any(|r| r.category.is_none()) {
+        let count = filtered.iter().filter(|r| r.category.is_none()).count();
+        chips.push(SidebarChip {
+            value: SENTINEL_UNCATEGORISED.to_string(),
+            label: "(uncategorised)".to_string(),
+            count,
+        });
+    }
+    chips
+}
+
+async fn build_tag_chips(
+    session: &irontide::session::SessionHandle,
+    unfiltered: &[EnrichedRow],
+    filtered: &[&EnrichedRow],
+) -> Vec<SidebarChip> {
+    use std::collections::BTreeSet;
+    let mut names: BTreeSet<String> = session.list_tags().await.into_iter().collect();
+    for r in unfiltered {
+        for t in &r.tags {
+            names.insert(t.clone());
+        }
+    }
+    let mut chips: Vec<SidebarChip> = names
+        .into_iter()
+        .map(|name| {
+            let count = filtered
+                .iter()
+                .filter(|r| r.tags.iter().any(|t| t == &name))
+                .count();
+            SidebarChip {
+                value: name.clone(),
+                label: name,
+                count,
+            }
+        })
+        .collect();
+    if unfiltered.iter().any(|r| r.tags.is_empty()) {
+        let count = filtered.iter().filter(|r| r.tags.is_empty()).count();
+        chips.push(SidebarChip {
+            value: SENTINEL_UNTAGGED.to_string(),
+            label: "(untagged)".to_string(),
+            count,
+        });
+    }
+    chips
+}
+
+fn build_tracker_chips(unfiltered: &[EnrichedRow], filtered: &[&EnrichedRow]) -> Vec<SidebarChip> {
+    use std::collections::BTreeSet;
+    let hosts: BTreeSet<String> = unfiltered
+        .iter()
+        .flat_map(|r| r.tracker_hosts.iter().cloned())
+        .collect();
+    let mut chips: Vec<SidebarChip> = hosts
+        .into_iter()
+        .map(|host| {
+            let count = filtered
+                .iter()
+                .filter(|r| r.tracker_hosts.iter().any(|h| h == &host))
+                .count();
+            SidebarChip {
+                value: host.clone(),
+                label: host,
+                count,
+            }
+        })
+        .collect();
+    if unfiltered.iter().any(|r| r.tracker_hosts.is_empty()) {
+        let count = filtered
+            .iter()
+            .filter(|r| r.tracker_hosts.is_empty())
+            .count();
+        chips.push(SidebarChip {
+            value: SENTINEL_NO_TRACKER.to_string(),
+            label: "(no tracker)".to_string(),
+            count,
+        });
+    }
+    chips
+}
+
+fn capitalise_first(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
 
@@ -314,27 +688,41 @@ fn html_escape(s: &str) -> String {
 ///
 /// Fetches the current torrent list from the session and renders it as an
 /// HTML table fragment suitable for HTMX replacement.
-pub async fn torrent_list_fragment(State(session): State<AppState>) -> impl IntoResponse {
-    let summaries = match session.list_torrent_summaries().await {
-        Ok(s) => s,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Html(format!(
-                    r#"<p class="error-message">{}</p>"#,
-                    html_escape(&e.to_string())
-                )),
-            )
-                .into_response();
-        }
-    };
+///
+/// M231: accepts `Query<FilterParams>` for the sidebar filter (state /
+/// category / tag / tracker). The response includes three fragments:
+/// - the main `<table>` (filtered)
+/// - the OOB stats bar update
+/// - the OOB sidebar update (distinct values from unfiltered; counts from
+///   filtered; chips at count=0 remain visible)
+pub async fn torrent_list_fragment(
+    Query(filters): Query<FilterParams>,
+    State(session): State<AppState>,
+) -> impl IntoResponse {
+    let unfiltered = build_enriched_rows(&session).await;
 
+    let states = FilterParams::parse_list(filters.state.as_ref());
+    let categories = FilterParams::parse_list(filters.category.as_ref());
+    let tags = FilterParams::parse_list(filters.tag.as_ref());
+    let trackers = FilterParams::parse_list(filters.tracker.as_ref());
+
+    let filtered: Vec<&EnrichedRow> = unfiltered
+        .iter()
+        .filter(|r| match_state(r, &states))
+        .filter(|r| match_category(r, &categories))
+        .filter(|r| match_tag(r, &tags))
+        .filter(|r| match_tracker(r, &trackers))
+        .collect();
+
+    // Stats bar reflects the filtered subset so the dashboard tracks what
+    // the user is currently looking at.
     let mut active_count: usize = 0;
     let mut total_dl: u64 = 0;
     let mut total_ul: u64 = 0;
     let mut all_time_dl: u64 = 0;
     let mut all_time_ul: u64 = 0;
-    for t in &summaries {
+    for r in &filtered {
+        let t = &r.summary;
         if !matches!(t.state, TorrentState::Paused | TorrentState::Queued) {
             active_count += 1;
         }
@@ -344,16 +732,15 @@ pub async fn torrent_list_fragment(State(session): State<AppState>) -> impl Into
         all_time_ul += t.all_time_upload;
     }
 
-    let rows: Vec<TorrentRow> = summaries
-        .into_iter()
-        .map(|t| {
+    let rows: Vec<TorrentRow> = filtered
+        .iter()
+        .map(|r| {
+            let t = &r.summary;
             let state_label = irontide_format::format_state(&t.state, t.user_seed_mode).to_owned();
             let css_class = state_css_class(&state_label).to_owned();
             let is_paused = matches!(t.state, TorrentState::Paused | TorrentState::Queued);
-            let user_seed_mode = t.user_seed_mode;
-            let info_hash = t.info_hash.clone();
             TorrentRow {
-                name: t.name,
+                name: t.name.clone(),
                 size: irontide_format::format_size(t.total_size),
                 progress: t.progress,
                 progress_pct: format!("{:.1}%", t.progress * 100.0),
@@ -363,9 +750,9 @@ pub async fn torrent_list_fragment(State(session): State<AppState>) -> impl Into
                 peers: t.num_peers,
                 state: state_label,
                 state_class: css_class,
-                info_hash,
+                info_hash: t.info_hash.clone(),
                 is_paused,
-                user_seed_mode,
+                user_seed_mode: t.user_seed_mode,
             }
         })
         .collect();
@@ -383,7 +770,12 @@ pub async fn torrent_list_fragment(State(session): State<AppState>) -> impl Into
     .render()
     .unwrap_or_default();
 
-    Html(format!("{list_html}{stats_html}")).into_response()
+    let sidebar_html = build_sidebar_oob(&session, &unfiltered, &filtered)
+        .await
+        .render()
+        .unwrap_or_default();
+
+    Html(format!("{list_html}{stats_html}{sidebar_html}")).into_response()
 }
 
 /// Form body for the add-magnet endpoint.

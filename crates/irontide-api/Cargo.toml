@@ -23,11 +23,12 @@ webui = [
     "dep:askama_web",
     "dep:reqwest",
     "dep:thiserror",
+    "dep:url",
 ]
 dev-webui = ["tower-http/fs"]
 
 [dependencies]
-irontide = { path = "../irontide", version = "1.0.0-rc9", default-features = false }
+irontide = { path = "../irontide", version = "1.0.0-rc10", default-features = false }
 aws-lc-rs = "1.16"
 axum = { version = "0.8", features = ["ws", "multipart"] }
 axum-extra = { version = "0.10", features = ["cookie"] }
@@ -46,7 +47,7 @@ ipnet = { workspace = true }
 num_cpus = { workspace = true }
 
 # Web UI (behind "webui" feature)
-irontide-webui-assets = { path = "../irontide-webui-assets", version = "1.0.0-rc9", optional = true }
+irontide-webui-assets = { path = "../irontide-webui-assets", version = "1.0.0-rc10", optional = true }
 irontide-format = { workspace = true, optional = true }
 askama = { version = "0.15", optional = true }
 askama_web = { version = "0.15", features = ["axum-0.8"], optional = true }
@@ -61,6 +62,10 @@ reqwest = { version = "0.12", default-features = false, features = [
 ], optional = true }
 # M230: `WebUiFetchError` typed errors for the URL fetch handler.
 thiserror = { workspace = true, optional = true }
+# M231: tracker host extraction for the WebUI sidebar tracker filter.
+# `url = "2"` is the same major as `irontide-session`'s dep; workspace
+# uses a single version so no duplication.
+url = { version = "2", optional = true }
 
 [dev-dependencies]
 futures-util = "0.3"
@@ -76,7 +81,7 @@ tokio = { workspace = true, features = ["test-util"] }
 tokio-tungstenite = "0.28"
 tower = { version = "0.5", features = ["util"] }
 # M172a Lane A: integration tests exercise the on-disk migration helper.
-irontide-config = { path = "../irontide-config", version = "1.0.0-rc9" }
+irontide-config = { path = "../irontide-config", version = "1.0.0-rc10" }
 # M172a Lane B: real-TCP reqwest-based *arr handshake smoke tests.
 reqwest = { version = "0.12", default-features = false, features = [
     "rustls-tls",
@@ -105,5 +110,5 @@ irontide-session = { path = "../irontide-session", features = ["test-util"] }
 # `sha1()` is `#[cfg]`-gated on the crypto backend and the feature is
 # already unified-on from the `irontide-api` → `irontide` → `irontide-core`
 # chain — no new feature surface.
-irontide-core = { path = "../irontide-core", version = "1.0.0-rc9" }
-irontide-bencode = { path = "../irontide-bencode", version = "1.0.0-rc9" }
+irontide-core = { path = "../irontide-core", version = "1.0.0-rc10" }
+irontide-bencode = { path = "../irontide-bencode", version = "1.0.0-rc10" }
