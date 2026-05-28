@@ -73,9 +73,12 @@ mod tests {
     fn test_index_links_settings_and_ws_live() {
         let (_mime, bytes) = get("index.html").expect("index.html embedded");
         let content = String::from_utf8_lossy(&bytes);
+        // M232 moved the Settings page to `/webui/preferences` (8-tab full
+        // Preferences). The legacy `/settings` URL still resolves via a
+        // meta-refresh redirect, but the nav points at the canonical target.
         assert!(
-            content.contains("href=\"/settings\""),
-            "index.html must expose a nav link to /settings"
+            content.contains("href=\"/webui/preferences\""),
+            "index.html must expose a nav link to /webui/preferences"
         );
         assert!(
             content.contains("js/ws-live.js"),

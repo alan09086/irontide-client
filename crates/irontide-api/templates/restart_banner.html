@@ -1,0 +1,22 @@
+<div id="preferences-restart-banner" hx-swap-oob="outerHTML"
+     class="preferences-restart-banner" role="status" aria-live="polite">
+  {% if fields.is_empty() %}
+  {% else %}
+  <div class="preferences-restart-banner-card">
+    <strong>Restart pending</strong>
+    <p>
+      The following setting{% if fields.len() != 1 %}s{% endif %}
+      will take effect after the next session restart:
+    </p>
+    <ul class="preferences-restart-fields">
+      {% for f in fields %}
+      <li><code>{{ f }}</code></li>
+      {% endfor %}
+    </ul>
+    <button type="button" class="preferences-restart-dismiss"
+            onclick="dismissRestartBanner()" aria-label="Dismiss">
+      Dismiss
+    </button>
+  </div>
+  {% endif %}
+</div>

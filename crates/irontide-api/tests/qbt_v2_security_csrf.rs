@@ -323,9 +323,9 @@ async fn reverse_proxy_mode_rejects_untrusted_source_ip() {
 async fn webui_routes_also_csrf_protected() {
     let (base, _handle, _session) = tcp_server(|_| {}).await;
     let client = reqwest_client();
-    // A cross-origin PATCH to /webui/settings must 403.
+    // A cross-origin POST to /webui/preferences/save must 403.
     let resp = client
-        .patch(format!("{base}/webui/settings"))
+        .post(format!("{base}/webui/preferences/save"))
         .header("content-type", "application/x-www-form-urlencoded")
         .header("Origin", "http://evil.example.com")
         .body("max_peers_per_torrent=200")

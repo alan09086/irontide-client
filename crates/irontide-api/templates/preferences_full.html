@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IronTide — Preferences</title>
+  <link rel="stylesheet" href="/webui/static/css/pico.min.css">
+  <link rel="stylesheet" href="/webui/static/css/app.css">
+</head>
+<body data-preferences-page="true">
+  <header class="container-fluid">
+    <h1><a href="/" class="nav-brand">IronTide</a></h1>
+    <nav>
+      <a href="/" class="nav-link">Torrents</a>
+      <a href="/webui/preferences" class="nav-link nav-link-active">Preferences</a>
+    </nav>
+  </header>
+
+  <main class="container-fluid preferences-layout">
+    {% if restart_required.is_empty() %}
+    <div id="preferences-restart-banner"></div>
+    {% else %}
+    <div id="preferences-restart-banner" class="preferences-restart-banner"
+         role="status" aria-live="polite">
+      <div class="preferences-restart-banner-card">
+        <strong>Restart pending</strong>
+        <p>
+          The following setting{% if restart_required.len() != 1 %}s{% endif %}
+          will take effect after the next session restart:
+        </p>
+        <ul class="preferences-restart-fields">
+          {% for f in restart_required %}
+          <li><code>{{ f }}</code></li>
+          {% endfor %}
+        </ul>
+        <button type="button" class="preferences-restart-dismiss"
+                onclick="dismissRestartBanner()" aria-label="Dismiss">
+          Dismiss
+        </button>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if just_saved %}
+    <div class="preferences-saved-indicator" role="status" aria-live="polite">
+      Saved.
+    </div>
+    {% endif %}
+
+    <nav class="preferences-tabs" role="tablist" aria-label="Preferences sections">
+      <a href="#tab-behaviour" data-tab="behaviour" role="tab" class="preferences-tab">Behaviour</a>
+      <a href="#tab-downloads" data-tab="downloads" role="tab" class="preferences-tab">Downloads</a>
+      <a href="#tab-connection" data-tab="connection" role="tab" class="preferences-tab">Connection</a>
+      <a href="#tab-speed" data-tab="speed" role="tab" class="preferences-tab">Speed</a>
+      <a href="#tab-bittorrent" data-tab="bittorrent" role="tab" class="preferences-tab">BitTorrent</a>
+      <a href="#tab-webui" data-tab="webui" role="tab" class="preferences-tab">Web UI</a>
+      <a href="#tab-advanced" data-tab="advanced" role="tab" class="preferences-tab">Advanced</a>
+      <a href="#tab-about" data-tab="about" role="tab" class="preferences-tab">About</a>
+    </nav>
+
+    <form method="post" action="/webui/preferences/save"
+          hx-post="/webui/preferences/save"
+          hx-target="this"
+          hx-swap="outerHTML"
+          class="preferences-form">
+
+      <section id="tab-behaviour" class="preferences-tab-panel" data-tab="behaviour" role="tabpanel">
+        <h2>Behaviour</h2>
+        <fieldset>
+          <legend>Notifications</legend>
+          <label>
+            <input type="checkbox" name="notify_on_complete" role="switch"
+                   {% if ctx.notify_on_complete %}checked{% endif %}>
+            Notify on torrent complete
+          </label>
+          <label>
+            <input type="checkbox" name="notify_on_error" role="switch"
+                   {% if ctx.notify_on_error %}checked{% endif %}>
+            Notify on torrent error
+          </label>
+        </fieldset>
+        <fieldset>
+          <legend>Add torrent defaults</legend>
+          <label>
+            <input type="checkbox" name="default_add_paused" role="switch"
+                   {% if ctx.default_add_paused %}checked{% endif %}>
+            Add new torrents paused by default
+          </label>
+        </fieldset>
+      </section>
+
+      <section id="tab-downloads" class="preferences-tab-panel" data-tab="downloads" role="tabpanel">
+        <h2>Downloads</h2>
+        <fieldset>
+          <legend>Storage paths</legend>
+          <label>
+            Download directory
+            <input type="text" name="download_dir" value="{{ ctx.download_dir }}" required>
+          </label>
+          <label>
+            <input type="checkbox" name="use_incomplete_dir" role="switch"
+                   {% if ctx.use_incomplete_dir %}checked{% endif %}>
+            Use separate incomplete directory
+          </label>
+          <label>
+            Incomplete directory (empty = engine default)
+            <input type="text" name="incomplete_dir" value="{{ ctx.incomplete_dir }}">
+          </label>
+          <label>
+            <input type="checkbox" name="create_subfolder" role="switch"
+                   {% if ctx.create_subfolder %}checked{% endif %}>
+            Create per-torrent subfolder
+          </label>
+          <label>
+            Pre-allocate
+            <select name="preallocate_mode">
+              <option value="none" {% if ctx.preallocate_mode == "none" %}selected{% endif %}>None (allocate on demand)</option>
+              <option value="sparse" {% if ctx.preallocate_mode == "sparse" %}selected{% endif %}>Sparse (filesystem hint only)</option>
+              <option value="full" {% if ctx.preallocate_mode == "full" %}selected{% endif %}>Full (write-zero on add)</option>
+            </select>
+          </label>
+        </fieldset>
+        <fieldset>
+          <legend>Watched folder + auto-add</legend>
+          <label>
+            Watched folder (empty = disabled)
+            <input type="text" name="watched_folder" value="{{ ctx.watched_folder }}">
+          </label>
+          <label>
+            <input type="checkbox" name="delete_torrent_after_add" role="switch"
+                   {% if ctx.delete_torrent_after_add %}checked{% endif %}>
+            Delete .torrent after successful add
+          </label>
+        </fieldset>
+        <fieldset>
+          <legend>Move on complete</legend>
+          <label>
+            <input type="checkbox" name="move_completed_enabled" role="switch"
+                   {% if ctx.move_completed_enabled %}checked{% endif %}>
+            Move completed torrents to a different folder
+          </label>
+          <label>
+            Move completed to (empty = disabled)
+            <input type="text" name="move_completed_to" value="{{ ctx.move_completed_to }}">
+          </label>
+        </fieldset>
+      </section>
+
+      <section id="tab-connection" class="preferences-tab-panel" data-tab="connection" role="tabpanel">
+        <h2>Connection</h2>
+        <fieldset>
+          <legend>Listen</legend>
+          <label>
+            Listen port (restart-required)
+            <input type="number" name="listen_port" min="0" max="65535" value="{{ ctx.listen_port }}">
+          </label>
+          <label>
+            <input type="checkbox" name="randomize_port_on_startup" role="switch"
+                   {% if ctx.randomize_port_on_startup %}checked{% endif %}>
+            Randomize listen port on startup
+          </label>
+          <label>
+            <input type="checkbox" name="enable_upnp" role="switch"
+                   {% if ctx.enable_upnp %}checked{% endif %}>
+            Enable UPnP port mapping
+          </label>
+          <label>
+            <input type="checkbox" name="enable_natpmp" role="switch"
+                   {% if ctx.enable_natpmp %}checked{% endif %}>
+            Enable NAT-PMP port mapping
+          </label>
+        </fieldset>
+        <fieldset>
+          <legend>Peer caps</legend>
+          <label>
+            Max connections (global, -1 = unlimited)
+            <input type="number" name="max_connections_global" min="-1" value="{{ ctx.max_connections_global }}">
+          </label>
+          <label>
+            Max peers per torrent
+            <input type="number" name="max_peers_per_torrent" min="1" value="{{ ctx.max_peers_per_torrent }}">
+          </label>
+          <label>
+            Active downloads (-1 = unlimited)
+            <input type="number" name="active_downloads" min="-1" value="{{ ctx.active_downloads }}">
+          </label>
+          <label>
+            Active seeds (-1 = unlimited)
+            <input type="number" name="active_seeds" min="-1" value="{{ ctx.active_seeds }}">
+          </label>
+        </fieldset>
+        <fieldset>
+          <legend>Network interface</legend>
+          <label>
+            Bind network interface (empty = all interfaces)
+            <input type="text" name="network_interface" value="{{ ctx.network_interface }}">
+          </label>
+        </fieldset>
+      </section>
+
+      <section id="tab-speed" class="preferences-tab-panel" data-tab="speed" role="tabpanel">
+        <h2>Speed</h2>
+        <fieldset>
+          <legend>Primary rate limits</legend>
+          <label>
+            Download rate limit (bytes/s, 0 = unlimited)
+            <input type="number" name="download_rate_limit" min="0" value="{{ ctx.download_rate_limit }}">
+          </label>
+          <label>
+            Upload rate limit (bytes/s, 0 = unlimited)
+            <input type="number" name="upload_rate_limit" min="0" value="{{ ctx.upload_rate_limit }}">
+          </label>
+        </fieldset>
+        <fieldset>
+          <legend>Alternative rate limits</legend>
+          <label>
+            <input type="checkbox" name="alt_speed_enabled" role="switch"
+                   {% if ctx.alt_speed_enabled %}checked{% endif %}>
+            Use alternative rate limits
+          </label>
+          <label>
+            Alt download rate (bytes/s, 0 = unlimited)
+            <input type="number" name="alt_download_rate_limit" min="0" value="{{ ctx.alt_download_rate_limit }}">
+          </label>
+          <label>
+            Alt upload rate (bytes/s, 0 = unlimited)
+            <input type="number" name="alt_upload_rate_limit" min="0" value="{{ ctx.alt_upload_rate_limit }}">
+          </label>
+        </fieldset>
+        <fieldset>
+          <legend>Rate limit scope</legend>
+          <label>
+            <input type="checkbox" name="rate_limit_includes_overhead" role="switch"
+                   {% if ctx.rate_limit_includes_overhead %}checked{% endif %}>
+            Include protocol overhead in rate limit
+          </label>
+          <label>
+            <input type="checkbox" name="rate_limit_utp" role="switch"
+                   {% if ctx.rate_limit_utp %}checked{% endif %}>
+            Apply rate limit to µTP (BEP 29)
+          </label>
+          <label>
+            <input type="checkbox" name="rate_limit_lan" role="switch"
+                   {% if ctx.rate_limit_lan %}checked{% endif %}>
+            Apply rate limit to LAN peers
+          </label>
+        </fieldset>
+      </section>
+
+      <section id="tab-bittorrent" class="preferences-tab-panel" data-tab="bittorrent" role="tabpanel">
+        <h2>BitTorrent</h2>
+        <fieldset>
+          <legend>Peer discovery</legend>
+          <label>
+            <input type="checkbox" name="enable_dht" role="switch"
+                   {% if ctx.enable_dht %}checked{% endif %}>
+            Enable DHT (BEP 5)
+          </label>
+          <label>
+            <input type="checkbox" name="enable_pex" role="switch"
+                   {% if ctx.enable_pex %}checked{% endif %}>
+            Enable Peer Exchange (BEP 11)
+          </label>
+          <label>
+            <input type="checkbox" name="enable_lsd" role="switch"
+                   {% if ctx.enable_lsd %}checked{% endif %}>
+            Enable Local Service Discovery (BEP 14)
+          </label>
+        </fieldset>
+        <fieldset>
+          <legend>Encryption (restart-required)</legend>
+          <label>
+            Encryption mode
+            <select name="encryption_mode">
+              <option value="disabled" {% if ctx.encryption_mode == "disabled" %}selected{% endif %}>Disabled (plain BitTorrent)</option>
+              <option value="enabled" {% if ctx.encryption_mode == "enabled" %}selected{% endif %}>Enabled (offer plain + RC4)</option>
+              <option value="prefer_plaintext" {% if ctx.encryption_mode == "prefer_plaintext" %}selected{% endif %}>Prefer plaintext (retry RC4 on reject)</option>
+              <option value="forced" {% if ctx.encryption_mode == "forced" %}selected{% endif %}>Forced (RC4 only — reject plain)</option>
+            </select>
+          </label>
+          <label>
+            <input type="checkbox" name="anonymous_mode" role="switch"
+                   {% if ctx.anonymous_mode %}checked{% endif %}>
+            Anonymous mode (strip identifying client headers)
+          </label>
+        </fieldset>
+        <fieldset>
+          <legend>Queueing</legend>
+          <label>
+            <input type="checkbox" name="queueing_enabled" role="switch"
+                   {% if ctx.queueing_enabled %}checked{% endif %}>
+            Enable torrent queueing
+          </label>
+        </fieldset>
+      </section>
+
+      <section id="tab-webui" class="preferences-tab-panel" data-tab="webui" role="tabpanel">
+        <h2>Web UI</h2>
+        <div class="preferences-deferred-banner">
+          <p>
+            Web UI configuration moved to the qBt-compat surface
+            (<code>setPreferences</code>) plus the daemon CLI flags.
+            Dedicated WebUI-side controls land in <strong>v1.x — M239</strong>.
+          </p>
+          <p>
+            <a href="/api/v2/app/preferences" class="preferences-deferred-link">
+              View current Web UI preferences (qBt v2 JSON)
+            </a>
+          </p>
+        </div>
+      </section>
+
+      <section id="tab-advanced" class="preferences-tab-panel" data-tab="advanced" role="tabpanel">
+        <h2>Advanced</h2>
+        <fieldset>
+          <legend>Disk + hashing (restart-required)</legend>
+          <label>
+            Hashing threads
+            <input type="number" name="hashing_threads" min="0" value="{{ ctx.hashing_threads }}">
+          </label>
+          <label>
+            Save resume interval (seconds, 0 = disabled)
+            <input type="number" name="save_resume_interval_secs" min="0" value="{{ ctx.save_resume_interval_secs }}">
+          </label>
+        </fieldset>
+        <fieldset>
+          <legend>Protocol</legend>
+          <label>
+            <input type="checkbox" name="enable_utp" role="switch"
+                   {% if ctx.enable_utp %}checked{% endif %}>
+            Enable µTP (BEP 29)
+          </label>
+          <label>
+            <input type="checkbox" name="enable_fast_extension" role="switch"
+                   {% if ctx.enable_fast_extension %}checked{% endif %}>
+            Enable Fast Extension (BEP 6)
+          </label>
+          <label>
+            <input type="checkbox" name="enable_holepunch" role="switch"
+                   {% if ctx.enable_holepunch %}checked{% endif %}>
+            Enable hole-punching (BEP 55)
+          </label>
+          <label>
+            <input type="checkbox" name="enable_bep40_eviction" role="switch"
+                   {% if ctx.enable_bep40_eviction %}checked{% endif %}>
+            Enable BEP 40 eviction priority
+          </label>
+        </fieldset>
+      </section>
+
+      <section id="tab-about" class="preferences-tab-panel" data-tab="about" role="tabpanel">
+        <h2>About</h2>
+        <dl class="preferences-about">
+          <dt>Version</dt>
+          <dd><code>{{ ctx.version }}</code></dd>
+          <dt>License</dt>
+          <dd>GPL-3.0-or-later</dd>
+          <dt>Source</dt>
+          <dd>
+            <a href="https://codeberg.org/alan09086/irontide" rel="noopener">Codeberg (primary)</a>
+            ·
+            <a href="https://github.com/alan09086/irontide" rel="noopener">GitHub (mirror)</a>
+          </dd>
+          <dt>Release notes</dt>
+          <dd>
+            <a href="https://codeberg.org/alan09086/irontide/src/branch/main/CHANGELOG.md" rel="noopener">CHANGELOG.md</a>
+          </dd>
+          <dt>Connected daemon</dt>
+          <dd id="preferences-about-daemon">
+            {% if ctx.daemon_endpoint.is_empty() %}
+            <code>(this page is served by the daemon)</code>
+            {% else %}
+            <code>{{ ctx.daemon_endpoint }}</code>
+            {% endif %}
+          </dd>
+        </dl>
+      </section>
+
+      <div class="preferences-actions">
+        <button type="submit">Save preferences</button>
+      </div>
+    </form>
+  </main>
+
+  <div id="toast" aria-live="polite"></div>
+
+  <script src="/webui/static/js/htmx.min.js"></script>
+  <script src="/webui/static/js/preferences.js"></script>
+  <script>
+    document.body.addEventListener('settingsSaved', function () {
+      var toast = document.getElementById('toast');
+      if (!toast) return;
+      var msg = document.createElement('div');
+      msg.className = 'toast-message';
+      msg.textContent = 'Preferences saved.';
+      toast.appendChild(msg);
+      setTimeout(function () { msg.remove(); }, 3000);
+    });
+  </script>
+</body>
+</html>

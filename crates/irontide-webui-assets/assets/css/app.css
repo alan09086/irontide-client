@@ -810,3 +810,197 @@ main.sidebar-layout {
   }
 }
 
+
+/* ───────────────────────────────────────────────────────────────────────────
+ * M232 — Preferences (8-tab dialog)
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.preferences-layout {
+  display: block;
+}
+
+.preferences-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+}
+
+.preferences-tab {
+  text-decoration: none;
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--pico-border-radius);
+  color: var(--pico-color);
+  background: transparent;
+  font-weight: 500;
+}
+
+.preferences-tab:hover,
+.preferences-tab:focus {
+  background: var(--pico-secondary-background);
+  text-decoration: none;
+}
+
+.preferences-tab-active,
+.preferences-tab[aria-selected="true"] {
+  background: var(--pico-primary);
+  color: var(--pico-primary-inverse);
+}
+
+.preferences-tab-panel {
+  scroll-margin-top: 1rem;
+}
+
+.preferences-tab-panel h2 {
+  margin-bottom: 0.75rem;
+}
+
+.preferences-tab-panel fieldset {
+  margin-bottom: 1rem;
+}
+
+.preferences-form .preferences-actions {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--pico-muted-border-color);
+}
+
+.preferences-restart-banner {
+  margin-bottom: 1rem;
+}
+
+.preferences-restart-banner-card {
+  background: var(--pico-secondary-background);
+  border-left: 3px solid var(--pico-primary);
+  padding: 0.75rem 1rem;
+  border-radius: var(--pico-border-radius);
+}
+
+.preferences-restart-banner-card strong {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.preferences-restart-fields {
+  list-style: none;
+  padding-left: 0;
+  margin: 0.5rem 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.preferences-restart-fields li code {
+  background: var(--pico-code-background-color, rgba(255, 255, 255, 0.06));
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+.preferences-restart-dismiss {
+  background: transparent;
+  color: var(--pico-muted-color);
+  border: 1px solid var(--pico-muted-border-color);
+  padding: 0.2rem 0.6rem;
+  font-size: 0.9em;
+  cursor: pointer;
+  margin-top: 0.25rem;
+}
+
+.preferences-restart-dismiss:hover {
+  background: var(--pico-secondary-background);
+  color: var(--pico-color);
+}
+
+.preferences-saved-indicator {
+  background: var(--pico-secondary-background);
+  border-left: 3px solid var(--pico-primary-focus);
+  padding: 0.5rem 1rem;
+  border-radius: var(--pico-border-radius);
+  margin-bottom: 0.75rem;
+}
+
+.preferences-deferred-banner {
+  background: var(--pico-secondary-background);
+  padding: 1rem;
+  border-radius: var(--pico-border-radius);
+  border-left: 3px solid var(--pico-muted-border-color);
+}
+
+.preferences-deferred-link {
+  font-weight: 500;
+}
+
+.preferences-about {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.5rem 1.5rem;
+}
+
+.preferences-about dt {
+  font-weight: 600;
+  color: var(--pico-muted-color);
+}
+
+.preferences-about dd {
+  margin: 0;
+}
+
+@media (min-width: 768px) {
+  /* Desktop: left-rail tab navigation; show only the active panel. */
+  .preferences-layout {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 1.5rem;
+    align-items: start;
+  }
+
+  /* The restart banner + saved indicator stretch across both columns. */
+  .preferences-restart-banner,
+  .preferences-saved-indicator {
+    grid-column: 1 / -1;
+  }
+
+  .preferences-tabs {
+    flex-direction: column;
+    border-bottom: none;
+    border-right: 1px solid var(--pico-muted-border-color);
+    padding-bottom: 0;
+    padding-right: 0.5rem;
+    position: sticky;
+    top: 1rem;
+    align-items: stretch;
+  }
+
+  .preferences-tab {
+    text-align: left;
+  }
+
+  /* Hide non-active panels — JS toggles the `[hidden]` attribute. */
+  .preferences-tab-panel[hidden] {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  /* Mobile: stack everything; all panels visible. */
+  .preferences-tab-panel[hidden] {
+    /* Override the JS-set hidden attribute on narrow viewports — the
+       tab rail collapses into an in-page navigation jump list. */
+    display: block !important;
+  }
+
+  .preferences-tab-panel {
+    border-top: 1px solid var(--pico-muted-border-color);
+    padding-top: 1rem;
+    margin-top: 1rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .preferences-tab {
+    transition: none;
+  }
+}

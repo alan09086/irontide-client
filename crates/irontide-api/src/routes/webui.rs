@@ -224,24 +224,6 @@ pub(crate) struct InfoTabTemplate {
     pub download_path: String,
 }
 
-/// Askama template that renders the settings form fragment, pre-populated
-/// with the current session's values.
-#[derive(Template)]
-#[template(path = "settings_form.html")]
-pub(crate) struct SettingsFormTemplate {
-    pub listen_port: u16,
-    pub download_dir: String,
-    pub max_torrents: usize,
-    pub max_peers_per_torrent: usize,
-    pub download_rate_limit: u64,
-    pub upload_rate_limit: u64,
-    pub active_downloads: i32,
-    pub active_seeds: i32,
-    pub enable_dht: bool,
-    pub enable_pex: bool,
-    pub enable_lsd: bool,
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -1076,34 +1058,6 @@ pub async fn delete_action(State(session): State<AppState>, Path(hash): Path<Str
     }
 }
 
-/// `GET /webui/fragments/settings`
-///
-/// Render the settings form fragment pre-populated with the current
-/// session's values. The form `PATCHes` `/webui/settings` on submit
-/// (handler in Task 7).
-pub async fn settings_fragment(State(session): State<AppState>) -> Response {
-    let s = match session.settings().await {
-        Ok(s) => s,
-        Err(e) => {
-            return error_fragment(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string());
-        }
-    };
-    let tmpl = SettingsFormTemplate {
-        listen_port: s.listen_port,
-        download_dir: s.download_dir.to_string_lossy().into_owned(),
-        max_torrents: s.max_torrents,
-        max_peers_per_torrent: s.max_peers_per_torrent,
-        download_rate_limit: s.download_rate_limit,
-        upload_rate_limit: s.upload_rate_limit,
-        active_downloads: s.active_downloads,
-        active_seeds: s.active_seeds,
-        enable_dht: s.enable_dht,
-        enable_pex: s.enable_pex,
-        enable_lsd: s.enable_lsd,
-    };
-    tmpl.into_web_template().into_response()
-}
-
 /// Query parameters for [`seed_mode_action`]. The button sends
 /// `?enabled=true` or `?enabled=false` depending on the current flag.
 #[derive(Deserialize)]
@@ -1111,97 +1065,446 @@ pub struct SeedModeQuery {
     pub enabled: bool,
 }
 
-/// Form body for [`patch_settings_webui`].
+// ---------------------------------------------------------------------------
+// M232: Full 8-tab Preferences page
+// ---------------------------------------------------------------------------
+
+/// Build version of the daemon — captured at compile time so the About tab
+/// can render a real `v1.0.0-rcN` string without runtime config lookup.
+pub(crate) const PREFS_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// 4 `EncryptionMode` variants stringified for the form `<select>`. The
+/// wire form-value matches the GUI label slug so a hand-written automation
+/// script can write the same value here and on `/api/v2/app/setPreferences`.
+fn encryption_mode_slug(m: irontide::wire::mse::EncryptionMode) -> &'static str {
+    match m {
+        irontide::wire::mse::EncryptionMode::Disabled => "disabled",
+        irontide::wire::mse::EncryptionMode::Enabled => "enabled",
+        irontide::wire::mse::EncryptionMode::PreferPlaintext => "prefer_plaintext",
+        irontide::wire::mse::EncryptionMode::Forced => "forced",
+    }
+}
+
+fn parse_encryption_mode(slug: &str) -> Option<irontide::wire::mse::EncryptionMode> {
+    match slug {
+        "disabled" => Some(irontide::wire::mse::EncryptionMode::Disabled),
+        "enabled" => Some(irontide::wire::mse::EncryptionMode::Enabled),
+        "prefer_plaintext" => Some(irontide::wire::mse::EncryptionMode::PreferPlaintext),
+        "forced" => Some(irontide::wire::mse::EncryptionMode::Forced),
+        _ => None,
+    }
+}
+
+/// 3 `PreallocateMode` variants stringified.
+fn preallocate_mode_slug(m: Option<irontide::storage::PreallocateMode>) -> &'static str {
+    match m {
+        Some(irontide::storage::PreallocateMode::None) | None => "none",
+        Some(irontide::storage::PreallocateMode::Sparse) => "sparse",
+        Some(irontide::storage::PreallocateMode::Full) => "full",
+    }
+}
+
+fn parse_preallocate_mode(slug: &str) -> Option<irontide::storage::PreallocateMode> {
+    match slug {
+        "none" => Some(irontide::storage::PreallocateMode::None),
+        "sparse" => Some(irontide::storage::PreallocateMode::Sparse),
+        "full" => Some(irontide::storage::PreallocateMode::Full),
+        _ => None,
+    }
+}
+
+/// Snapshot of every `Settings` field touchable from the `WebUI` Preferences
+/// dialog. Built once per GET via `From<&Settings>`; consumed by the form
+/// template and the POST handler when round-tripping form values back into
+/// `Settings`.
 ///
-/// HTML checkbox inputs send their value only when checked — an unchecked
-/// box is absent from the body entirely. We therefore receive checkboxes
-/// as `Option<String>` and map presence to `true`.
-#[derive(Deserialize)]
-pub struct SettingsForm {
-    pub listen_port: u16,
+/// Path-shaped fields are exposed as `String`: empty string means "unset"
+/// (the engine derives a default), non-empty means an explicit user path.
+/// This mirrors the GUI's `PreferencesState` convention (`crates/irontide-gui/src/prefs.rs`).
+#[derive(Debug, Clone)]
+pub(crate) struct PreferencesContext {
+    // Behaviour
+    pub notify_on_complete: bool,
+    pub notify_on_error: bool,
+    pub default_add_paused: bool,
+    // Downloads
     pub download_dir: String,
-    pub max_torrents: usize,
+    pub use_incomplete_dir: bool,
+    pub incomplete_dir: String,
+    pub create_subfolder: bool,
+    pub preallocate_mode: &'static str,
+    pub watched_folder: String,
+    pub delete_torrent_after_add: bool,
+    pub move_completed_enabled: bool,
+    pub move_completed_to: String,
+    // Connection
+    pub listen_port: u16,
+    pub randomize_port_on_startup: bool,
+    pub enable_upnp: bool,
+    pub enable_natpmp: bool,
+    pub max_connections_global: i32,
     pub max_peers_per_torrent: usize,
-    pub download_rate_limit: u64,
-    pub upload_rate_limit: u64,
     pub active_downloads: i32,
     pub active_seeds: i32,
+    pub network_interface: String,
+    // Speed
+    pub download_rate_limit: u64,
+    pub upload_rate_limit: u64,
+    pub alt_download_rate_limit: u64,
+    pub alt_upload_rate_limit: u64,
+    pub alt_speed_enabled: bool,
+    pub rate_limit_includes_overhead: bool,
+    pub rate_limit_utp: bool,
+    pub rate_limit_lan: bool,
+    // BitTorrent
+    pub enable_dht: bool,
+    pub enable_pex: bool,
+    pub enable_lsd: bool,
+    pub encryption_mode: &'static str,
+    pub anonymous_mode: bool,
+    pub queueing_enabled: bool,
+    // Advanced
+    pub hashing_threads: usize,
+    pub save_resume_interval_secs: u64,
+    pub enable_utp: bool,
+    pub enable_fast_extension: bool,
+    pub enable_holepunch: bool,
+    pub enable_bep40_eviction: bool,
+    // About — derived, not user-editable
+    pub version: &'static str,
+    /// Connected daemon endpoint (D7 — WebUI-specific About-tab field).
+    /// Resolved from request headers when available; falls back to a
+    /// neutral placeholder so the template can always render.
+    pub daemon_endpoint: String,
+}
+
+impl PreferencesContext {
+    /// Build a context from the live engine `Settings`. Path-bearing
+    /// `Option<PathBuf>` fields become empty strings when `None`.
+    pub(crate) fn from_settings(s: &irontide::session::Settings) -> Self {
+        let opt_path = |p: &Option<std::path::PathBuf>| {
+            p.as_ref()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default()
+        };
+        Self {
+            notify_on_complete: s.notify_on_complete,
+            notify_on_error: s.notify_on_error,
+            default_add_paused: s.default_add_paused,
+            download_dir: s.download_dir.to_string_lossy().into_owned(),
+            use_incomplete_dir: s.use_incomplete_dir,
+            incomplete_dir: opt_path(&s.incomplete_dir),
+            create_subfolder: s.create_subfolder,
+            preallocate_mode: preallocate_mode_slug(s.preallocate_mode),
+            watched_folder: opt_path(&s.watched_folder),
+            delete_torrent_after_add: s.delete_torrent_after_add,
+            move_completed_enabled: s.move_completed_enabled,
+            move_completed_to: opt_path(&s.move_completed_to),
+            listen_port: s.listen_port,
+            randomize_port_on_startup: s.randomize_port_on_startup,
+            enable_upnp: s.enable_upnp,
+            enable_natpmp: s.enable_natpmp,
+            max_connections_global: s.max_connections_global,
+            max_peers_per_torrent: s.max_peers_per_torrent,
+            active_downloads: s.active_downloads,
+            active_seeds: s.active_seeds,
+            network_interface: s.network_interface.clone().unwrap_or_default(),
+            download_rate_limit: s.download_rate_limit,
+            upload_rate_limit: s.upload_rate_limit,
+            alt_download_rate_limit: s.alt_download_rate_limit,
+            alt_upload_rate_limit: s.alt_upload_rate_limit,
+            alt_speed_enabled: s.alt_speed_enabled,
+            rate_limit_includes_overhead: s.rate_limit_includes_overhead,
+            rate_limit_utp: s.rate_limit_utp,
+            rate_limit_lan: s.rate_limit_lan,
+            enable_dht: s.enable_dht,
+            enable_pex: s.enable_pex,
+            enable_lsd: s.enable_lsd,
+            encryption_mode: encryption_mode_slug(s.encryption_mode),
+            anonymous_mode: s.anonymous_mode,
+            queueing_enabled: s.queueing_enabled,
+            hashing_threads: s.hashing_threads,
+            save_resume_interval_secs: s.save_resume_interval_secs,
+            enable_utp: s.enable_utp,
+            enable_fast_extension: s.enable_fast_extension,
+            enable_holepunch: s.enable_holepunch,
+            enable_bep40_eviction: s.enable_bep40_eviction,
+            version: PREFS_VERSION,
+            daemon_endpoint: String::new(),
+        }
+    }
+}
+
+/// POST body for the full Preferences form. Checkboxes follow the HTML
+/// quirk: present (`on`) means true, absent means false — hence the
+/// `Option<String>` + `#[serde(default)]` per axis.
+#[derive(Debug, Deserialize)]
+pub struct PreferencesForm {
+    // Behaviour
+    #[serde(default)]
+    pub notify_on_complete: Option<String>,
+    #[serde(default)]
+    pub notify_on_error: Option<String>,
+    #[serde(default)]
+    pub default_add_paused: Option<String>,
+    // Downloads
+    pub download_dir: String,
+    #[serde(default)]
+    pub use_incomplete_dir: Option<String>,
+    #[serde(default)]
+    pub incomplete_dir: String,
+    #[serde(default)]
+    pub create_subfolder: Option<String>,
+    pub preallocate_mode: String,
+    #[serde(default)]
+    pub watched_folder: String,
+    #[serde(default)]
+    pub delete_torrent_after_add: Option<String>,
+    #[serde(default)]
+    pub move_completed_enabled: Option<String>,
+    #[serde(default)]
+    pub move_completed_to: String,
+    // Connection
+    pub listen_port: u16,
+    #[serde(default)]
+    pub randomize_port_on_startup: Option<String>,
+    #[serde(default)]
+    pub enable_upnp: Option<String>,
+    #[serde(default)]
+    pub enable_natpmp: Option<String>,
+    pub max_connections_global: i32,
+    pub max_peers_per_torrent: usize,
+    pub active_downloads: i32,
+    pub active_seeds: i32,
+    #[serde(default)]
+    pub network_interface: String,
+    // Speed
+    pub download_rate_limit: u64,
+    pub upload_rate_limit: u64,
+    pub alt_download_rate_limit: u64,
+    pub alt_upload_rate_limit: u64,
+    #[serde(default)]
+    pub alt_speed_enabled: Option<String>,
+    #[serde(default)]
+    pub rate_limit_includes_overhead: Option<String>,
+    #[serde(default)]
+    pub rate_limit_utp: Option<String>,
+    #[serde(default)]
+    pub rate_limit_lan: Option<String>,
+    // BitTorrent
     #[serde(default)]
     pub enable_dht: Option<String>,
     #[serde(default)]
     pub enable_pex: Option<String>,
     #[serde(default)]
     pub enable_lsd: Option<String>,
+    pub encryption_mode: String,
+    #[serde(default)]
+    pub anonymous_mode: Option<String>,
+    #[serde(default)]
+    pub queueing_enabled: Option<String>,
+    // Advanced
+    pub hashing_threads: usize,
+    pub save_resume_interval_secs: u64,
+    #[serde(default)]
+    pub enable_utp: Option<String>,
+    #[serde(default)]
+    pub enable_fast_extension: Option<String>,
+    #[serde(default)]
+    pub enable_holepunch: Option<String>,
+    #[serde(default)]
+    pub enable_bep40_eviction: Option<String>,
 }
 
-impl SettingsForm {
-    fn into_patch(self) -> serde_json::Value {
-        serde_json::json!({
-            "listen_port": self.listen_port,
-            "download_dir": self.download_dir,
-            "max_torrents": self.max_torrents,
-            "max_peers_per_torrent": self.max_peers_per_torrent,
-            "download_rate_limit": self.download_rate_limit,
-            "upload_rate_limit": self.upload_rate_limit,
-            "active_downloads": self.active_downloads,
-            "active_seeds": self.active_seeds,
-            "enable_dht": self.enable_dht.is_some(),
-            "enable_pex": self.enable_pex.is_some(),
-            "enable_lsd": self.enable_lsd.is_some(),
-        })
+impl PreferencesForm {
+    /// Empty path strings clear the engine field to its default (`None`);
+    /// non-empty strings become `Some(PathBuf)`. Mirrors GUI semantics so
+    /// "clear this path" and "leave at default" are the same user gesture.
+    fn opt_path(s: &str) -> Option<std::path::PathBuf> {
+        if s.is_empty() {
+            None
+        } else {
+            Some(std::path::PathBuf::from(s))
+        }
+    }
+
+    /// Apply the form values onto a fresh copy of the current `Settings`.
+    /// Returns `Err(String)` when a `<select>` value is unknown, so the
+    /// handler can surface a 422 fragment instead of letting `Settings`
+    /// downgrade the value silently.
+    fn apply(self, current: &irontide::session::Settings) -> Result<irontide::session::Settings, String> {
+        let mut s = current.clone();
+        // Behaviour
+        s.notify_on_complete = self.notify_on_complete.is_some();
+        s.notify_on_error = self.notify_on_error.is_some();
+        s.default_add_paused = self.default_add_paused.is_some();
+        // Downloads
+        s.download_dir = std::path::PathBuf::from(self.download_dir);
+        s.use_incomplete_dir = self.use_incomplete_dir.is_some();
+        s.incomplete_dir = Self::opt_path(&self.incomplete_dir);
+        s.create_subfolder = self.create_subfolder.is_some();
+        s.preallocate_mode = Some(
+            parse_preallocate_mode(&self.preallocate_mode)
+                .ok_or_else(|| format!("invalid preallocate_mode: {}", self.preallocate_mode))?,
+        );
+        s.watched_folder = Self::opt_path(&self.watched_folder);
+        s.delete_torrent_after_add = self.delete_torrent_after_add.is_some();
+        s.move_completed_enabled = self.move_completed_enabled.is_some();
+        s.move_completed_to = Self::opt_path(&self.move_completed_to);
+        // Connection
+        s.listen_port = self.listen_port;
+        s.randomize_port_on_startup = self.randomize_port_on_startup.is_some();
+        s.enable_upnp = self.enable_upnp.is_some();
+        s.enable_natpmp = self.enable_natpmp.is_some();
+        s.max_connections_global = self.max_connections_global;
+        s.max_peers_per_torrent = self.max_peers_per_torrent;
+        s.active_downloads = self.active_downloads;
+        s.active_seeds = self.active_seeds;
+        s.network_interface = if self.network_interface.is_empty() {
+            None
+        } else {
+            Some(self.network_interface)
+        };
+        // Speed
+        s.download_rate_limit = self.download_rate_limit;
+        s.upload_rate_limit = self.upload_rate_limit;
+        s.alt_download_rate_limit = self.alt_download_rate_limit;
+        s.alt_upload_rate_limit = self.alt_upload_rate_limit;
+        s.alt_speed_enabled = self.alt_speed_enabled.is_some();
+        s.rate_limit_includes_overhead = self.rate_limit_includes_overhead.is_some();
+        s.rate_limit_utp = self.rate_limit_utp.is_some();
+        s.rate_limit_lan = self.rate_limit_lan.is_some();
+        // BitTorrent
+        s.enable_dht = self.enable_dht.is_some();
+        s.enable_pex = self.enable_pex.is_some();
+        s.enable_lsd = self.enable_lsd.is_some();
+        s.encryption_mode = parse_encryption_mode(&self.encryption_mode)
+            .ok_or_else(|| format!("invalid encryption_mode: {}", self.encryption_mode))?;
+        s.anonymous_mode = self.anonymous_mode.is_some();
+        s.queueing_enabled = self.queueing_enabled.is_some();
+        // Advanced
+        s.hashing_threads = self.hashing_threads;
+        s.save_resume_interval_secs = self.save_resume_interval_secs;
+        s.enable_utp = self.enable_utp.is_some();
+        s.enable_fast_extension = self.enable_fast_extension.is_some();
+        s.enable_holepunch = self.enable_holepunch.is_some();
+        s.enable_bep40_eviction = self.enable_bep40_eviction.is_some();
+        Ok(s)
     }
 }
 
-/// `PATCH /webui/settings`
+/// Askama template for the full 8-tab Preferences page (M232). Replaces
+/// the M165 single-form `SettingsFormTemplate`. Tabs: Behaviour, Downloads,
+/// Connection, Speed, `BitTorrent`, `WebUi`, Advanced, About.
+#[derive(Template)]
+#[template(path = "preferences_full.html")]
+pub(crate) struct PreferencesFullTemplate {
+    pub ctx: PreferencesContext,
+    /// `true` when this render is the initial GET; `false` when produced
+    /// by the POST handler after a save (lets the template show a "saved"
+    /// indicator alongside the form on the round trip).
+    pub just_saved: bool,
+    /// Fields requiring restart for the latest save to take effect. Empty
+    /// on GET. Non-empty post-save means the banner renders.
+    pub restart_required: Vec<String>,
+}
+
+/// Askama template for the restart-required banner. Rendered as an OOB
+/// swap into `#preferences-restart-banner` so a save that produced a
+/// `restart_required` set shows up above the tabs without re-rendering
+/// the whole form.
+#[derive(Template)]
+#[template(path = "restart_banner.html")]
+pub(crate) struct RestartBannerTemplate {
+    pub fields: Vec<String>,
+}
+
+/// `GET /webui/preferences`
 ///
-/// Apply a subset of the session's settings from the Web UI form using RFC
-/// 7396 JSON Merge Patch. Emits `HX-Trigger: settingsSaved` on success so
-/// the settings page can show a toast.
+/// Render the full 8-tab Preferences page (M232). Replaces the M165
+/// `GET /webui/fragments/settings` single-form endpoint. The response is
+/// the full HTML document so a deep link with `#tab-downloads` works
+/// without an intermediate page-shell load.
+pub async fn preferences_full_get(State(session): State<AppState>) -> Response {
+    let s = match session.settings().await {
+        Ok(s) => s,
+        Err(e) => return api_error_fragment(e.into()),
+    };
+    let ctx = PreferencesContext::from_settings(&s);
+    let tmpl = PreferencesFullTemplate {
+        ctx,
+        just_saved: false,
+        restart_required: Vec::new(),
+    };
+    tmpl.into_web_template().into_response()
+}
+
+/// `POST /webui/preferences/save`
 ///
-/// M172a Lane B: CSRF protection applied globally via [`qbt_v2::csrf_guard`]
-/// layered on the top-level router — cross-origin POST/PATCH from a hostile
-/// tab is rejected with 403 `Fails.`. Login auth for the /webui/* surface
-/// itself remains a future milestone.
-pub async fn patch_settings_webui(
+/// Apply all form fields onto the running session in one call. Uses
+/// `SessionHandle::apply_settings_classified` so the response carries the
+/// list of fields needing a restart — surfaced as the
+/// `restartPending` payload on `HX-Trigger` and as an OOB-swapped
+/// `restart_banner.html` fragment.
+pub async fn preferences_full_save(
     State(session): State<AppState>,
-    axum::Form(form): axum::Form<SettingsForm>,
+    axum::Form(form): axum::Form<PreferencesForm>,
 ) -> Response {
     let current = match session.settings().await {
         Ok(s) => s,
         Err(e) => return api_error_fragment(e.into()),
     };
-
-    // Pipeline: current settings → JSON → merge with form patch → new JSON →
-    // deserialize back to Settings → validate → apply.
-    let mut target = match serde_json::to_value(&current) {
-        Ok(v) => v,
-        Err(e) => {
-            return error_fragment(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                &format!("failed to serialize current settings: {e}"),
-            );
-        }
-    };
-    let patch = form.into_patch();
-    super::session::json_merge_patch(&mut target, &patch);
-
-    let new_settings: irontide::session::Settings = match serde_json::from_value(target) {
+    let new_settings = match form.apply(&current) {
         Ok(s) => s,
-        Err(e) => return error_fragment(StatusCode::BAD_REQUEST, &e.to_string()),
+        Err(e) => return error_fragment(StatusCode::UNPROCESSABLE_ENTITY, &e),
     };
     if let Err(e) = new_settings.validate() {
-        return error_fragment(StatusCode::BAD_REQUEST, &e.to_string());
+        return error_fragment(StatusCode::UNPROCESSABLE_ENTITY, &e.to_string());
     }
-    if let Err(e) = session.apply_settings(new_settings).await {
-        return api_error_fragment(e.into());
-    }
+    let applied = match session.apply_settings_classified(new_settings).await {
+        Ok(a) => a,
+        Err(e) => return api_error_fragment(e.into()),
+    };
+
+    let refreshed = match session.settings().await {
+        Ok(s) => s,
+        Err(e) => return api_error_fragment(e.into()),
+    };
+    let ctx = PreferencesContext::from_settings(&refreshed);
+    let restart_required: Vec<String> =
+        applied.restart_required.iter().map(|s| (*s).to_string()).collect();
+    let tmpl = PreferencesFullTemplate {
+        ctx,
+        just_saved: true,
+        restart_required: restart_required.clone(),
+    };
 
     let mut headers = axum::http::HeaderMap::new();
+    // Nest restartPending UNDER settingsSaved so HTMX 2.x fires a single
+    // `settingsSaved` event whose `detail` carries the list. A flat
+    // `{"settingsSaved": true, "restartPending": [...]}` would dispatch two
+    // separate events, leaving `ev.detail.restartPending` undefined on the
+    // listener — see project_irontide_htmx2_flat_hx_vals.
+    let trigger_payload = serde_json::json!({
+        "settingsSaved": { "restartPending": restart_required },
+    });
+    if let Ok(hv) = axum::http::HeaderValue::from_str(&trigger_payload.to_string()) {
+        headers.insert("HX-Trigger", hv);
+    }
+    (StatusCode::OK, headers, tmpl.into_web_template()).into_response()
+}
+
+/// `GET /webui/settings`
+///
+/// Legacy redirect — the M165 settings endpoint was replaced by the M232
+/// full Preferences page. 302 keeps bookmarks alive.
+pub async fn settings_legacy_redirect() -> Response {
+    let mut headers = axum::http::HeaderMap::new();
     headers.insert(
-        "HX-Trigger",
-        axum::http::HeaderValue::from_static("settingsSaved"),
+        axum::http::header::LOCATION,
+        axum::http::HeaderValue::from_static("/webui/preferences"),
     );
-    (StatusCode::OK, headers, String::new()).into_response()
+    (StatusCode::FOUND, headers, String::new()).into_response()
 }
 
 /// `POST /webui/torrents/{hash}/seed-mode?enabled=<bool>`

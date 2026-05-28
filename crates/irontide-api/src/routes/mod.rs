@@ -140,7 +140,11 @@ pub fn build_router(session: SessionHandle) -> Router {
                 "/webui/fragments/torrent/{hash}/peers",
                 get(webui::peers_fragment),
             )
-            .route("/webui/fragments/settings", get(webui::settings_fragment))
+            .route("/webui/preferences", get(webui::preferences_full_get))
+            .route(
+                "/webui/preferences/save",
+                post(webui::preferences_full_save),
+            )
             .route("/webui/add-magnet", post(webui::add_magnet_redirect))
             // M230: file upload — Axum's default 2 MiB `DefaultBodyLimit`
             // rejects oversized bodies at the router with `413 Payload Too
@@ -153,7 +157,7 @@ pub fn build_router(session: SessionHandle) -> Router {
                     .layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
             )
             .route("/webui/add-url", post(webui::add_url_form))
-            .route("/webui/settings", patch(webui::patch_settings_webui))
+            .route("/webui/settings", get(webui::settings_legacy_redirect))
             .route("/webui/torrents/{hash}/pause", post(webui::pause_action))
             .route("/webui/torrents/{hash}/resume", post(webui::resume_action))
             .route(
