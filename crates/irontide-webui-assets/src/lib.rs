@@ -58,7 +58,9 @@ mod tests {
             "js/htmx.min.js",
             "js/ws-live.js",
             "js/col-resize.js",
+            "js/theme.js",
             "css/pico.min.css",
+            "css/tokens.css",
             "css/app.css",
             "settings.html",
         ] {
@@ -67,6 +69,96 @@ mod tests {
                 "expected embedded asset at {path} but it was not found"
             );
         }
+    }
+
+    /// M234 — tokens.css must declare both light and dark theme blocks
+    /// keyed by the `data-theme` attribute, plus a `:root` block of
+    /// shared status colours. A regression here would mean the browser
+    /// can't render the active theme correctly.
+    #[test]
+    fn test_tokens_css_has_dark_and_light_blocks() {
+        let (mime, bytes) = get("css/tokens.css").expect("tokens.css embedded");
+        assert!(
+            mime.starts_with("text/css"),
+            "expected text/css mime, got {mime}"
+        );
+        let content = String::from_utf8_lossy(&bytes);
+        assert!(
+            content.contains(":root[data-theme=\"dark\"]"),
+            "tokens.css must contain :root[data-theme=\"dark\"] block"
+        );
+        assert!(
+            content.contains(":root[data-theme=\"light\"]"),
+            "tokens.css must contain :root[data-theme=\"light\"] block"
+        );
+        // Sanity: a few representative tokens must be present in both.
+        for token in ["--bg-0", "--fg-0", "--accent"] {
+            let count = content.matches(token).count();
+            assert!(
+                count >= 2,
+                "tokens.css must declare {token} in both theme blocks \
+                 (found {count} occurrence(s))"
+            );
+        }
+        // Shared status tokens live in :root (not nested under a theme).
+        assert!(
+            content.contains("--status-downloading"),
+            "tokens.css must declare --status-downloading at :root scope"
+        );
+    }
+
+    /// M234 — both HTML pages must <link> the codegen'd tokens.css
+    /// after pico.min.css so :root[data-theme] declarations win the
+    /// cascade where they collide with Pico's own theme block.
+    #[test]
+    fn test_index_links_tokens_css() {
+        let (_mime, bytes) = get("index.html").expect("index.html embedded");
+        let content = String::from_utf8_lossy(&bytes);
+        assert!(
+            content.contains("css/tokens.css"),
+            "index.html must <link> /webui/static/css/tokens.css"
+        );
+        // FOUC-prevention boot snippet must read the localStorage key
+        // before stylesheets paint.
+        assert!(
+            content.contains("irontide.webui.theme"),
+            "index.html must contain the FOUC-prevention boot snippet \
+             that reads localStorage.irontide.webui.theme"
+        );
+    }
+
+    /// M234 — theme.js exposes the public surface and writes through
+    /// localStorage. Substring assertion only; syntax errors are
+    /// caught by manual dogfooding.
+    #[test]
+    fn test_theme_js_has_localstorage_and_public_api() {
+        let (_mime, bytes) = get("js/theme.js").expect("theme.js embedded");
+        let content = String::from_utf8_lossy(&bytes);
+        assert!(
+            content.contains("localStorage"),
+            "theme.js must persist preference via localStorage"
+        );
+        assert!(
+            content.contains("irontide.webui.theme"),
+            "theme.js must use the canonical storage key"
+        );
+        assert!(
+            content.contains("window.irontideTheme"),
+            "theme.js must expose window.irontideTheme"
+        );
+        // Toggle and set are the load-bearing entry points used by the
+        // header button and the preferences <select>.
+        for fn_name in ["toggle", "set:", "get:"] {
+            assert!(
+                content.contains(fn_name),
+                "theme.js must expose {fn_name} on window.irontideTheme"
+            );
+        }
+        // prefers-color-scheme listener must be wired for "auto" mode.
+        assert!(
+            content.contains("prefers-color-scheme"),
+            "theme.js must listen for prefers-color-scheme changes"
+        );
     }
 
     #[test]

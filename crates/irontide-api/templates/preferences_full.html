@@ -4,7 +4,20 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>IronTide — Preferences</title>
+  <script>
+    // M234 FOUC prevention — resolve theme before stylesheets paint.
+    (function () {
+      try {
+        var mode = window.localStorage.getItem('irontide.webui.theme') || 'auto';
+        var theme = (mode === 'dark' || mode === 'light')
+          ? mode
+          : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch (_e) { /* keep default data-theme="dark" */ }
+    })();
+  </script>
   <link rel="stylesheet" href="/webui/static/css/pico.min.css">
+  <link rel="stylesheet" href="/webui/static/css/tokens.css">
   <link rel="stylesheet" href="/webui/static/css/app.css">
 </head>
 <body data-preferences-page="true">
@@ -13,6 +26,12 @@
     <nav>
       <a href="/" class="nav-link">Torrents</a>
       <a href="/webui/preferences" class="nav-link nav-link-active">Preferences</a>
+      <button type="button" id="theme-toggle" class="theme-toggle"
+              aria-label="Toggle light/dark theme"
+              onclick="window.irontideTheme && window.irontideTheme.toggle()">
+        <span class="theme-toggle-icon-dark" aria-hidden="true">☾</span>
+        <span class="theme-toggle-icon-light" aria-hidden="true">☀</span>
+      </button>
     </nav>
   </header>
 
@@ -296,6 +315,21 @@
 
       <section id="tab-webui" class="preferences-tab-panel" data-tab="webui" role="tabpanel">
         <h2>Web UI</h2>
+        <fieldset>
+          <legend>Appearance</legend>
+          <label>
+            Theme
+            <select id="theme-select"
+                    onchange="window.irontideTheme && window.irontideTheme.set(this.value)">
+              <option value="auto">Auto (match system)</option>
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+            </select>
+          </label>
+          <p class="preferences-appearance-note">
+            Saved locally in your browser; no daemon restart required.
+          </p>
+        </fieldset>
         <div class="preferences-deferred-banner">
           <p>
             Web UI configuration moved to the qBt-compat surface
@@ -384,6 +418,7 @@
 
   <div id="toast" aria-live="polite"></div>
 
+  <script src="/webui/static/js/theme.js"></script>
   <script src="/webui/static/js/htmx.min.js"></script>
   <script src="/webui/static/js/preferences.js"></script>
   <script>
@@ -396,6 +431,13 @@
       toast.appendChild(msg);
       setTimeout(function () { msg.remove(); }, 3000);
     });
+
+    // M234 — sync the theme <select> with the active mode at load time.
+    (function () {
+      var select = document.getElementById('theme-select');
+      if (!select || !window.irontideTheme) return;
+      select.value = window.irontideTheme.get();
+    })();
   </script>
 </body>
 </html>

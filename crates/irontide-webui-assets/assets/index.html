@@ -4,7 +4,20 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>IronTide</title>
+  <script>
+    // M234 FOUC prevention — resolve theme before stylesheets paint.
+    (function () {
+      try {
+        var mode = window.localStorage.getItem('irontide.webui.theme') || 'auto';
+        var theme = (mode === 'dark' || mode === 'light')
+          ? mode
+          : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch (_e) { /* keep default data-theme="dark" */ }
+    })();
+  </script>
   <link rel="stylesheet" href="/webui/static/css/pico.min.css">
+  <link rel="stylesheet" href="/webui/static/css/tokens.css">
   <link rel="stylesheet" href="/webui/static/css/app.css">
 </head>
 <body>
@@ -13,6 +26,12 @@
     <nav>
       <a href="/" class="nav-link nav-link-active">Torrents</a>
       <a href="/webui/preferences" class="nav-link">Preferences</a>
+      <button type="button" id="theme-toggle" class="theme-toggle"
+              aria-label="Toggle light/dark theme"
+              onclick="window.irontideTheme && window.irontideTheme.toggle()">
+        <span class="theme-toggle-icon-dark" aria-hidden="true">☾</span>
+        <span class="theme-toggle-icon-light" aria-hidden="true">☀</span>
+      </button>
       <button onclick="document.getElementById('add-torrent-dialog').showModal()">
         Add Torrent
       </button>
@@ -149,6 +168,7 @@
   <!-- Toast notifications -->
   <div id="toast" aria-live="polite"></div>
 
+  <script src="/webui/static/js/theme.js"></script>
   <script src="/webui/static/js/htmx.min.js"></script>
   <script src="/webui/static/js/ws-live.js"></script>
   <script src="/webui/static/js/col-resize.js"></script>

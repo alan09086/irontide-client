@@ -1,42 +1,40 @@
 /* IronTide Web UI — custom overrides on top of Pico CSS */
 
-/* IronTide Web UI — de-facto design tokens (consolidated in DESIGN.md) */
-/* Colors: Pico dark theme primary → var(--pico-primary) (accent blue) */
-/*         state-downloading → #22c55e, state-seeding → #3b82f6, */
-/*         state-paused → #9ca3af, state-error → #ef4444 */
-/* Type:   Pico default sans; monospace for info hashes */
-/* Space:  Pico default scale (0.25rem / 0.5rem / 1rem / 1.5rem / 2rem / 3rem) */
-/* Radius: Pico default --pico-border-radius (0.25rem) */
+/* IronTide Web UI — design tokens consumed via :root[data-theme=...] */
+/* Tokens live in tokens.css (codegen'd from scripts/tokens.hex.json). */
+/* App.css references --bg-0..3, --fg-0..3, --accent, --status-* etc.; */
+/* Pico controls baseline typography + dialog chrome via --pico-*. */
+/* M234 ships Tide-only; Forge + Abyss reach the browser in Phase P. */
 /* Breakpoints: 375px (small phone) / 768px (tablet) / 1024px (laptop+) */
 
 
 /* ─── Progress bar state colours ─────────────────────────────── */
 /* Webkit */
 progress[data-state="downloading"]::-webkit-progress-value {
-  background-color: var(--pico-primary);
+  background-color: var(--status-downloading, var(--pico-primary));
 }
 progress[data-state="seeding"]::-webkit-progress-value {
-  background-color: #2ecc40;
+  background-color: var(--status-seeding, #2ecc40);
 }
 progress[data-state="checking"]::-webkit-progress-value {
-  background-color: #ffdc00;
+  background-color: var(--status-checking, #ffdc00);
 }
 progress[data-state="paused"]::-webkit-progress-value {
-  background-color: #aaa;
+  background-color: var(--status-paused, #aaa);
 }
 
 /* Firefox */
 progress[data-state="downloading"]::-moz-progress-bar {
-  background-color: var(--pico-primary);
+  background-color: var(--status-downloading, var(--pico-primary));
 }
 progress[data-state="seeding"]::-moz-progress-bar {
-  background-color: #2ecc40;
+  background-color: var(--status-seeding, #2ecc40);
 }
 progress[data-state="checking"]::-moz-progress-bar {
-  background-color: #ffdc00;
+  background-color: var(--status-checking, #ffdc00);
 }
 progress[data-state="paused"]::-moz-progress-bar {
-  background-color: #aaa;
+  background-color: var(--status-paused, #aaa);
 }
 
 /* ─── Torrent list table ──────────────────────────────────────── */
@@ -53,11 +51,11 @@ progress[data-state="paused"]::-moz-progress-bar {
 }
 
 #torrent-list tbody tr:nth-child(even) {
-  background-color: rgba(255, 255, 255, 0.03);
+  background-color: var(--bg-1, rgba(255, 255, 255, 0.03));
 }
 
 #torrent-list tbody tr:hover {
-  background-color: rgba(255, 255, 255, 0.07);
+  background-color: var(--bg-hover, rgba(255, 255, 255, 0.07));
 }
 
 /* ─── Responsive: hide detail columns on small screens ───────── */
@@ -244,6 +242,43 @@ body > header nav {
   font-weight: 600;
 }
 
+/* ─── M234 theme toggle ───────────────────────────────────────── */
+.theme-toggle {
+  background: transparent;
+  border: 1px solid var(--border-1, var(--pico-muted-border-color, #444));
+  color: var(--fg-1, var(--pico-color, #cdd));
+  border-radius: var(--pico-border-radius, 0.25rem);
+  padding: 0.25rem 0.55rem;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.theme-toggle:hover {
+  border-color: var(--accent, var(--pico-primary, #60a5fa));
+  color: var(--accent, var(--pico-primary, #60a5fa));
+}
+/* Show the icon that matches the OTHER theme — clicking flips to it. */
+.theme-toggle-icon-dark,
+.theme-toggle-icon-light {
+  display: none;
+}
+:root[data-theme="dark"] .theme-toggle-icon-light {
+  display: inline;
+}
+:root[data-theme="light"] .theme-toggle-icon-dark {
+  display: inline;
+}
+
+.preferences-appearance-note {
+  color: var(--fg-2, var(--pico-muted-color, #888));
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+}
+
 /* ─── Action-button column ────────────────────────────────────── */
 #torrent-list .col-actions {
   width: 9rem;
@@ -275,7 +310,7 @@ body > header nav {
 
 .action-button.action-seed:hover,
 .action-button.action-unseed:hover {
-  color: #2ecc40;
+  color: var(--status-seeding, #2ecc40);
 }
 
 .action-button.action-remove:hover {
@@ -327,7 +362,7 @@ body > header nav {
 }
 
 .settings-saved-message {
-  color: #2ecc40;
+  color: var(--status-seeding, #2ecc40);
   font-size: 0.85rem;
   margin-top: 0.5rem;
 }
@@ -397,6 +432,10 @@ body > header nav {
 }
 
 /* State chip — coloured pill, one per known state. */
+/* Colour pairs reach into the design tokens (--status-*) so they */
+/* track light/dark theme switches. Legacy rgba/hex rules remain   */
+/* directly above color-mix declarations as fallbacks for browsers */
+/* that don't support color-mix (pre-2023).                        */
 .state-chip {
   display: inline-block;
   padding: 0.15rem 0.6rem;
@@ -404,16 +443,44 @@ body > header nav {
   font-size: 0.8125rem;
   font-weight: 600;
 }
-.state-chip.state-downloading { background: rgba(34, 197, 94, 0.18); color: #22c55e; }
-.state-chip.state-seeding     { background: rgba(59, 130, 246, 0.18); color: #3b82f6; }
-.state-chip.state-paused      { background: rgba(156, 163, 175, 0.18); color: #9ca3af; }
-.state-chip.state-checking    { background: rgba(255, 220, 0, 0.18); color: #ffdc00; }
-.state-chip.state-fetching    { background: rgba(156, 163, 175, 0.18); color: #9ca3af; }
+.state-chip.state-downloading {
+  background: rgba(34, 197, 94, 0.18);
+  background: color-mix(in srgb, var(--status-downloading, #22c55e) 18%, transparent);
+  color: var(--status-downloading, #22c55e);
+}
+.state-chip.state-seeding {
+  background: rgba(59, 130, 246, 0.18);
+  background: color-mix(in srgb, var(--status-seeding, #3b82f6) 18%, transparent);
+  color: var(--status-seeding, #3b82f6);
+}
+.state-chip.state-paused {
+  background: rgba(156, 163, 175, 0.18);
+  background: color-mix(in srgb, var(--status-paused, #9ca3af) 18%, transparent);
+  color: var(--status-paused, #9ca3af);
+}
+.state-chip.state-checking {
+  background: rgba(255, 220, 0, 0.18);
+  background: color-mix(in srgb, var(--status-checking, #ffdc00) 18%, transparent);
+  color: var(--status-checking, #ffdc00);
+}
+.state-chip.state-fetching {
+  background: rgba(156, 163, 175, 0.18);
+  background: color-mix(in srgb, var(--status-paused, #9ca3af) 18%, transparent);
+  color: var(--status-paused, #9ca3af);
+}
 .state-chip.state-complete,
 .state-chip.state-sharing,
-.state-chip.state-seed-only   { background: rgba(59, 130, 246, 0.18); color: #3b82f6; }
+.state-chip.state-seed-only {
+  background: rgba(59, 130, 246, 0.18);
+  background: color-mix(in srgb, var(--status-seeding, #3b82f6) 18%, transparent);
+  color: var(--status-seeding, #3b82f6);
+}
 .state-chip.state-stopped,
-.state-chip.state-unknown     { background: rgba(156, 163, 175, 0.18); color: #9ca3af; }
+.state-chip.state-unknown {
+  background: rgba(156, 163, 175, 0.18);
+  background: color-mix(in srgb, var(--status-paused, #9ca3af) 18%, transparent);
+  color: var(--status-paused, #9ca3af);
+}
 
 /* ARIA tablist. */
 .detail-tablist {
@@ -515,9 +582,21 @@ body > header nav {
   border-radius: 0.25rem;
   font-size: 0.8rem;
 }
-.tracker-status-working { background: rgba(34, 197, 94, 0.18); color: #22c55e; }
-.tracker-status-pending { background: rgba(156, 163, 175, 0.18); color: #9ca3af; }
-.tracker-status-error   { background: rgba(239, 68, 68, 0.18); color: #ef4444; }
+.tracker-status-working {
+  background: rgba(34, 197, 94, 0.18);
+  background: color-mix(in srgb, var(--status-seeding, #22c55e) 18%, transparent);
+  color: var(--status-seeding, #22c55e);
+}
+.tracker-status-pending {
+  background: rgba(156, 163, 175, 0.18);
+  background: color-mix(in srgb, var(--status-paused, #9ca3af) 18%, transparent);
+  color: var(--status-paused, #9ca3af);
+}
+.tracker-status-error {
+  background: rgba(239, 68, 68, 0.18);
+  background: color-mix(in srgb, var(--status-error, #ef4444) 18%, transparent);
+  color: var(--status-error, #ef4444);
+}
 .reannounce-form {
   margin-top: 1rem;
 }
@@ -556,9 +635,9 @@ body > header nav {
   margin-block: 0.35rem;
   background: linear-gradient(
     90deg,
-    var(--pico-muted-border-color, #222) 0%,
-    rgba(255, 255, 255, 0.08) 50%,
-    var(--pico-muted-border-color, #222) 100%
+    var(--bg-2, var(--pico-muted-border-color, #222)) 0%,
+    var(--bg-hover, rgba(255, 255, 255, 0.08)) 50%,
+    var(--bg-2, var(--pico-muted-border-color, #222)) 100%
   );
   background-size: 200% 100%;
   border-radius: var(--pico-border-radius, 0.25rem);
@@ -586,7 +665,8 @@ body > header nav {
   padding: 2rem;
   text-align: center;
   background: rgba(156, 163, 175, 0.08);
-  border: 1px solid var(--pico-muted-border-color, #333);
+  background: color-mix(in srgb, var(--fg-2, #9ca3af) 8%, transparent);
+  border: 1px solid var(--border-1, var(--pico-muted-border-color, #333));
   border-radius: var(--pico-border-radius, 0.25rem);
 }
 .removed-banner h2 {
