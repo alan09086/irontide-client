@@ -18,14 +18,14 @@
       <td class="col-url">
         <a href="{{ t.url|e }}" rel="nofollow noopener">{{ t.url }}</a>
       </td>
-      <td class="col-tier">{{ t.tier }}</td>
-      <td class="col-status">
+      <td class="col-tier" data-label="Tier">{{ t.tier }}</td>
+      <td class="col-status" data-label="Status">
         <span class="tracker-status tracker-status-{{ t.status_class }}"
               title="{{ t.status_title }}">{{ t.status_label }}</span>
       </td>
-      <td class="col-seeders">{{ t.seeders }}</td>
-      <td class="col-leechers">{{ t.leechers }}</td>
-      <td class="col-next-announce">{{ t.next_announce_text }}</td>
+      <td class="col-seeders" data-label="Seeders">{{ t.seeders }}</td>
+      <td class="col-leechers" data-label="Leechers">{{ t.leechers }}</td>
+      <td class="col-next-announce" data-label="Next announce">{{ t.next_announce_text }}</td>
     </tr>
     {% endfor %}
   </tbody>

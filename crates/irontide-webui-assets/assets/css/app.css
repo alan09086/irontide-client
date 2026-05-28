@@ -708,26 +708,15 @@ body > header nav {
   }
 }
 
-/* Small phones (≤iPhone SE): stack header, hide non-essential columns. */
+/* Small phones (≤iPhone SE): stack header.
+   Peers / trackers / files tables collapse to card layout below 375px via the
+   M235 block at the bottom of this file (data-label attr + ::before content). */
 @media (max-width: 375px) {
   .detail-status-row,
   .detail-summary {
     flex-direction: column;
     align-items: flex-start;
     gap: 0.25rem;
-  }
-  /* Peers tab: drop Client + Flags columns, keep addr / rates / pieces. */
-  .peers-table .col-client,
-  .peers-table .col-flags {
-    display: none;
-  }
-  /* Trackers tab: drop status label (colour chip still conveys state). */
-  .trackers-table .tracker-status {
-    font-size: 0;      /* hide text but keep the coloured dot */
-    padding: 0.25rem;
-    min-width: 0.5rem;
-    min-height: 0.5rem;
-    border-radius: 50%;
   }
 }
 
@@ -1082,5 +1071,126 @@ main.sidebar-layout {
 @media (prefers-reduced-motion: reduce) {
   .preferences-tab {
     transition: none;
+  }
+}
+
+/* ============================================================
+ * M235 — Col-resize drag handles + responsive card layout
+ *
+ * Idle: 1px right-edge line in --bg-2 so users have a faint hint
+ * that the column edge is interactive. Hover: ~30% accent tint via
+ * color-mix (with rgba fallback per M234's duplicate-declaration
+ * cascade pattern). Token names match the M234 codegen output.
+ * ============================================================ */
+
+.col-resize-handle {
+  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--bg-2, rgba(255, 255, 255, 0.04)) 100%, transparent);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  border-right: 1px solid color-mix(in srgb, var(--bg-2, rgba(255, 255, 255, 0.08)) 100%, transparent);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.col-resize-handle:hover,
+.col-resize-handle:active {
+  background: rgba(29, 184, 206, 0.30);
+  background: color-mix(in srgb, var(--accent, #1db8ce) 30%, transparent);
+  border-right-color: var(--accent, #1db8ce);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .col-resize-handle {
+    transition: none;
+  }
+}
+
+/* ----------------------------------------------------------------
+ * Card layout for peers / trackers / files tables below 375px.
+ *
+ * Each <tr> becomes a stacked block; <thead> hides; <td> displays
+ * as "label: value" rows via ::before { content: attr(data-label) }.
+ * Askama templates emit data-label on every <td> so this CSS works
+ * without any JS. word-break:break-all on long URLs / IPv6 / paths
+ * keeps cards from punching through the viewport.
+ * ---------------------------------------------------------------- */
+@media (max-width: 375px) {
+  .peers-table,
+  .trackers-table,
+  .files-table {
+    display: block;
+    width: 100%;
+  }
+  .peers-table thead,
+  .trackers-table thead,
+  .files-table thead {
+    /* Visually-hidden but kept for screen readers via aria-hidden=false default. */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+  }
+  .peers-table tbody,
+  .trackers-table tbody,
+  .files-table tbody {
+    display: block;
+    width: 100%;
+  }
+  .peers-table tr,
+  .trackers-table tr,
+  .files-table tr {
+    display: block;
+    width: 100%;
+    margin-block-end: 0.75rem;
+    padding: 0.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid color-mix(in srgb, var(--bg-2, rgba(255, 255, 255, 0.08)) 100%, transparent);
+    border-radius: var(--pico-border-radius, 0.25rem);
+    background: rgba(255, 255, 255, 0.02);
+    background: color-mix(in srgb, var(--bg-1, rgba(255, 255, 255, 0.02)) 100%, transparent);
+  }
+  .peers-table td,
+  .trackers-table td,
+  .files-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.25rem 0;
+    text-align: end;
+    word-break: break-all;
+    border: 0;
+  }
+  .peers-table td::before,
+  .trackers-table td::before,
+  .files-table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    text-align: start;
+    color: var(--fg-2, #9ca3af);
+    flex-shrink: 0;
+    min-width: 5rem;
+  }
+  /* Cells with no data-label (e.g., wide path cell) span the row. */
+  .peers-table td:not([data-label]),
+  .trackers-table td:not([data-label]),
+  .files-table td:not([data-label]) {
+    display: block;
+    text-align: start;
+  }
+  /* Tracker URL cell wraps the long link; align rate/pieces cells right. */
+  .trackers-table .col-url a {
+    word-break: break-all;
+  }
+  .files-table .col-path {
+    word-break: break-all;
+  }
+  /* Priority <select> in files tab needs to stay tappable at 44px. */
+  .files-table .priority-select {
+    min-width: 6rem;
+    max-width: 8rem;
   }
 }

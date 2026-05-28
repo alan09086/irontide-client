@@ -14,14 +14,14 @@
   <tbody>
     {% for row in files %}
     <tr>
-      <td class="col-idx">{{ row.idx }}</td>
+      <td class="col-idx" data-label="#">{{ row.idx }}</td>
       <td class="col-path">{{ row.path }}</td>
-      <td class="col-size">{{ row.size }}</td>
-      <td class="col-progress">
+      <td class="col-size" data-label="Size">{{ row.size }}</td>
+      <td class="col-progress" data-label="Progress">
         <progress value="{{ row.progress }}" max="1"></progress>
         <span>{{ row.progress_pct }}</span>
       </td>
-      <td class="col-priority">
+      <td class="col-priority" data-label="Priority">
         <select name="priority"
                 class="priority-select"
                 hx-patch="/webui/torrents/{{ hash }}/files/{{ row.idx }}"

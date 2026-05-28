@@ -627,3 +627,39 @@ async fn files_fragment_three_file_torrent_priority_select_marks_normal_after_re
         "expected three rows with `Normal` selected, got {normal_selected_count}: {text}"
     );
 }
+
+/// M235 — files-tab Askama template emits `data-label` on each labelled
+/// `<td>` so the 375px card-layout CSS can render the column name via
+/// `::before { content: attr(data-label) }`. Path cells are intentionally
+/// label-less (they span the row in card layout).
+#[tokio::test]
+async fn files_fragment_emits_data_label_attrs_for_m235_card_layout() {
+    let (router, _tempdir, hash) = make_three_file_router_and_hash().await;
+
+    let req = Request::get(format!("/webui/fragments/torrent/{hash}/files"))
+        .body(Body::empty())
+        .expect("build request");
+    let response = router.clone().oneshot(req).await.expect("files fragment");
+    assert_eq!(response.status(), StatusCode::OK);
+    let text = body_text(response).await;
+
+    // Each labelled cell must emit the data-label attribute.
+    for label in [
+        r##"data-label="#""##,
+        r#"data-label="Size""#,
+        r#"data-label="Progress""#,
+        r#"data-label="Priority""#,
+    ] {
+        assert!(
+            text.contains(label),
+            "files fragment missing {label}, got {text}"
+        );
+    }
+    // The path cell is intentionally NOT labelled (spans the row in card layout).
+    // Three files in the fixture → three rows → three labelled instances of each.
+    assert_eq!(
+        text.matches(r#"data-label="Size""#).count(),
+        3,
+        "expected 3 data-label='Size' occurrences, got {text}"
+    );
+}

@@ -15,14 +15,14 @@
   <tbody>
     {% for p in peers %}
     <tr>
-      <td class="col-addr">{{ p.addr }}</td>
-      <td class="col-client">{{ p.client }}</td>
-      <td class="col-flags">
+      <td class="col-addr" data-label="Address">{{ p.addr }}</td>
+      <td class="col-client" data-label="Client">{{ p.client }}</td>
+      <td class="col-flags" data-label="Flags">
         {% for flag in p.flags %}<abbr title="{{ flag.1 }}">{{ flag.0 }}</abbr>{% endfor %}
       </td>
-      <td class="col-down-rate">{{ p.down_rate }}</td>
-      <td class="col-up-rate">{{ p.up_rate }}</td>
-      <td class="col-pieces">{{ p.num_pieces }}</td>
+      <td class="col-down-rate" data-label="Down">{{ p.down_rate }}</td>
+      <td class="col-up-rate" data-label="Up">{{ p.up_rate }}</td>
+      <td class="col-pieces" data-label="Pieces">{{ p.num_pieces }}</td>
     </tr>
     {% endfor %}
   </tbody>

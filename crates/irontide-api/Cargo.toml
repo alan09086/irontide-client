@@ -28,7 +28,7 @@ webui = [
 dev-webui = ["tower-http/fs"]
 
 [dependencies]
-irontide = { path = "../irontide", version = "1.0.0-rc13", default-features = false }
+irontide = { path = "../irontide", version = "1.0.0-rc14", default-features = false }
 aws-lc-rs = "1.16"
 axum = { version = "0.8", features = ["ws", "multipart"] }
 axum-extra = { version = "0.10", features = ["cookie"] }
@@ -47,7 +47,7 @@ ipnet = { workspace = true }
 num_cpus = { workspace = true }
 
 # Web UI (behind "webui" feature)
-irontide-webui-assets = { path = "../irontide-webui-assets", version = "1.0.0-rc13", optional = true }
+irontide-webui-assets = { path = "../irontide-webui-assets", version = "1.0.0-rc14", optional = true }
 irontide-format = { workspace = true, optional = true }
 askama = { version = "0.15", optional = true }
 askama_web = { version = "0.15", features = ["axum-0.8"], optional = true }
@@ -81,7 +81,7 @@ tokio = { workspace = true, features = ["test-util"] }
 tokio-tungstenite = "0.28"
 tower = { version = "0.5", features = ["util"] }
 # M172a Lane A: integration tests exercise the on-disk migration helper.
-irontide-config = { path = "../irontide-config", version = "1.0.0-rc13" }
+irontide-config = { path = "../irontide-config", version = "1.0.0-rc14" }
 # M172a Lane B: real-TCP reqwest-based *arr handshake smoke tests.
 reqwest = { version = "0.12", default-features = false, features = [
     "rustls-tls",
@@ -110,5 +110,5 @@ irontide-session = { path = "../irontide-session", features = ["test-util"] }
 # `sha1()` is `#[cfg]`-gated on the crypto backend and the feature is
 # already unified-on from the `irontide-api` → `irontide` → `irontide-core`
 # chain — no new feature surface.
-irontide-core = { path = "../irontide-core", version = "1.0.0-rc13" }
-irontide-bencode = { path = "../irontide-bencode", version = "1.0.0-rc13" }
+irontide-core = { path = "../irontide-core", version = "1.0.0-rc14" }
+irontide-bencode = { path = "../irontide-bencode", version = "1.0.0-rc14" }

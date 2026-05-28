@@ -255,6 +255,53 @@ mod tests {
         );
     }
 
+    /// M235 — app.css must define `.col-resize-handle` with hover state and
+    /// a 375px card-layout `@media` block keyed to `data-label`. Substring
+    /// assertion only; visual correctness is verified in mobile dogfood.
+    #[test]
+    fn test_app_css_has_m235_col_resize_handle_and_card_layout() {
+        let (_mime, bytes) = get("css/app.css").expect("app.css embedded");
+        let content = String::from_utf8_lossy(&bytes);
+        assert!(
+            content.contains(".col-resize-handle"),
+            "app.css must style .col-resize-handle so drag handles are discoverable"
+        );
+        assert!(
+            content.contains(".col-resize-handle:hover")
+                || content.contains(".col-resize-handle:active"),
+            "app.css must provide a hover/active state for .col-resize-handle"
+        );
+        assert!(
+            content.contains("@media (max-width: 375px)"),
+            "app.css must keep a 375px breakpoint block"
+        );
+        assert!(
+            content.contains("data-label"),
+            "app.css must reference data-label (card-layout ::before content)"
+        );
+        // The card-layout block must target all three detail-pane tables.
+        for selector in [".peers-table", ".trackers-table", ".files-table"] {
+            assert!(
+                content.contains(selector),
+                "app.css must style {selector} (M235 card layout)"
+            );
+        }
+    }
+
+    /// M235 — index.html must load `col-resize.js` so the M167-era
+    /// column-resize feature activates. The new `.col-resize-handle`
+    /// CSS provides the visible affordance assertion lives in
+    /// `test_app_css_has_m235_col_resize_handle_and_card_layout`.
+    #[test]
+    fn test_index_html_links_col_resize_js() {
+        let (_mime, bytes) = get("index.html").expect("index.html embedded");
+        let content = String::from_utf8_lossy(&bytes);
+        assert!(
+            content.contains("js/col-resize.js"),
+            "index.html must load js/col-resize.js so column widths can be dragged"
+        );
+    }
+
     #[test]
     fn test_col_resize_js_has_storage_and_drag() {
         let (_mime, bytes) = get("js/col-resize.js").expect("col-resize.js embedded");
