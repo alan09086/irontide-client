@@ -368,7 +368,7 @@ mod tests {
         let map = build_counters_map(&session);
         assert_eq!(
             map.len(),
-            irontide_session::stats::NUM_METRICS,
+            irontide::session::NUM_METRICS,
             "build_counters_map must surface every session metric"
         );
     }

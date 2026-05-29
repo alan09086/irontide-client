@@ -7,8 +7,8 @@
 //! - `POST /api/v2/torrents/editCategory`  → change an existing category's `save_path`
 //! - `POST /api/v2/torrents/removeCategories` → remove categories (newline-delimited)
 //!
-//! The underlying registry lives on the session actor (see
-//! `irontide_session::category_manager`). This module is pure DTO +
+//! The underlying registry lives on the session actor's category
+//! manager. This module is pure DTO +
 //! error-shape mapping; the only logic here is form-body parsing and
 //! translating session errors to qBt-shaped HTTP status codes.
 //!
