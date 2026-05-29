@@ -1,0 +1,94 @@
+[workspace]
+members = ["crates/*"]
+resolver = "2"
+
+[workspace.package]
+version = "1.0.1"
+edition = "2024"
+rust-version = "1.95"
+license = "GPL-3.0-or-later"
+repository = "https://codeberg.org/alan090/irontide-client"
+homepage = "https://codeberg.org/alan090/irontide-client"
+keywords = ["bittorrent", "torrent", "qbittorrent"]
+categories = ["network-programming"]
+
+# === Dependency boundary (M237b repo split) ==============================
+#
+#   app crate --{ workspace = true }--> [workspace.dependencies] --+--> path       (app-internal: api / webui-assets / config)
+#                                                                  |
+#                                                                  +--> crates.io  (PUBLISHED irontide 1.0.x -- NO local path)
+#
+# There is intentionally NO [patch.crates-io] and no `path = "../irontide*"`:
+# the client always builds against the PUBLISHED library, so every build
+# (yours, a fresh clone's, CI's) resolves the same released engine. To test
+# the client against an unpublished engine change, publish the engine first
+# (a real or pre-release version) and bump the irontide* pins below -- never
+# add a local override (it silently defeats the "provably on a published
+# release" guarantee and rots CI vs. local builds).
+# =========================================================================
+[workspace.dependencies]
+# --- App-internal crates (path + caret "1"; intra-1.x bumps never edit these) ---
+irontide-api          = { path = "crates/irontide-api",          version = "1" }
+irontide-webui-assets = { path = "crates/irontide-webui-assets", version = "1" }
+irontide-config       = { path = "crates/irontide-config",       version = "1" }
+
+# --- Library family from crates.io (PUBLISHED at 1.0.1; no path, no patch) ---
+irontide         = { version = "1.0.1", default-features = false }
+irontide-format  = { version = "1.0.1" }
+irontide-session = { version = "1.0.1" }   # consumed directly by irontide-config
+irontide-core    = { version = "1.0.1" }   # irontide-api dev-deps
+irontide-bencode = { version = "1.0.1" }   # irontide-api dev-deps
+
+# --- Third-party (only the entries the app set consumes) ---
+serde = { version = "1", features = ["derive"] }
+serde_bytes = "0.11"
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+parking_lot = "0.12"
+core_affinity = "0.8"
+num_cpus = "1.16"
+
+# argon2 password hashing + zeroize + CIDR parsing (irontide-api M172a auth).
+argon2 = { version = "0.5", default-features = false, features = ["alloc", "password-hash"] }
+zeroize = { version = "1.8", features = ["derive"] }
+ipnet = { version = "2.10", features = ["serde"] }
+
+# GUI (Slint) + tray + filesystem watch + clipboard + enum parsing.
+slint = "1"
+slint-build = "1"
+tray-icon = "0.24"
+notify-debouncer-full = "0.7"
+arboard = "3"
+strum = { version = "0.26", features = ["derive"] }
+
+# tokio-console layer (irontide-cli `tokio-console` feature, CLI only).
+console-subscriber = "0.4"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+
+too_many_lines = "allow"
+struct_excessive_bools = "allow"
+similar_names = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+
+await_holding_lock = "deny"
+large_enum_variant = "warn"
+
+# M175: cast safety — every `as` narrowing/widening cast must be justified.
+cast_possible_truncation = "deny"
+cast_precision_loss = "deny"
+cast_possible_wrap = "deny"
+cast_sign_loss = "deny"
+unchecked_time_subtraction = "deny"
+
+# M179: must-use enforcement.
+must_use_candidate = "deny"
+return_self_not_must_use = "deny"
+
+# M201: style + refactor sweep.
+redundant_clone = "deny"
+use_self = "deny"
+or_fun_call = "deny"

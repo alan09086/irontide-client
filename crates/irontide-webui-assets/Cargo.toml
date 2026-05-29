@@ -8,6 +8,7 @@ homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 description = "Vendored static assets for the IronTide Web UI (HTMX + Pico CSS)"
+publish = false
 
 [lints]
 workspace = true

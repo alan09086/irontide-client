@@ -1,0 +1,29 @@
+/target
+**/target/
+.worktrees/
+.ctx/
+docs/reference/rqbit-source/
+perf.data*
+heaptrack.*
+
+.superpowers/
+docs/superpowers/
+.gstack/
+benchmarks/results/
+benchmarks/fixtures/seed-only-corpus/
+# Heaptrack raw dumps + full extraction — section-split rollups are
+# kept (heaptrack_most_calls.txt, peak_consumers, temp_allocs, totals).
+**/*.heaptrack.zst
+**/heaptrack_full.txt
+
+# Media files (dogfood test payloads and similar)
+*.mkv
+*.mp4
+*.avi
+*.iso
+
+# Packaging build output
+dist/
+
+# Local-only notes (kept on disk, not in public repo)
+TODOS.md

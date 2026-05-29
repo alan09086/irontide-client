@@ -8,6 +8,7 @@ homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 description = "HTTP REST API for the irontide engine"
+publish = false
 
 [lints]
 workspace = true
@@ -101,7 +102,7 @@ tracing-test = { version = "0.2", features = ["no-env-filter"] }
 # to activate the test-util feature without re-enabling the facade's default
 # crypto-aws-lc feature in test builds. Used only by qbt_v2_magnet_meta_propagation.rs
 # (the A9 HTTP integration test).
-irontide-session = { path = "../irontide-session", features = ["test-util"] }
+irontide-session = { workspace = true, features = ["test-util"] }
 # v0.173.2: direct dev-deps on leaf crates referenced by the A9 helpers in
 # tests/common/mod.rs. `irontide-core` is NOT transitively accessible as a
 # crate name from the test binary (only reachable via the `irontide`
