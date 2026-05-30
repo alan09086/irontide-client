@@ -7,6 +7,18 @@ adheres to [Semantic Versioning](https://semver.org/). The client's version line
 independent of the `irontide` engine library it consumes — they share `1.0.1` at the
 split point and diverge from here.
 
+## [Unreleased]
+
+### Documentation
+- **Roadmap split follow-through (2026-05-30).** Added [`ROADMAP.md`](ROADMAP.md) — the client
+  app roadmap, starting fresh at **M1** (Phase 1 visual redesign / CODEBASE-CLEANUP drift
+  removal; Phase 2 binary packaging; Phase 3 feature maturation), documenting the
+  pure-published cross-repo boundary. **Received the design docs** (`docs/design/` —
+  `DESIGN.md`, `DESIGN-SYSTEM.md`, `CODEBASE-CLEANUP.md`, the token snapshot, components,
+  screenshots, `archive/`) **relocated from the engine repo**, where they had been stranded
+  since M239; they describe this repo's GUI/WebUI code. Added a repo-local `CLAUDE.md`. No code
+  change and no version bump — engine and client both stay at `1.0.1`.
+
 ## [1.0.1] — 2026-05-29 — Repo extraction: `irontide-client` standalone application (M237b)
 
 First release of `irontide-client` as a standalone repository, extracted from the

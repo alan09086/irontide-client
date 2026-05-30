@@ -1,163 +1,115 @@
 # irontide-client — Session Notes
 
-**Session date:** 2026-05-29
-**Focus:** **Repo birth.** This repo was created at IronTide **M237b** by extracting the 5
-application crates out of the `irontide` workspace (`git filter-repo`, full history
-preserved) and rewiring them to consume the **published** `irontide` engine library from
-crates.io. This is the inaugural SESSION_NOTES.
-**Current version:** `1.0.1` (the app train's own SSOT, independent of the engine henceforth).
-**Branch:** `main`. **Clean and green on both remotes — nothing in-flight.**
+**Latest session:** 2026-05-30 · **Focus:** **Repo split follow-through (docs half).** The
+M237b crate-extraction created this repo on 2026-05-29; this session finished the split on the
+**documentation** side — authored the client `ROADMAP.md` (fresh at M1, visual-redesign-first),
+received the `docs/design/` tree relocated from the engine repo, and added a repo-local `CLAUDE.md`.
+**Current version:** `1.0.1` (unchanged — docs/housekeeping only; no code, no publish).
+**Branch:** `main`, clean and green on both remotes.
+
+> **Repo origin (2026-05-29, M237b):** this repo was born by extracting the 5 application crates
+> from the unified `irontide` workspace (`git filter-repo`, full history preserved) and rewiring
+> them onto the **published** `irontide` engine from crates.io. The birth details (extraction
+> mechanics, the pure-published decision, version-independence) are in `CHANGELOG.md` (`[1.0.1]`)
+> and the engine plan `../irontide/docs/plans/2026-05-28-irontide-m237-repo-extraction.md` (Phase C).
 
 ---
 
-## 1. Session date + focus + current version
+## 1. Current state
 
-`irontide-client` holds the BitTorrent **client application**: `irontide-api`,
-`irontide-webui-assets`, `irontide-config`, `irontide-cli`, `irontide-gui`. It consumes
-the engine as a normal Rust dependency — `irontide = "1.0.1"` (and sibling lib crates)
-from **crates.io**, with **no `[patch.crates-io]`** (pure-published). Created this session
-from the eng-reviewed plan
-`../irontide/docs/plans/2026-05-28-irontide-m237-repo-extraction.md` (Phase C).
-
----
-
-## 2. Current task state and progress
-
-**Born complete & pushed.** `git status` on a fresh clone is a clean tree on `main`,
-HEAD at `2b2e3b6a`, tag `v1.0.1` (`05c7b8c7`) on both remotes. Nothing is mid-review or
-on a feature worktree.
-
-- **Workspace:** 5 crates. Lib edges (`irontide`, `irontide-format`, `irontide-session`,
-  `irontide-core`, `irontide-bencode`) resolve from crates.io via `[workspace.dependencies]`;
-  app-internal edges (`irontide-api`, `irontide-webui-assets`, `irontide-config`) are
-  path deps. **No `[patch.crates-io]` block** — the committed build is the only build.
-- **All crates `publish = false`** — this repo never publishes to crates.io.
-- **CI:** `.github/workflows/ci.yml` mirrors the lib's test job (fmt-check + clippy
-  `-D warnings` + `cargo test --workspace`, `CARGO_BUILD_JOBS=2`) plus the GTK/Slint/X11
-  system-dep install the GUI needs. No release/publish workflow (GH-Actions minutes restricted).
-- **This session's uncommitted delta:** `.cgcignore` (added in Phase D for CGC hygiene)
-  + this `docs/SESSION_NOTES.md`. Both land in the Phase D commit.
+- **Workspace:** 5 crates (`irontide-api`, `irontide-webui-assets`, `irontide-config`,
+  `irontide-cli`, `irontide-gui`). Lib edges resolve from crates.io (`irontide = "1.0.1"` +
+  siblings); app-internal edges are path deps. **No `[patch.crates-io]`** — pure-published.
+- **Green** — builds/tests/clippy pass against the published `irontide 1.0.1`.
+- **Docs now present:** `ROADMAP.md` + `docs/design/` + `CLAUDE.md` (all this session), plus the
+  inaugural `CHANGELOG.md` / `README.md` / `TODOS.md`.
+- **Nothing in-flight** — no feature worktree, nothing mid-review. The first dedicated code
+  milestone (**M1 — CODEBASE-CLEANUP drift removal**) is now *defined* in `ROADMAP.md`, not started.
 
 ---
 
-## 3. What happened this session
+## 2. What happened — 2026-05-30 (split follow-through)
 
-1. **Extraction (Phase C/C1):** fresh `--no-local` clone of `irontide` → `git reset --hard`
-   to the `m237-prep` Phase-A tip (app crates present at tip) → stripped other refs →
-   `git filter-repo --path` for the 5 crate dirs + `LICENSE` + `.cargo/config.toml` +
-   `rustfmt.toml`. 372 commits of app-crate lineage preserved back through M236 / v1.0 GA.
-2. **Rewire (Phase C/C2-C3):** authored the pure-published workspace root (lib pins from
-   crates.io, app-internal path deps, **no patch block**, `[workspace.lints.clippy]`
-   copied from the lib); flipped each app crate's lib edges to `{ workspace = true }`.
-   Cold build + test + clippy against the **published** `irontide 1.0.1` → **ALL_GREEN**.
-3. **CI + changelog (C4):** wrote `ci.yml` + a fresh Keep-a-Changelog `CHANGELOG.md`
-   (`## [1.0.1] — 2026-05-29 — Repo extraction`).
-4. **Remotes + tag (C5) — ⛔ owner-signed-off "you create and push both":** created the
-   empty repos (Codeberg `alan090` HTTP 201, GitHub `alan09086` via `gh`), pushed `main`
-   (`2b2e3b6a`) + annotated `v1.0.1` (`05c7b8c7`) to both. Verified byte-identical.
-5. **Phase D ripple:** seeded `TODOS.md` (binary-packaging — gitignored, D6); added
-   `.cgcignore`; indexed into CGC (159 files, 2294 functions — sane); this SESSION_NOTES.
+The M237b crate-split moved the code cleanly but left the **roadmap and design docs** describing a
+single pre-split world. This session split them to match the two-repo reality:
+
+1. **Received the design docs.** The entire `docs/design/` tree (106 files — `DESIGN.md`,
+   `DESIGN-SYSTEM.md`, `CODEBASE-CLEANUP.md`, the `styles/tokens.css` snapshot, components,
+   screenshots, `archive/`) was relocated here from the engine repo, where it had been stranded
+   since M239. These docs describe **this** repo's GUI/WebUI code (CODEBASE-CLEANUP.md is literally
+   addressed to "CODING AGENTS" working on the Slint GUI). The retired OKLCH token-codegen toolchain
+   was **not** carried over — it was dropped on the engine side, so `tokens.css` is now a static snapshot.
+2. **Authored `ROADMAP.md`** — fresh at **M1**, visual-redesign-first: Phase 1 (M1 CODEBASE-CLEANUP
+   drift removal → M2+ apply the redesign), Phase 2 (binary packaging), Phase 3 (feature maturation),
+   plus the pure-published cross-repo boundary.
+3. **Added a repo-local `CLAUDE.md`** — what the repo is, the pure-published hard rule, build/test
+   commands, roadmap/design pointers, handoff + dual-remote conventions.
+4. **CHANGELOG `[Unreleased]` docs note** + this SESSION_NOTES refresh.
+
+On the **engine** side (separate repo, same day): the engine `ROADMAP.md` was rewritten engine-only
+(pre-split history condensed to a Lineage pointer; Phase P M240–M250 forward detail kept; M239
+reclassified as a client tombstone), and the `docs/design/` tree + the retired codegen scripts were
+`git rm`'d there. See `../irontide/docs/SESSION_NOTES.md`.
 
 ---
 
-## 4. Decisions made with reasoning
+## 3. Decisions (this session)
 
 | Decision | Why | Consequence |
 |---|---|---|
-| **Pure-published — no `[patch.crates-io]`** | A commented-out patch invites the "forgot to re-comment → silently build against a local engine" hazard. Pure-published guarantees every build (yours, CI, fresh clone) is on a real released engine. | To test against an unpublished engine change, **publish the engine first** (real or pre-release) and bump the pin here. No local override exists. |
-| **App train versions independently of the engine** | Post-split the app and engine evolve on separate cadences; coupling their version numbers would be artificial. | `[workspace.package].version` here is the app's own SSOT. It happens to start at `1.0.1` (matching the extraction point) but moves on its own. |
-| **No crates.io publish, ever (`publish = false`)** | This is an application, not a library — nothing downstream consumes it as a crate. | Releases here are git tags + (eventually) binary artifacts, never crates.io. |
-| **Plain `v{version}` tags (not `app-v…`)** | Separate repos already disambiguate the two trains. | One-line `release-plz.toml`/tagging change if cross-repo tag disambiguation is ever wanted. |
-| **release-plz dropped** | Its `release` command unconditionally calls a git-forge API (no-forge-token policy); and this repo publishes nothing, so release-plz offered no ordered-publish value here. | Tag manually (`git tag -a`). No `release-plz.toml`. |
+| **Client roadmap starts at M1, not continuing pre-split M-numbers** | The app and engine plan independently post-split; re-numbering 236 pre-split milestones into the client would be archaeology. | Pre-split GUI history is lineage (git log + `CHANGELOG.md`); forward work is M1+. |
+| **Visual redesign is the headline Phase 1** | The single-locked redesign (`docs/design/`) is the client's biggest forward arc, and M1 (CODEBASE-CLEANUP) unblocks it. | Binary packaging — the obvious "ship it" gap — is deferred to Phase 2, behind the redesign. |
+| **Design docs relocated, not copied** | They describe client code; keeping a copy in the engine would re-strand them. | Engine keeps no design docs; the engine roadmap points here for visual scope. |
+| **Retired OKLCH codegen dropped, not relocated** | The token-codegen toolchain is retired; `tokens.css` ships as a static snapshot; M1 reintroduces no regen toolchain. | The locked palette is hand-maintained from M1 onward. |
 
 ---
 
-## 5. Code changes with intent
+## 4. Next steps
 
-| File / area | What | Why |
-|---|---|---|
-| `Cargo.toml` (root) | Pure-published workspace: lib pins from crates.io, app-internal path deps, **no patch block**, clippy lints copied | The boundary the whole split exists to create — provably on a published engine. |
-| `crates/*/Cargo.toml` | Lib edges → `{ workspace = true }` (now crates.io-backed); `publish = false` on api + webui-assets | App consumes the engine like any Rust dep; nothing here is a publishable crate. |
-| `.github/workflows/ci.yml` | Mirror lib test job + GUI system deps; no release job | Identical lint/test gate post-split; GH-Actions minutes restricted. |
-| `CHANGELOG.md` | Fresh `1.0.1` extraction entry | App-side record of the split. |
-| `.cgcignore` | `benchmarks/`, `**/*.min.js`, `target/` (+ CGC defaults) | `webui-assets` bundles minified htmx — keep CGC indexing Rust, not vendored JS. |
-| `TODOS.md` *(gitignored)* | Binary-release packaging entry (D6) | The GUI/CLI binaries live here; distribution is the obvious next gap. |
+**IMMEDIATE:** none required — green at `1.0.1`, docs now coherent across both repos.
 
----
+**FIRST CODE MILESTONE — M1 (CODEBASE-CLEANUP drift removal).** Implement
+`docs/design/CODEBASE-CLEANUP.md`'s Definition-of-Done (§10) against the GUI as it now lives here:
+delete `Skin`/`Theme`/`RadiusPreset` enums, reduce the skin module to density-only, bake the locked
+palette into the Slint tokens, confirm the OKLCH codegen + CI drift gate are gone, Preferences shows
+Density only, KDE/Breeze chrome, Linux paths, `cargo test -p irontide-gui` green. **The cleanup spec's
+file paths predate the split — locate the current post-split paths of `skin.rs` / `skin_tokens.rs` /
+`ui/tokens.slint` / `prefs.rs` first; do not hardcode.** Recommended: `superpowers:writing-plans` →
+`/milestone-cycle` (SLUG `alan090-irontide-client`).
 
-## 6. User-provided context worth preserving
+**WHEN THE ENGINE SHIPS A NEW VERSION:** bump the `irontide*` pins in `[workspace.dependencies]`, run
+the full gate (`cargo build/test/clippy --workspace`), tag + push both remotes. No local path shortcut.
 
-- **Dual remotes:** `origin` = Codeberg (`alan090`), `github` = GitHub (`alan09086`).
-  Push to **both** on every push.
-- **Pure-published is a hard rule** — never add `[patch.crates-io]`. Engine changes reach
-  this app only via a crates.io publish (in the `irontide` repo) + a pin bump here.
-- **Memory candidate (promote):** `project_irontide_repo_split` — the lib/app split, the
-  pure-published boundary, and the publish-then-bump workflow apply to every future session
-  touching either repo.
-- The engine lib's own handoff lives in `../irontide/docs/SESSION_NOTES.md`.
+**LATER:** Phase 2 (binary packaging — see `TODOS.md`), Phase 3 (feature maturation).
 
 ---
 
-## 7. Open questions and blockers
+## 5. Commits this session (2026-05-30)
 
-**BLOCKERS:** none.
+1. `docs: relocate design docs from engine repo (M239 reclassification — these describe client GUI/WebUI code)` — `docs/design/` (106 files) received from the engine. **`b0ccdcbb`**.
+2. `docs: author client ROADMAP.md (Phase 1 visual redesign M1, Phase 2 packaging) + repo CLAUDE.md; CHANGELOG/SESSION_NOTES ripple` — this commit (ROADMAP.md + CLAUDE.md + CHANGELOG `[Unreleased]` + these notes).
 
-**OPEN QUESTIONS (deferred, non-blocking):**
-- **Binary-release packaging** (the `TODOS.md` entry) — `cargo-dist` vs a scoped release
-  workflow; must override `target-cpu=native` in `.cargo/config.toml` for portable
-  artifacts; per-platform matrix (linux/macos/windows) + the GUI's GTK/Slint/X11 deps.
-- Tag prefix stays plain `v{version}` unless cross-repo disambiguation is wanted later.
+Both pushed to `origin` (Codeberg `alan090`) + `github` (GitHub `alan09086`). OSS identity
+`Alan Gaudet <alan@alangaudet.dev>`, no co-author trailer.
 
 ---
 
-## 8. Clear next steps in order
+## 6. For the next Claude
 
-**IMMEDIATE:** none required — the repo is green and released at `1.0.1`.
+**Read in order:**
+1. **This file** — current state: docs split done, M1 is the first code milestone.
+2. **`ROADMAP.md`** — the client arc (Phase 1 visual redesign from M1).
+3. **`CLAUDE.md`** (this repo) + `/mnt/CYBERDECK_01/projects/CLAUDE.md` + `~/.claude/CLAUDE.md` —
+   conventions (pure-published, dual-remote, handoff, CGC-first).
+4. **`docs/design/`** — the visual redesign source of truth; `CODEBASE-CLEANUP.md` is the M1 spec.
+5. **`CHANGELOG.md`** + **`../irontide/docs/SESSION_NOTES.md`** — the split record (both halves).
 
-**WHEN THE ENGINE SHIPS A NEW VERSION:** bump the `irontide`/sibling pins in
-`[workspace.dependencies]` to the new published version, run the full gate
-(`cargo build/test/clippy --workspace`), then tag + push both remotes. This is the
-normal "consume a new engine release" loop — there is no local path to shortcut it.
-
-**FIRST DEDICATED MILESTONE (recommended): binary-release packaging.** Pick `cargo-dist`
-or a scoped per-platform release workflow; override `target-cpu=native`; produce
-installable GUI + CLI artifacts. Reference the `TODOS.md` entry. Recommended skill:
-`superpowers:writing-plans` then `/milestone-cycle` (SLUG `alan090-irontide-client`).
-
----
-
-## 9. Commits this session (app repo)
-
-1. `build(M237b): irontide-client app workspace — consumes irontide 1.0.1 from crates.io` (**`2b2e3b6a`**, C4)
-2. *(Phase D commit — `.cgcignore` + this `docs/SESSION_NOTES.md` — pending at time of writing)*
-
-Plus annotated tag **`v1.0.1`** (`05c7b8c7`), pushed to both remotes.
+**Cue to start M1:** *"Invoke `superpowers:writing-plans`, reference `docs/design/CODEBASE-CLEANUP.md`'s
+DoD §10, locate the current post-split paths of `skin.rs` / `skin_tokens.rs` / `ui/tokens.slint` /
+`prefs.rs`, and plan the drift removal as a `/milestone-cycle` run (SLUG `alan090-irontide-client`)."*
 
 ---
 
-## 10. For the next Claude picking this up
-
-**Read in this order:**
-
-1. **This file** — the repo is the app side of the M237b split; consumes the published
-   `irontide`; pure-published (never add `[patch.crates-io]`); next dedicated work is
-   binary packaging.
-2. **`/mnt/CYBERDECK_01/projects/CLAUDE.md`** — the `irontide-client/` row + cross-project
-   Rust commands. Plus `~/.claude/CLAUDE.md` (global): dual-remote push, CGC-first,
-   handoff discipline, verify-HEAD-before-commit.
-3. **`TODOS.md`** (gitignored, local) — the binary-packaging scope.
-4. **`../irontide/docs/SESSION_NOTES.md`** — the engine side; how/when a new engine
-   version gets published (which is what you'd bump the pins to).
-5. *(For the split mechanics)* `../irontide/docs/plans/2026-05-28-irontide-m237-repo-extraction.md`.
-
-**Cue to start the next work:** *"To package binaries: invoke `superpowers:writing-plans`,
-reference `TODOS.md`'s binary-release entry, decide cargo-dist vs a release workflow, and
-remember `.cargo/config.toml`'s `target-cpu=native` must be overridden for portable
-artifacts."*
-
----
-
-**`irontide-client` is the downstream consumer of the `irontide` engine library — born at
-M237b from a history-preserving extraction, building green against the published
-`irontide 1.0.1`, with a pure-published boundary that guarantees every build is on a real
-engine release.**
+**`irontide-client` is the application half of the M237b split — Slint GUI + CLI/daemon + HTMX WebUI
+on a pure-published engine boundary. The crate split landed 2026-05-29; the docs split (roadmaps +
+design relocation) landed 2026-05-30. Next: M1 visual-redesign cleanup.**
