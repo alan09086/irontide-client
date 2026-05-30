@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en" data-density="compact" data-glow="on">
+<head>
+<meta charset="utf-8"/>
+<title>IronTide — Menu Reference</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles/tokens.css"/>
+<style>
+  html, body { height: 100%; overflow: auto; }
+  body { padding: 32px 28px 56px; }
+  .sheet-head { max-width: 1180px; margin: 0 auto 24px; }
+  .sheet-title { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+  .sheet-sub { color: var(--fg-2); font-size: 13px; margin-top: 6px; line-height: 1.5; }
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 14px; font-size: 12px; color: var(--fg-1); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .menubar-demo {
+    max-width: 1180px; margin: 0 auto 8px; height: 28px;
+    background: var(--bg-1); border: 1px solid var(--border-1); border-radius: var(--r-md);
+    display: flex; align-items: center; padding: 0 4px; font-size: 12.5px;
+  }
+  .menubar-demo button { padding: 4px 9px; background: transparent; border: none; color: var(--fg-1); border-radius: var(--r-sm); font: inherit; }
+  .menubar-demo button.active { background: var(--bg-hover); color: var(--fg-0); }
+  .columns { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 18px 16px; align-items: start; }
+  .col { min-width: 0; }
+  .col-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--fg-3); margin: 0 0 8px 4px; }
+  .panel { width: 100%; background: var(--bg-2); border: 1px solid var(--border-1); border-radius: var(--r-md); box-shadow: var(--shadow-lg); padding: 5px; }
+  .mi { display: flex; align-items: center; gap: 8px; height: 27px; padding: 0 10px 0 4px; border-radius: var(--r-sm); color: var(--fg-0); font-size: 12.5px; white-space: nowrap; }
+  .mi .lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .mi .sc { font-family: var(--font-mono); color: var(--fg-3); font-size: 11px; margin-left: 16px; }
+  .mi .chev { color: var(--fg-2); margin-left: 8px; display: inline-flex; }
+  .gutter { width: 16px; display: inline-flex; justify-content: center; color: var(--accent); }
+  .sep { height: 1px; background: var(--divider); margin: 4px 6px; }
+  .submenu { margin: 2px 0 4px 22px; border-left: 1px solid var(--border-1); padding-left: 6px; }
+  .submenu .sub-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--fg-3); padding: 2px 6px 4px; }
+  .ann { max-width: 1180px; margin: 28px auto 0; border-top: 1px solid var(--divider); padding-top: 16px; color: var(--fg-2); font-size: 12px; line-height: 1.6; }
+  .section-head { max-width: 1200px; margin: 40px auto 16px; border-top: 1px solid var(--divider); padding-top: 22px; font-size: 16px; font-weight: 700; letter-spacing: -0.01em; color: var(--fg-0); display: flex; align-items: baseline; gap: 10px; }
+  .section-head span { font-size: 12px; font-weight: 400; color: var(--fg-3); }
+  .ann code, .mono { font-family: var(--font-mono); }
+  .ann b { color: var(--fg-0); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="sheet-head">
+  <div class="sheet-title">IronTide — Menu Reference</div>
+  <div class="sheet-sub">
+    Every application-menu item rendered open at once — the static source of truth for the menu bar.
+    This is the same model that drives <code>components/chrome.jsx</code> (<code>MENU_MODEL</code>) and is documented as tables in <code>DESIGN.md §1a</code>.
+    Build these as <b>custom styled popups in Slint, not the native MenuBar widget</b> — see the note at the bottom.
+  </div>
+  <div class="legend">
+    <span><span class="gutter"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="var(--accent)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 3 3 7-7"/></svg></span> toggle (checked)</span>
+    <span><span class="gutter"><span style="width:6px;height:6px;border-radius:3px;background:var(--accent)"></span></span> radio (active)</span>
+    <span><span class="chev"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3l4 5-4 5"/></svg></span> submenu (shown expanded below)</span>
+    <span><span class="mono" style="color:var(--fg-3)">Ctrl+K</span> accelerator</span>
+  </div>
+</div>
+
+<div class="menubar-demo" id="menubar"></div>
+<div class="columns" id="columns"></div>
+
+<div class="section-head">Context menus <span>right-click — same styling, opened at the cursor</span></div>
+<div class="columns" id="ctx-columns"></div>
+
+<div class="ann">
+  <p><b>Geometry.</b> Menu bar 28px tall, <code>--bg-1</code>. Dropdown panel: <code>--bg-2</code> fill, 1px <code>--border-1</code>, radius <code>--r-md</code> (6px), <code>--shadow-lg</code>, 5px padding. Each item row 27px tall; 16px leading gutter reserved for the check/radio mark; label <code>Inter</code> 12.5px <code>--fg-0</code>; accelerator <code>JetBrains&nbsp;Mono</code> 11px <code>--fg-3</code>, right-aligned; submenu chevron <code>--fg-2</code>. Hover row = <code>--bg-hover</code>. Separator = 1px <code>--divider</code> with 4px vertical margin.</p>
+  <p><b>State marks.</b> Toggles (Details Panel, Row Striping, Emerald Glow) show an emerald check when on. Radio groups (Sidebar, Density) show one emerald dot on the active option. These bind to the live <code>Tokens</code>/tweak state, not static values.</p>
+  <p><b>Slint implementation — important.</b> Slint's built-in <code>MenuBar { Menu { MenuItem } }</code> delegates to the <b>platform's native menu renderer</b>, which ignores our color tokens — it will look like a stock OS menu, not this design. To get the Breeze/emerald look shown here, build a <b>custom menu</b>: a <code>MenuButton</code>-style row per top-level label that opens a <code>PopupWindow</code> containing a styled <code>VerticalLayout</code> of item rows (a reusable <code>MenuItemRow</code> component for label + accelerator + check/radio/chevron). Submenus = a nested <code>PopupWindow</code> opened on hover/right-edge. Drive it all from one data model mirroring <code>MENU_MODEL</code>. Register the accelerators in <code>accel.rs</code> independently so shortcuts work whether or not the menu is open.</p>
+</div>
+
+<script>
+(function () {
+  var MODEL = [
+    { label: 'File', items: [
+      { k: 'add',          label: 'Add Torrent File…',          sc: 'Ctrl+O' },
+      { k: 'addMagnet',    label: 'Add Torrent Link / Magnet…', sc: 'Ctrl+Shift+O' },
+      { k: 'create',       label: 'Create New Torrent…',        sc: 'Ctrl+N' },
+      { sep: true },
+      { k: 'exportTorrent', label: 'Export .torrent…' },
+      { k: 'exportData',    label: 'Export Torrent + Data…' },
+      { sep: true },
+      { k: 'exit',         label: 'Exit IronTide',              sc: 'Ctrl+Q' },
+    ]},
+    { label: 'Edit', items: [
+      { k: 'resume',       label: 'Resume',         sc: 'Space' },
+      { k: 'pause',        label: 'Pause' },
+      { k: 'forceResume',  label: 'Force Resume' },
+      { sep: true },
+      { k: 'recheck',      label: 'Force Recheck',     sc: 'Ctrl+Shift+F' },
+      { k: 'reannounce',   label: 'Force Reannounce' },
+      { sep: true },
+      { k: 'setLocation',  label: 'Set Location…' },
+      { k: 'rename',       label: 'Rename…',           sc: 'F2' },
+      { label: 'Category', submenu: [
+        { k: 'cat:linux',    label: 'Linux ISOs' },
+        { k: 'cat:software', label: 'Software' },
+        { k: 'cat:none',     label: 'Uncategorized' },
+        { sep: true },
+        { k: 'cat:new',      label: 'New category…' },
+      ]},
+      { label: 'Queue', submenu: [
+        { k: 'q:top',    label: 'Move to Top',    sc: 'Ctrl+Shift+Up' },
+        { k: 'q:up',     label: 'Move Up',        sc: 'Ctrl+Up' },
+        { k: 'q:down',   label: 'Move Down',      sc: 'Ctrl+Down' },
+        { k: 'q:bottom', label: 'Move to Bottom', sc: 'Ctrl+Shift+Down' },
+      ]},
+      { sep: true },
+      { k: 'remove',       label: 'Remove',                 sc: 'Del' },
+      { k: 'removeData',   label: 'Remove + Delete Files…', sc: 'Shift+Del' },
+      { sep: true },
+      { k: 'selectAll',    label: 'Select All',             sc: 'Ctrl+A' },
+    ]},
+    { label: 'View', items: [
+      { k: 'command',      label: 'Command Palette…',  sc: 'Ctrl+K' },
+      { sep: true },
+      { label: 'Sidebar', submenu: [
+        { k: 'sidebar:full',   label: 'Full',       radio: true },
+        { k: 'sidebar:icons',  label: 'Icons only', radio: false },
+        { k: 'sidebar:hidden', label: 'Hidden',     radio: false },
+      ]},
+      { k: 'toggleDetails', label: 'Details Panel', sc: 'Ctrl+I', check: true },
+      { sep: true },
+      { label: 'Density', submenu: [
+        { k: 'density:compact',  label: 'Compact',  radio: true },
+        { k: 'density:balanced', label: 'Balanced', radio: false },
+        { k: 'density:spacious', label: 'Spacious', radio: false },
+      ]},
+      { k: 'toggleStriping', label: 'Row Striping',  check: true },
+      { k: 'toggleGlow',     label: 'Emerald Glow',  check: true },
+    ]},
+    { label: 'Tools', items: [
+      { k: 'nav:search',    label: 'Search',               sc: 'Ctrl+F' },
+      { k: 'nav:rss',       label: 'RSS Reader' },
+      { k: 'nav:scheduler', label: 'Bandwidth Scheduler…' },
+      { sep: true },
+      { k: 'nav:stats',     label: 'Statistics…' },
+      { k: 'nav:logs',      label: 'Logs…' },
+      { k: 'nav:ipfilter',  label: 'IP Filter…' },
+      { sep: true },
+      { k: 'nav:webui',     label: 'Web UI / Remote…' },
+      { sep: true },
+      { k: 'prefs',         label: 'Preferences…',         sc: 'Ctrl+,' },
+    ]},
+    { label: 'Help', items: [
+      { k: 'about',     label: 'About IronTide' },
+      { k: 'docs',      label: 'Documentation',     sc: 'F1' },
+      { k: 'shortcuts', label: 'Keyboard Shortcuts' },
+      { k: 'updates',   label: 'Check for Updates…' },
+      { sep: true },
+      { k: 'bug',       label: 'Report a Bug…' },
+    ]},
+  ];
+
+  var CHECK = '<span class="gutter"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="var(--accent)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 3 3 7-7"/></svg></span>';
+  var DOT   = '<span class="gutter"><span style="width:6px;height:6px;border-radius:3px;background:var(--accent)"></span></span>';
+  var EMPTY = '<span class="gutter"></span>';
+  var CHEV  = '<span class="chev"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3l4 5-4 5"/></svg></span>';
+
+  function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+
+  function itemRow(it) {
+    if (it.sep) return '<div class="sep"></div>';
+    var hasMark = (it.check !== undefined) || (it.radio !== undefined);
+    var mark = it.check !== undefined ? (it.check ? CHECK : EMPTY)
+             : it.radio !== undefined ? (it.radio ? DOT : EMPTY) : '';
+    var row = '<div class="mi">' + mark
+      + '<span class="lbl">' + esc(it.label) + '</span>'
+      + (it.sc ? '<span class="sc">' + esc(it.sc) + '</span>' : '')
+      + (it.submenu ? CHEV : '')
+      + '</div>';
+    if (it.submenu) {
+      row += '<div class="submenu"><div class="sub-label">' + esc(it.label) + ' ▸</div>'
+        + it.submenu.map(itemRow).join('') + '</div>';
+    }
+    return row;
+  }
+
+  var mb = MODEL.map(function (m, i) {
+    return '<button class="' + (i === 2 ? 'active' : '') + '">' + m.label + '</button>';
+  }).join('');
+  document.getElementById('menubar').innerHTML = mb;
+
+  var cols = MODEL.map(function (m) {
+    return '<div class="col"><div class="col-label">' + m.label + '</div>'
+      + '<div class="panel">' + m.items.map(itemRow).join('') + '</div></div>';
+  }).join('');
+  document.getElementById('columns').innerHTML = cols;
+
+  // ── Context menus (right-click surfaces) ──
+  var CONTEXT = [
+    { label: 'Torrent row', items: [
+      { k: 'resume',      label: 'Resume',         sc: 'Space' },
+      { k: 'pause',       label: 'Pause' },
+      { k: 'forceResume', label: 'Force Resume' },
+      { sep: true },
+      { k: 'recheck',     label: 'Force Recheck',     sc: 'Ctrl+Shift+F' },
+      { k: 'reannounce',  label: 'Force Reannounce' },
+      { sep: true },
+      { k: 'openFolder',  label: 'Open Destination Folder' },
+      { k: 'openDetails', label: 'Open Details' },
+      { sep: true },
+      { label: 'Queue', submenu: [
+        { k: 'q:top',    label: 'Move to Top',    sc: 'Ctrl+Shift+Up' },
+        { k: 'q:up',     label: 'Move Up',        sc: 'Ctrl+Up' },
+        { k: 'q:down',   label: 'Move Down',      sc: 'Ctrl+Down' },
+        { k: 'q:bottom', label: 'Move to Bottom', sc: 'Ctrl+Shift+Down' },
+      ]},
+      { label: 'Category', submenu: [
+        { k: 'cat:reset',    label: 'Reset', radio: false },
+        { k: 'cat:linux',    label: 'Linux ISOs', radio: true },
+        { k: 'cat:software', label: 'Software',   radio: false },
+        { sep: true },
+        { k: 'cat:new',      label: 'New category…' },
+      ]},
+      { label: 'Tags', submenu: [
+        { k: 'tag:verified', label: 'verified', check: true },
+        { k: 'tag:distro',   label: 'distro',   check: true },
+        { k: 'tag:archival', label: 'archival', check: false },
+        { sep: true },
+        { k: 'tag:add',      label: 'Add tag…' },
+      ]},
+      { sep: true },
+      { k: 'setLocation', label: 'Set Location…' },
+      { k: 'rename',      label: 'Rename…',            sc: 'F2' },
+      { k: 'dlLimit',     label: 'Set Download Limit…' },
+      { k: 'ulLimit',     label: 'Set Upload Limit…' },
+      { k: 'shareLimit',  label: 'Set Share Limit…' },
+      { sep: true },
+      { k: 'autoManage',  label: 'Automatic Torrent Management', check: true },
+      { k: 'superSeed',   label: 'Super Seeding',                check: false },
+      { k: 'sequential',  label: 'Download Sequentially',        check: false },
+      { k: 'firstLast',   label: 'Download First/Last Pieces First', check: false },
+      { sep: true },
+      { label: 'Copy', submenu: [
+        { k: 'copy:name',   label: 'Name' },
+        { k: 'copy:hash1',  label: 'Info hash v1' },
+        { k: 'copy:hash2',  label: 'Info hash v2' },
+        { k: 'copy:magnet', label: 'Magnet link' },
+      ]},
+      { k: 'exportTorrent', label: 'Export .torrent…' },
+      { sep: true },
+      { k: 'remove',      label: 'Remove',                 sc: 'Del' },
+      { k: 'removeData',  label: 'Remove + Delete Files…', sc: 'Shift+Del' },
+    ]},
+    { label: 'Column header', items: [
+      { k: 'col:name',    label: 'Name',     check: true },
+      { k: 'col:size',    label: 'Size',     check: true },
+      { k: 'col:progress', label: 'Progress', check: true },
+      { k: 'col:status',  label: 'Status',   check: true },
+      { k: 'col:seeds',   label: 'Seeds',    check: true },
+      { k: 'col:peers',   label: 'Peers',    check: true },
+      { k: 'col:down',    label: 'Down',     check: true },
+      { k: 'col:up',      label: 'Up',       check: true },
+      { k: 'col:ratio',   label: 'Ratio',    check: true },
+      { k: 'col:eta',     label: 'ETA',      check: true },
+      { k: 'col:category', label: 'Category', check: false },
+      { k: 'col:tags',    label: 'Tags',     check: false },
+      { k: 'col:added',   label: 'Added On', check: false },
+      { k: 'col:tracker', label: 'Tracker',  check: false },
+      { k: 'col:savepath', label: 'Save Path', check: false },
+      { k: 'col:avail',   label: 'Availability', check: false },
+      { sep: true },
+      { k: 'col:reset',   label: 'Reset to Defaults' },
+      { k: 'col:autofit', label: 'Auto-fit Columns' },
+      { k: 'col:lock',    label: 'Lock Columns', check: false },
+    ]},
+    { label: 'Sidebar — Category', items: [
+      { k: 'cat:add',    label: 'Add Category…' },
+      { k: 'cat:edit',   label: 'Edit Category…' },
+      { k: 'cat:remove', label: 'Remove Category' },
+      { k: 'cat:purge',  label: 'Remove Unused Categories' },
+      { sep: true },
+      { k: 'cat:resumeAll', label: 'Resume Torrents' },
+      { k: 'cat:pauseAll',  label: 'Pause Torrents' },
+      { sep: true },
+      { k: 'cat:savepath',  label: 'Set Default Save Path…' },
+    ]},
+    { label: 'Sidebar — Tag', items: [
+      { k: 'tag:addNew', label: 'Add Tag…' },
+      { k: 'tag:remove', label: 'Remove Tag' },
+      { k: 'tag:purge',  label: 'Remove Unused Tags' },
+      { sep: true },
+      { k: 'tag:resumeAll', label: 'Resume Torrents' },
+      { k: 'tag:pauseAll',  label: 'Pause Torrents' },
+    ]},
+    { label: 'Sidebar — Tracker', items: [
+      { k: 'trk:copy',   label: 'Copy Tracker URL' },
+      { k: 'trk:edit',   label: 'Edit Trackers…' },
+      { sep: true },
+      { k: 'trk:resumeAll', label: 'Resume Torrents' },
+      { k: 'trk:pauseAll',  label: 'Pause Torrents' },
+      { k: 'trk:removeAll', label: 'Remove Torrents' },
+    ]},
+    { label: 'System tray', items: [
+      { k: 'tray:show',  label: 'Show / Hide IronTide' },
+      { sep: true },
+      { k: 'tray:add',   label: 'Add Torrent File…' },
+      { k: 'tray:link',  label: 'Add Torrent Link…' },
+      { sep: true },
+      { k: 'tray:pauseAll',  label: 'Pause All' },
+      { k: 'tray:resumeAll', label: 'Resume All' },
+      { k: 'tray:altLimit',  label: 'Alternative Speed Limits', check: false },
+      { sep: true },
+      { k: 'tray:prefs', label: 'Preferences…' },
+      { sep: true },
+      { k: 'tray:quit',  label: 'Quit IronTide' },
+    ]},
+  ];
+
+  var ctx = CONTEXT.map(function (m) {
+    return '<div class="col"><div class="col-label">' + m.label + '</div>'
+      + '<div class="panel">' + m.items.map(itemRow).join('') + '</div></div>';
+  }).join('');
+  document.getElementById('ctx-columns').innerHTML = ctx;
+})();
+</script>
+</body>
+</html>

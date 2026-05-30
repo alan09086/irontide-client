@@ -1,0 +1,287 @@
+/* IronTide Design Tokens
+ * Three aesthetic skins × light/dark × density scale.
+ * Consumed by the prototype and referenced 1:1 by the Slint spec.
+ */
+
+:root {
+  /* ===== Type ===== */
+  --font-ui: 'Inter', -apple-system, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+
+  --fs-10: 10px;
+  --fs-11: 11px;
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-14: 14px;
+  --fs-16: 16px;
+  --fs-20: 20px;
+  --fs-24: 24px;
+  --fs-32: 32px;
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  --lh-tight: 1.15;
+  --lh-snug: 1.3;
+  --lh-normal: 1.5;
+
+  /* ===== Spacing (4px base) ===== */
+  --s-1: 2px;
+  --s-2: 4px;
+  --s-3: 6px;
+  --s-4: 8px;
+  --s-5: 12px;
+  --s-6: 16px;
+  --s-7: 20px;
+  --s-8: 24px;
+  --s-9: 32px;
+  --s-10: 48px;
+
+  /* ===== Radius ===== */
+  --r-sm: 3px;
+  --r-md: 6px;
+  --r-lg: 10px;
+  --r-xl: 14px;
+
+  /* ===== Density (row heights & paddings) ===== */
+  --row-h: 32px;
+  --row-px: 10px;
+  --chrome-h: 44px;
+  --sidebar-w: 220px;
+  --filters-w: 240px;
+
+  /* ===== Motion ===== */
+  --ease-out: cubic-bezier(.22,.61,.36,1);
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --dur-slow: 320ms;
+
+  /* ===== Status colors (shared across skins) ===== */
+  --st-downloading: oklch(0.70 0.14 220);
+  --st-seeding:     oklch(0.72 0.15 150);
+  --st-paused:      oklch(0.65 0.02 250);
+  --st-queued:      oklch(0.72 0.10 80);
+  --st-error:       oklch(0.65 0.18 25);
+  --st-checking:    oklch(0.72 0.12 290);
+  --st-stalled:     oklch(0.60 0.04 250);
+  --st-complete:    oklch(0.70 0.12 150);
+}
+
+/* ====================================================================
+   SKIN: TIDE (cool slate + teal)  — default
+   ==================================================================== */
+[data-skin="tide"][data-theme="light"] {
+  --bg-0: oklch(0.985 0.003 240);   /* app bg */
+  --bg-1: oklch(0.975 0.003 240);   /* sidebars */
+  --bg-2: oklch(0.965 0.004 240);   /* panels */
+  --bg-3: oklch(0.955 0.005 240);   /* table header */
+  --bg-hover: oklch(0.94 0.008 240);
+  --bg-selected: oklch(0.92 0.03 220);
+  --bg-inset: oklch(0.94 0.004 240);
+
+  --fg-0: oklch(0.22 0.012 250);
+  --fg-1: oklch(0.40 0.010 250);
+  --fg-2: oklch(0.55 0.010 250);
+  --fg-3: oklch(0.70 0.008 250);
+
+  --border-1: oklch(0.90 0.006 240);
+  --border-2: oklch(0.85 0.008 240);
+  --divider: oklch(0.92 0.005 240);
+
+  --accent: oklch(0.60 0.11 210);
+  --accent-hover: oklch(0.55 0.12 210);
+  --accent-fg: oklch(0.99 0 0);
+  --accent-bg-soft: oklch(0.94 0.04 210);
+
+  --shadow-sm: 0 1px 2px oklch(0.2 0.02 240 / 0.06);
+  --shadow-md: 0 4px 12px oklch(0.2 0.02 240 / 0.08);
+  --shadow-lg: 0 12px 32px oklch(0.2 0.02 240 / 0.12);
+}
+
+[data-skin="tide"][data-theme="dark"] {
+  --bg-0: oklch(0.175 0.010 250);
+  --bg-1: oklch(0.205 0.011 250);
+  --bg-2: oklch(0.225 0.012 250);
+  --bg-3: oklch(0.245 0.013 250);
+  --bg-hover: oklch(0.27 0.014 250);
+  --bg-selected: oklch(0.32 0.04 220);
+  --bg-inset: oklch(0.15 0.010 250);
+
+  --fg-0: oklch(0.96 0.004 240);
+  --fg-1: oklch(0.82 0.006 240);
+  --fg-2: oklch(0.65 0.008 240);
+  --fg-3: oklch(0.50 0.010 240);
+
+  --border-1: oklch(0.30 0.012 250);
+  --border-2: oklch(0.36 0.014 250);
+  --divider: oklch(0.28 0.012 250);
+
+  --accent: oklch(0.72 0.12 210);
+  --accent-hover: oklch(0.78 0.13 210);
+  --accent-fg: oklch(0.15 0.02 240);
+  --accent-bg-soft: oklch(0.30 0.05 210);
+
+  --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.25);
+  --shadow-md: 0 4px 12px oklch(0 0 0 / 0.35);
+  --shadow-lg: 0 12px 32px oklch(0 0 0 / 0.45);
+}
+
+/* ====================================================================
+   SKIN: FORGE (warm graphite + amber)
+   ==================================================================== */
+[data-skin="forge"][data-theme="light"] {
+  --bg-0: oklch(0.975 0.004 70);
+  --bg-1: oklch(0.965 0.005 70);
+  --bg-2: oklch(0.955 0.006 70);
+  --bg-3: oklch(0.945 0.007 70);
+  --bg-hover: oklch(0.93 0.010 70);
+  --bg-selected: oklch(0.92 0.035 70);
+  --bg-inset: oklch(0.935 0.006 70);
+
+  --fg-0: oklch(0.24 0.012 60);
+  --fg-1: oklch(0.42 0.010 60);
+  --fg-2: oklch(0.55 0.010 60);
+  --fg-3: oklch(0.70 0.008 60);
+
+  --border-1: oklch(0.89 0.008 70);
+  --border-2: oklch(0.84 0.010 70);
+  --divider: oklch(0.91 0.007 70);
+
+  --accent: oklch(0.62 0.12 65);
+  --accent-hover: oklch(0.57 0.13 65);
+  --accent-fg: oklch(0.99 0 0);
+  --accent-bg-soft: oklch(0.94 0.045 65);
+
+  --shadow-sm: 0 1px 2px oklch(0.2 0.02 60 / 0.06);
+  --shadow-md: 0 4px 12px oklch(0.2 0.02 60 / 0.08);
+  --shadow-lg: 0 12px 32px oklch(0.2 0.02 60 / 0.12);
+}
+
+[data-skin="forge"][data-theme="dark"] {
+  --bg-0: oklch(0.17 0.008 60);
+  --bg-1: oklch(0.20 0.009 60);
+  --bg-2: oklch(0.22 0.010 60);
+  --bg-3: oklch(0.24 0.011 60);
+  --bg-hover: oklch(0.27 0.012 60);
+  --bg-selected: oklch(0.32 0.04 65);
+  --bg-inset: oklch(0.145 0.008 60);
+
+  --fg-0: oklch(0.96 0.005 70);
+  --fg-1: oklch(0.82 0.006 70);
+  --fg-2: oklch(0.64 0.008 70);
+  --fg-3: oklch(0.48 0.010 70);
+
+  --border-1: oklch(0.30 0.011 60);
+  --border-2: oklch(0.36 0.013 60);
+  --divider: oklch(0.28 0.011 60);
+
+  --accent: oklch(0.76 0.13 70);
+  --accent-hover: oklch(0.82 0.14 70);
+  --accent-fg: oklch(0.15 0.02 60);
+  --accent-bg-soft: oklch(0.30 0.06 70);
+
+  --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.25);
+  --shadow-md: 0 4px 12px oklch(0 0 0 / 0.35);
+  --shadow-lg: 0 12px 32px oklch(0 0 0 / 0.45);
+}
+
+/* ====================================================================
+   SKIN: ABYSS (near-black + phosphor green, mono-heavy)
+   ==================================================================== */
+[data-skin="abyss"][data-theme="light"] {
+  /* Abyss-light is still a tinted paper feel */
+  --bg-0: oklch(0.98 0.003 150);
+  --bg-1: oklch(0.97 0.004 150);
+  --bg-2: oklch(0.96 0.005 150);
+  --bg-3: oklch(0.95 0.006 150);
+  --bg-hover: oklch(0.93 0.010 150);
+  --bg-selected: oklch(0.92 0.04 150);
+  --bg-inset: oklch(0.94 0.005 150);
+
+  --fg-0: oklch(0.20 0.020 150);
+  --fg-1: oklch(0.38 0.014 150);
+  --fg-2: oklch(0.54 0.010 150);
+  --fg-3: oklch(0.70 0.008 150);
+
+  --border-1: oklch(0.89 0.008 150);
+  --border-2: oklch(0.84 0.010 150);
+  --divider: oklch(0.91 0.007 150);
+
+  --accent: oklch(0.55 0.14 150);
+  --accent-hover: oklch(0.48 0.15 150);
+  --accent-fg: oklch(0.99 0 0);
+  --accent-bg-soft: oklch(0.93 0.06 150);
+
+  --shadow-sm: 0 1px 2px oklch(0.2 0.02 150 / 0.06);
+  --shadow-md: 0 4px 12px oklch(0.2 0.02 150 / 0.08);
+  --shadow-lg: 0 12px 32px oklch(0.2 0.02 150 / 0.12);
+}
+
+[data-skin="abyss"][data-theme="dark"] {
+  --bg-0: oklch(0.12 0.008 150);
+  --bg-1: oklch(0.15 0.009 150);
+  --bg-2: oklch(0.17 0.010 150);
+  --bg-3: oklch(0.19 0.011 150);
+  --bg-hover: oklch(0.22 0.014 150);
+  --bg-selected: oklch(0.26 0.06 150);
+  --bg-inset: oklch(0.09 0.008 150);
+
+  --fg-0: oklch(0.94 0.020 150);
+  --fg-1: oklch(0.78 0.020 150);
+  --fg-2: oklch(0.58 0.020 150);
+  --fg-3: oklch(0.42 0.018 150);
+
+  --border-1: oklch(0.26 0.014 150);
+  --border-2: oklch(0.32 0.018 150);
+  --divider: oklch(0.24 0.014 150);
+
+  --accent: oklch(0.82 0.18 150);
+  --accent-hover: oklch(0.88 0.19 150);
+  --accent-fg: oklch(0.12 0.02 150);
+  --accent-bg-soft: oklch(0.25 0.08 150);
+
+  --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.35);
+  --shadow-md: 0 4px 12px oklch(0 0 0 / 0.45);
+  --shadow-lg: 0 12px 32px oklch(0 0 0 / 0.55);
+}
+
+/* ===== Density modifiers ===== */
+[data-density="compact"]  { --row-h: 26px; --row-px: 8px;  --chrome-h: 38px; }
+[data-density="balanced"] { --row-h: 32px; --row-px: 10px; --chrome-h: 44px; }
+[data-density="spacious"] { --row-h: 40px; --row-px: 14px; --chrome-h: 52px; }
+
+/* ===== Corner radius modifier ===== */
+[data-radius="sharp"]   { --r-sm: 0px; --r-md: 0px; --r-lg: 0px; --r-xl: 0px; }
+[data-radius="rounded"] { --r-sm: 4px; --r-md: 8px; --r-lg: 12px; --r-xl: 16px; }
+
+/* ===== Scrollbars ===== */
+* { scrollbar-width: thin; scrollbar-color: var(--border-2) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+*::-webkit-scrollbar-track { background: transparent; }
+
+/* ===== Base ===== */
+html, body {
+  margin: 0; padding: 0;
+  font-family: var(--font-ui);
+  font-size: var(--fs-13);
+  color: var(--fg-0);
+  background: var(--bg-0);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+* { box-sizing: border-box; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.num  { font-variant-numeric: tabular-nums; }
+
+/* Focus */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Selection */
+::selection { background: var(--accent-bg-soft); color: var(--fg-0); }

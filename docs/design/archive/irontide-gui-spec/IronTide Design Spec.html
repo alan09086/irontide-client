@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en" data-skin="tide" data-theme="dark" data-density="balanced" data-radius="balanced">
+<head>
+<meta charset="utf-8"/>
+<title>IronTide — Design Spec</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles/tokens.css"/>
+<style>
+  html, body { overflow: auto; }
+  body { background: var(--bg-0); color: var(--fg-0); }
+  .page {
+    max-width: 1080px; margin: 0 auto; padding: 64px 48px 120px;
+    font-size: 14.5px; line-height: 1.6;
+  }
+  h1 { font-size: 40px; font-weight: 700; letter-spacing:-0.02em; margin: 0 0 6px; }
+  h2 { font-size: 24px; font-weight: 600; letter-spacing:-0.01em; margin: 56px 0 12px; padding-top: 22px; border-top: 1px solid var(--divider); }
+  h3 { font-size: 17px; font-weight: 600; margin: 28px 0 8px; }
+  h4 { font-size: 14px; font-weight: 600; margin: 18px 0 6px; color: var(--fg-1); text-transform: uppercase; letter-spacing: .04em; }
+  p  { color: var(--fg-1); margin: 8px 0; }
+  .lede { font-size: 17px; color: var(--fg-1); max-width: 700px; }
+  .meta { display: flex; gap: 18px; font-size: 12px; color: var(--fg-3); font-family: var(--font-mono); margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--divider); }
+  .meta span b { color: var(--fg-1); font-weight: 500; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 10px 0 18px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--divider); vertical-align: top; }
+  th { color: var(--fg-2); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; background: var(--bg-1); }
+  td.mono, th.mono { font-family: var(--font-mono); font-size: 12.5px; }
+  code { font-family: var(--font-mono); font-size: 12.5px; background: var(--bg-2); padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border-1); color: var(--fg-0); }
+  pre { background: var(--bg-1); border: 1px solid var(--border-1); border-radius: var(--r-md); padding: 14px 16px; overflow-x: auto; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.55; color: var(--fg-0); }
+  pre .kw { color: oklch(.72 .12 260); }
+  pre .str { color: oklch(.72 .14 150); }
+  pre .cmt { color: var(--fg-3); }
+  .kicker { font-family: var(--font-mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: .1em; margin-bottom: 10px; }
+  .callout { background: var(--bg-1); border: 1px solid var(--border-1); border-left: 3px solid var(--accent); border-radius: var(--r-md); padding: 14px 18px; margin: 16px 0; }
+  .callout.warn { border-left-color: var(--st-queued); }
+  .swatches { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin: 12px 0 18px; }
+  .swatch { padding: 10px; border-radius: var(--r-md); border: 1px solid var(--border-1); background: var(--bg-1); }
+  .swatch .chip { height: 46px; border-radius: var(--r-sm); margin-bottom: 8px; border: 1px solid var(--border-1); }
+  .swatch .name { font-size: 11px; color: var(--fg-1); font-weight: 500; }
+  .swatch .val { font-family: var(--font-mono); font-size: 10.5px; color: var(--fg-3); }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .card { background: var(--bg-1); border: 1px solid var(--border-1); border-radius: var(--r-md); padding: 18px; }
+  .feat h4 { margin-top: 0; color: var(--accent); }
+  .toc { columns: 2; column-gap: 40px; margin: 18px 0 40px; font-size: 13px; }
+  .toc a { color: var(--fg-1); text-decoration: none; display: block; padding: 3px 0; border-bottom: 1px dashed transparent; }
+  .toc a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+  .tag {
+    display: inline-block; padding: 1px 8px; border-radius: 999px;
+    font-size: 11px; font-weight: 500; background: var(--bg-2); border: 1px solid var(--border-1);
+    color: var(--fg-1); margin-right: 4px;
+  }
+  .tag.core { background: var(--accent-bg-soft); border-color: var(--accent); color: var(--accent); }
+  .tag.new { background: oklch(.92 .06 150); border-color: oklch(.72 .15 150); color: oklch(.35 .15 150); }
+  [data-theme="dark"] .tag.new { background: oklch(.25 .05 150); border-color: oklch(.50 .15 150); color: oklch(.80 .15 150); }
+  a.back { position: fixed; top: 20px; right: 20px; background: var(--bg-1); border: 1px solid var(--border-1); border-radius: var(--r-md); padding: 8px 12px; font-size: 12px; color: var(--fg-1); text-decoration: none; }
+</style>
+</head>
+<body>
+<a href="IronTide Prototype.html" class="back">← Open prototype</a>
+<main class="page">
+
+<div class="kicker">IronTide · Design Spec · v0.1 · Apr 2026</div>
+<h1>IronTide GUI — Design Specification</h1>
+<p class="lede">A full-featured BitTorrent client for engineers and power users, written in Rust with a Slint-rendered GUI. Feature parity with qBittorrent across all menus, settings, and workflows, delivered in an original visual language with three skins, three layout variants, and five novel capabilities.</p>
+<div class="meta">
+  <span><b>Audience</b> engineering team</span>
+  <span><b>Output</b> Rust + Slint</span>
+  <span><b>Fidelity</b> implementation-ready</span>
+  <span><b>Prototype</b> <a href="IronTide Prototype.html" style="color:var(--accent)">interactive</a></span>
+</div>
+
+<h2>Contents</h2>
+<nav class="toc">
+  <a href="#principles">1 · Design principles</a>
+  <a href="#system">2 · Design system</a>
+  <a href="#ia">3 · Information architecture</a>
+  <a href="#layouts">4 · Layout variants (L1/L2/L3)</a>
+  <a href="#list">5 · Torrent list & columns</a>
+  <a href="#details">6 · Per-torrent details</a>
+  <a href="#add">7 · Add torrent flow</a>
+  <a href="#create">8 · Torrent creation tool</a>
+  <a href="#prefs">9 · Preferences (8 sections)</a>
+  <a href="#rss">10 · RSS reader + auto-download</a>
+  <a href="#search">11 · Search plugins</a>
+  <a href="#scheduler">12 · Bandwidth scheduler</a>
+  <a href="#ipfilter">13 · IP filter</a>
+  <a href="#logs">14 · Logs & events</a>
+  <a href="#stats">15 · Statistics</a>
+  <a href="#webui">16 · Web UI remote access</a>
+  <a href="#categories">17 · Categories, tags, save-path rules</a>
+  <a href="#queue">18 · Queue management</a>
+  <a href="#shortcuts">19 · Keyboard shortcuts</a>
+  <a href="#novel">20 · Novel features (5)</a>
+  <a href="#slint">21 · Slint implementation notes</a>
+</nav>
+
+<h2 id="principles">1 · Design principles</h2>
+<div class="grid-3">
+  <div class="card"><h4>Power-user first</h4><p>Every feature qBittorrent has must be reachable without hunting. Defaults are sane for new users; every knob is exposed for advanced ones.</p></div>
+  <div class="card"><h4>Data density with air</h4><p>Balanced density by default (32px rows). Compact and spacious are one click away. No information is truncated when it wouldn't be in qBittorrent.</p></div>
+  <div class="card"><h4>Keyboard-driven</h4><p>Every action has a shortcut. <code>⌘K</code> opens a command palette that routes to any torrent, setting, or action.</p></div>
+  <div class="card"><h4>Original, not derivative</h4><p>We do not mimic qBittorrent's chrome, iconography, or color palette. Feature parity ≠ UI parity.</p></div>
+  <div class="card"><h4>Slint-honest</h4><p>Designs respect Slint's native widget set; custom components are called out explicitly with implementation notes.</p></div>
+  <div class="card"><h4>Quiet by default</h4><p>The UI stays out of the way during heavy transfers. Status is communicated through color and the sparkline in the status bar, not modals.</p></div>
+</div>
+
+<h2 id="system">2 · Design system</h2>
+
+<h3>Type</h3>
+<table>
+  <thead><tr><th>Token</th><th>Family</th><th>Use</th><th>Example</th></tr></thead>
+  <tbody>
+    <tr><td class="mono">--font-ui</td><td>Inter 400/500/600</td><td>All UI text</td><td style="font-family:Inter">IronTide</td></tr>
+    <tr><td class="mono">--font-mono</td><td>JetBrains Mono</td><td>Hashes, IPs, speeds, file paths</td><td style="font-family:'JetBrains Mono'">a1f9c8b7d6e5…</td></tr>
+    <tr><td class="mono">--fs-11 … --fs-32</td><td>—</td><td>11px (status bar) → 32px (page titles)</td><td>—</td></tr>
+  </tbody>
+</table>
+
+<h3>Color — three skins × light/dark</h3>
+<p>All color is defined in <code>oklch()</code>. Each skin is a triple of <code>(bg, fg, accent)</code> ranges with shared status colors.</p>
+
+<h4>Tide (default)</h4>
+<div class="swatches">
+  <div class="swatch"><div class="chip" style="background:oklch(.98 .003 240)"></div><div class="name">bg-0 light</div><div class="val">oklch(.98 .003 240)</div></div>
+  <div class="swatch"><div class="chip" style="background:oklch(.17 .010 250)"></div><div class="name">bg-0 dark</div><div class="val">oklch(.17 .010 250)</div></div>
+  <div class="swatch"><div class="chip" style="background:oklch(.60 .11 210)"></div><div class="name">accent</div><div class="val">oklch(.60 .11 210)</div></div>
+  <div class="swatch"><div class="chip" style="background:oklch(.70 .14 220)"></div><div class="name">downloading</div><div class="val">oklch(.70 .14 220)</div></div>
+  <div class="swatch"><div class="chip" style="background:oklch(.72 .15 150)"></div><div class="name">seeding</div><div class="val">oklch(.72 .15 150)</div></div>
+  <div class="swatch"><div class="chip" style="background:oklch(.65 .18 25)"></div><div class="name">error</div><div class="val">oklch(.65 .18 25)</div></div>
+</div>
+
+<h4>Forge · warm graphite + amber</h4>
+<h4>Abyss · near-black + phosphor green</h4>
+<p>Full token list lives in <code>styles/tokens.css</code>. Slint should consume these as <code>.slint</code> globals (see §21).</p>
+
+<h3>Spacing & radius</h3>
+<p>4px base grid. Spacing scale <code>s-1</code> (2) through <code>s-10</code> (48). Three radius presets: <b>sharp</b> (0), <b>balanced</b> (3/6/10/14), <b>rounded</b> (4/8/12/16).</p>
+
+<h3>Icons</h3>
+<p>Custom 16×16 line glyph set, 1.5px stroke, round caps/joins. 40 icons total covering navigation, actions, content types, and status. No third-party icon library.</p>
+
+<h2 id="ia">3 · Information architecture</h2>
+<table>
+  <thead><tr><th>Section</th><th>Nav ID</th><th>Contents</th></tr></thead>
+  <tbody>
+    <tr><td>Library</td><td class="mono">torrents</td><td>All · Downloading · Seeding · Completed · Paused · Active · Inactive · Errored</td></tr>
+    <tr><td>Categories</td><td class="mono">category:*</td><td>User-defined categories with save-path rules</td></tr>
+    <tr><td>Tags</td><td class="mono">tag:*</td><td>Multi-value labels, filterable</td></tr>
+    <tr><td>Trackers</td><td class="mono">tracker:*</td><td>Auto-aggregated from torrents; status groups: Working / Unreachable / Error</td></tr>
+    <tr><td>Tools</td><td class="mono">search, rss, scheduler, stats, logs, ipfilter, create, webui</td><td>Standalone full-page views</td></tr>
+    <tr><td>Preferences</td><td class="mono">modal</td><td>8 tabs: Behavior, Downloads, Connection, Speed, BitTorrent, RSS, Web UI, Advanced</td></tr>
+  </tbody>
+</table>
+
+<h2 id="layouts">4 · Layout variants</h2>
+<p>The prototype offers three layout models, user-switchable at runtime and per-workspace-persistent. All three share the same toolbar, sidebar, and status bar.</p>
+<div class="grid-3">
+  <div class="card"><h4>L1 · 3-pane (default)</h4><p>Sidebar | torrent list (top) | details pane (bottom). The classic qBittorrent/Deluge layout. Best for single-monitor users who want everything in view.</p></div>
+  <div class="card"><h4>L2 · Inspector drawer</h4><p>Sidebar | torrent list (full height) | 460px right drawer. Fits more rows; drawer collapses to gain space.</p></div>
+  <div class="card"><h4>L3 · Command workspace</h4><p>Minimal chrome. Sidebar can collapse to icons or hide entirely. Details shown on-demand via <code>Enter</code> or <code>⌘I</code>. Suited to large torrent counts and keyboard users.</p></div>
+</div>
+
+<h2 id="list">5 · Torrent list & columns</h2>
+<p>Columns are all reorderable, resizable, sortable, and toggleable. The default set is:</p>
+<table>
+  <thead><tr><th>Column</th><th>Width</th><th>Type</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>Select</td><td class="mono">28</td><td>checkbox</td><td>Row selection, multi-select with <code>⌘</code>/<code>⇧</code></td></tr>
+    <tr><td>Status dot</td><td class="mono">24</td><td>indicator</td><td>Animated pulse for active (downloading/checking)</td></tr>
+    <tr><td>Name</td><td class="mono">flex</td><td>text</td><td>Truncate with tooltip for full name</td></tr>
+    <tr><td>Size</td><td class="mono">78</td><td>mono, right</td><td>Human-formatted (KB/MB/GB/TB)</td></tr>
+    <tr><td>Progress</td><td class="mono">130</td><td>bar + %</td><td>Colored by status</td></tr>
+    <tr><td>Status</td><td class="mono">90</td><td>text</td><td>Title-cased label</td></tr>
+    <tr><td>Seeds (peers)</td><td class="mono">82</td><td>mono, right</td><td><code>connected (swarm)</code></td></tr>
+    <tr><td>Peers</td><td class="mono">82</td><td>mono, right</td><td>Same format</td></tr>
+    <tr><td>Down / Up</td><td class="mono">84</td><td>mono, right</td><td>Colored when &gt; 0</td></tr>
+    <tr><td>Ratio</td><td class="mono">60</td><td>mono, right</td><td>Green when ≥ 1.0</td></tr>
+    <tr><td>ETA</td><td class="mono">72</td><td>mono, right</td><td>∞ for seeding</td></tr>
+    <tr><td>Category, Tags, Added, Completed, Tracker, Save path, Availability, Last activity, Time active, Private, Comment, Ratio limit, Content layout, Content path, Info hash v1, Info hash v2</td><td>—</td><td>various</td><td>All optional, hidden by default except the first few</td></tr>
+  </tbody>
+</table>
+
+<h2 id="details">6 · Per-torrent details</h2>
+<p>Six tabs, all in the prototype:</p>
+<ul>
+  <li><b>General</b> — transfer stats (progress, speeds, ratio, ETA, availability, pieces), information block (hash v1/v2, save path, dates, comment, privacy flag), error card when applicable, and a 48×8 piece-availability heatmap.</li>
+  <li><b>Trackers</b> — DHT/PeX/LSD pseudo-trackers shown first; user trackers below with status, peer/seed/leech counts, last-announce, message.</li>
+  <li><b>Peers</b> — IP/port, connection type (BT/µ), protocol flags with legend, client/version, progress bar, rates, relevance.</li>
+  <li><b>HTTP Sources</b> — web seeds (BEP-19).</li>
+  <li><b>Content</b> — recursive file tree with per-file progress and priority (High/Normal/Low/Skip). Toolbar: Sequential, First/last pieces first.</li>
+  <li><b>Speed</b> — 60s/5m/1h/1d speed graph, plus per-torrent rate overrides.</li>
+</ul>
+
+<h2 id="add">7 · Add torrent flow</h2>
+<p>Modal dialog with three source tabs: <b>File</b>, <b>Magnet</b>, <b>URL</b>. All tabs share the same preview card (name, size, pieces, file count, comment, hash) and options panel:</p>
+<ul>
+  <li>Save path (with quick-browse)</li>
+  <li>Category + Tags</li>
+  <li>Start paused / Skip hash check / Pre-allocate / Sequential / First-last / Alt limits / Auto-manage</li>
+  <li>Per-file selection with priority dropdown</li>
+</ul>
+<p>The magnet flow supports multiple magnets (one per line, batched). URL flow accepts http/https and is fetched in-app.</p>
+
+<h2 id="create">8 · Torrent creation tool</h2>
+<p>Standalone page (also reachable as a modal). Source file/folder, tracker list (blank line = tier break), web seeds, piece size (Auto / 16 KiB → 16 MiB), format (v1 / v2 / Hybrid BEP-52), privacy flag, optimize alignment, source tag, comment. Shows hashing-time estimate live.</p>
+
+<h2 id="prefs">9 · Preferences</h2>
+<p>Eight tabs. Every setting from qBittorrent's preferences is present; where names differ, the qBittorrent equivalent is noted in the implementation doc (not shown in UI).</p>
+
+<h4>Behavior</h4>
+<p>Theme, Skin, Density, Language, deletion-confirm, pause-all confirm, double-click action, shortcut set (Default/Emacs/Vim/qBittorrent parity). Startup: login-start, start-minimized, minimize-to-tray-on-close, resume-previous-session. Notifications: on-complete, on-error, on-RSS-match, sound, external program (with <code>%N %F %D %I</code> substitution).</p>
+
+<h4>Downloads</h4>
+<p>Default save path, separate incomplete folder, <code>.!it</code> extension, auto-categories, add-torrent dialog, start-paused, skip-hash, pre-allocate, append-date, smart category suggestion. Watched folder, .torrent copy/move paths, delete-on-add. On-complete: move-to folder, external program.</p>
+
+<h4>Connection</h4>
+<p>Incoming port, random-on-start, UPnP/NAT-PMP, port status badge. Connection limits (global + per-torrent + upload slots + active dl/ul/total). Proxy: None / HTTP / SOCKS4/5, hostname lookups via proxy. IP filter enable + path + refresh-on-startup.</p>
+
+<h4>Speed</h4>
+<p>Global DL/UL limits with toggles. Alternative limits + scheduled hours (preset dropdown + custom). Transport-overhead / µTP / LAN-exempt toggles.</p>
+
+<h4>BitTorrent</h4>
+<p>DHT, PeX, LSD, encryption (Prefer/Require/Disable), anonymous mode. Seeding limits (ratio / seed time / inactive time → Pause / Remove / Remove+data / Super-seed). Queueing toggle + slow thresholds.</p>
+
+<h4>RSS</h4>
+<p>Enable, refresh interval, max articles. Auto-download on/off, smart episode filter, smart-filter regex, repack handling.</p>
+
+<h4>Web UI</h4>
+<p>Enable, bind address + port, HTTPS (cert/key paths). Auth: username, password, bypass-on-localhost, session timeout, login-attempts ban. Security: clickjacking/CSRF/host-header, allowed hosts, reverse-proxy X-Forwarded-For trust list. Dynamic DNS (DynDNS / No-IP / DuckDNS / Cloudflare).</p>
+
+<h4>Advanced</h4>
+<p>libtorrent tuning (async-I/O threads, hashing threads, file-pool size, outstanding-memory-checking, disk cache, cache expiry, coalesce R/W, piece-extent affinity, socket buffers). Network: interface selection, bind IP, reported-IP mode, update check, resolve peer countries/hostnames. Behavior: strict super-seeding, announce-tier rules, µTP-TCP mixed mode, always-announce, resume-data interval. Export config (reveal <code>config.toml</code>), reset to defaults.</p>
+
+<h2 id="rss">10 · RSS reader + auto-download</h2>
+<p>Two-pane: feeds sidebar (with unread counts + last-updated) + items list + a rules docked panel at the bottom. Each rule: enable toggle, name, must-contain, must-not-contain, episode filter, smart filter, category, save path, feeds it applies to.</p>
+
+<h2 id="search">11 · Search plugins</h2>
+<p>Query box + plugin filter + category filter. Results table: name, size, seeds, peers, engine, date, Add button (which routes to the Add-Torrent dialog pre-filled with the URL). Plugin manager sidebar: enable/disable per plugin, install from URL, update all.</p>
+
+<h2 id="scheduler">12 · Bandwidth scheduler</h2>
+<p>7×24 grid (days × hours). Each cell is one of three states: <b>Full speed</b> · <b>Alternative limits</b> · <b>Paused</b>. Click to toggle, drag to paint. Presets: Work hours, Overnight, Weekends. Current active state banner below.</p>
+
+<h2 id="ipfilter">13 · IP filter</h2>
+<p>Stats strip (enabled, total ranges, blocked today, last refresh) + editable range table (range, level = block/allow, comment). Banned-peers-this-session list with reasons. Import from URL, .p2p/.dat format support.</p>
+
+<h2 id="logs">14 · Logs & events</h2>
+<p>Monospace log view with level filters (INFO/WARN/ERROR/DEBUG), tail mode, clear, export. Rows: timestamp (ms), level pill, message. Auto-scroll pauses on user interaction.</p>
+
+<h2 id="stats">15 · Statistics</h2>
+<p>10 stat cards (all-time DL/UL/ratio/shared-time, session DL/UL/uptime, global peers, DHT nodes, active/max connections). 90-day rolling transfer graph. Top peer countries bar chart. Cache & I/O table (read-cache hit rate, write queue, disk R/W latencies, piece DL time).</p>
+
+<h2 id="webui">16 · Web UI remote access</h2>
+<p>Dedicated tool page shows live endpoint info (local/LAN/external URLs, status, uptime, active sessions). Active sessions table with revoke button. Pair-a-device panel with QR (URL + user + one-time token). All config settings live in Preferences → Web UI.</p>
+
+<h2 id="categories">17 · Categories, tags, save-path rules</h2>
+<p>Categories are single-valued and drive default save paths. Tags are multi-valued and free-form. Both show in the sidebar with counts and drive the filter. Save-path rules support token expansion: <code>{category}</code>, <code>{tracker}</code>, <code>{yyyy}/{mm}</code>, <code>{content_type}</code>.</p>
+
+<h2 id="queue">18 · Queue management</h2>
+<p>Queueing is toggleable in Preferences → BitTorrent. Caps: max active DL, max active UL, max active total. Slow-torrent exemption (configurable KB/s thresholds). Sidebar chevrons on selected rows move queue position up/down; <code>⌘↑</code>/<code>⌘↓</code>.</p>
+
+<h2 id="shortcuts">19 · Keyboard shortcuts</h2>
+<table>
+<thead><tr><th>Shortcut</th><th>Action</th></tr></thead>
+<tbody>
+<tr><td><code>⌘K</code></td><td>Command palette</td></tr>
+<tr><td><code>⌘,</code></td><td>Preferences</td></tr>
+<tr><td><code>⌘N</code></td><td>Add torrent</td></tr>
+<tr><td><code>⌘⇧N</code></td><td>Add magnet</td></tr>
+<tr><td><code>Space</code></td><td>Pause/Resume selected</td></tr>
+<tr><td><code>Delete</code> / <code>⌫</code></td><td>Remove (with confirm)</td></tr>
+<tr><td><code>⌘⇧F</code></td><td>Force recheck</td></tr>
+<tr><td><code>⌘↑</code> / <code>⌘↓</code></td><td>Queue up/down</td></tr>
+<tr><td><code>⌘I</code></td><td>Toggle inspector</td></tr>
+<tr><td><code>⌘L</code></td><td>Focus torrent list</td></tr>
+<tr><td><code>/</code></td><td>Filter torrent list</td></tr>
+<tr><td><code>⌘1…9</code></td><td>Jump to sidebar section</td></tr>
+<tr><td><code>Enter</code></td><td>Open details for selection (L3)</td></tr>
+<tr><td><code>Esc</code></td><td>Close modal / clear selection</td></tr>
+</tbody>
+</table>
+
+<h2 id="novel">20 · Novel features <span class="tag new">new</span></h2>
+<div class="grid-2">
+  <div class="card feat"><h4>1 · Command palette (⌘K)</h4><p>Every action, navigation target, setting, and torrent is reachable by typing. Fuzzy-matched with category headers. Keyboard-only users never need the mouse.</p></div>
+  <div class="card feat"><h4>2 · Smart category suggestion</h4><p>On add-torrent, a local classifier (no network) inspects file names and sizes to suggest a category and save path. Routes "ubuntu-*.iso" to Linux, "*.epub" to Books, etc. User-trainable via right-click → "Train as: X" on any existing torrent.</p></div>
+  <div class="card feat"><h4>3 · Bandwidth intent, not limits</h4><p>Instead of (only) hard KB/s caps, users can set goals: "Leave 10 Mbps free for video calls," "Never exceed 80% of measured uplink," "Pause during Zoom/Meet." IronTide probes bandwidth every few minutes and auto-adjusts.</p></div>
+  <div class="card feat"><h4>4 · Pair-to-phone QR</h4><p>In Web UI → Pair a device, a QR encodes URL + username + one-time token. IronTide Mobile scans it and is authed permanently. Tokens rotate and revoke from the active-sessions table.</p></div>
+  <div class="card feat"><h4>5 · Verify-before-download</h4><p>When a torrent's files already exist in the save path (common when re-adding after reinstall), IronTide offers a fast local hash-verify pass before downloading anything. If all pieces match, it goes straight to seeding. Saves massive amounts of traffic on re-adds.</p></div>
+</div>
+
+<h2 id="slint">21 · Slint implementation notes</h2>
+<p>Slint's native widget set covers ~80% of what IronTide needs. The remaining 20% is custom .slint components. This section maps each UI element to either a Slint built-in or a custom component.</p>
+
+<h4>Direct Slint mapping</h4>
+<table>
+<thead><tr><th>Design element</th><th>Slint</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>Window, Menu bar</td><td class="mono">Window { MenuBar { ... } }</td><td>1.8+ has MenuBar in native style</td></tr>
+<tr><td>Buttons, ToggleSwitch</td><td class="mono">Button, Switch</td><td>Style via <code>.slint</code> globals from our tokens</td></tr>
+<tr><td>Text inputs, TextArea</td><td class="mono">LineEdit, TextEdit</td><td>—</td></tr>
+<tr><td>ComboBox</td><td class="mono">ComboBox</td><td>—</td></tr>
+<tr><td>Scroll views</td><td class="mono">ScrollView, Flickable</td><td>—</td></tr>
+<tr><td>Splitters</td><td class="mono">Splitter (custom)</td><td>Not built-in; wrap with a drag-handle <code>Rectangle</code></td></tr>
+<tr><td>Tabs</td><td class="mono">TabWidget</td><td>Restyle to match our underline-active pattern</td></tr>
+<tr><td>Tooltips</td><td class="mono">Tooltip (1.7+)</td><td>—</td></tr>
+</tbody>
+</table>
+
+<h4>Custom Slint components required</h4>
+<table>
+<thead><tr><th>Component</th><th>Why custom</th><th>Approach</th></tr></thead>
+<tbody>
+<tr><td>TorrentTable</td><td>Virtualized, multi-select, reorderable columns, hover states, density variants</td><td>Use <code>StandardTableView</code> as base + custom row delegate; virtualize with a fixed item-height <code>ListView</code>. Column drag handled by custom header.</td></tr>
+<tr><td>ProgressBar (tinted)</td><td>Our bars are status-tinted with per-row color tokens</td><td>Custom component accepting <code>value</code> and <code>tone</code> properties that map to color tokens.</td></tr>
+<tr><td>Sparkline / SpeedGraph</td><td>No built-in chart in Slint</td><td>Draw with <code>Path</code> elements. Feed a ring buffer property; Slint will re-render on change.</td></tr>
+<tr><td>PieceAvailabilityMap</td><td>Dense 48×N grid, hundreds to thousands of pieces</td><td>Custom GL-accelerated component OR bake to a dynamic image via <code>Image</code> + Rust <code>tiny_skia</code>. Needed only when details tab is open.</td></tr>
+<tr><td>BandwidthScheduler</td><td>7×24 paintable grid</td><td>Custom; ~168 rectangles with click-drag state. Trivially doable in Slint.</td></tr>
+<tr><td>CommandPalette</td><td>Fuzzy-matched, grouped, keyboard-navigated</td><td>Custom modal <code>PopupWindow</code> + <code>LineEdit</code> + virtualized <code>ListView</code>.</td></tr>
+<tr><td>StatusDot (pulse)</td><td>Animated halo</td><td>Use <code>animate</code> blocks on a child <code>Rectangle</code>'s <code>opacity</code> and <code>scale</code>.</td></tr>
+<tr><td>Toast / in-app notification</td><td>—</td><td>Stacking container in bottom-right, each toast a component with a <code>TimerTask</code> dismiss.</td></tr>
+<tr><td>QR code</td><td>No built-in</td><td>Generate in Rust (<code>qrcode</code> crate), pass as <code>Image</code>.</td></tr>
+<tr><td>Flag/Country icon</td><td>—</td><td>Ship a flag spritesheet and use <code>Image { source-clip-*: }</code>.</td></tr>
+</tbody>
+</table>
+
+<h4>Suggested .slint module layout</h4>
+<pre><span class="cmt">// src/ui/</span>
+tokens.slint              <span class="cmt">// color, type, spacing, radius globals</span>
+atoms/
+  button.slint
+  icon_button.slint
+  chip.slint
+  progress_bar.slint
+  status_dot.slint
+  status_pill.slint
+  toggle.slint
+  text_input.slint
+  select.slint
+molecules/
+  sidebar_item.slint
+  torrent_row.slint
+  tab_strip.slint
+  speed_graph.slint
+  piece_map.slint
+  scheduler_grid.slint
+organisms/
+  window_chrome.slint
+  menu_bar.slint
+  toolbar.slint
+  sidebar.slint
+  torrent_table.slint
+  details_pane.slint
+  prefs_dialog.slint
+  add_torrent_dialog.slint
+  create_torrent_dialog.slint
+  command_palette.slint
+  rss_page.slint
+  search_page.slint
+  scheduler_page.slint
+  stats_page.slint
+  logs_page.slint
+  ipfilter_page.slint
+  webui_page.slint
+app.slint                 <span class="cmt">// top-level window, routing</span></pre>
+
+<h4>Tokens as Slint globals</h4>
+<pre><span class="kw">export global</span> Tokens := {
+    <span class="cmt">// color</span>
+    <span class="kw">in-out property</span> &lt;color&gt; bg-0: #2c313d;
+    <span class="kw">in-out property</span> &lt;color&gt; bg-1: #333844;
+    <span class="kw">in-out property</span> &lt;color&gt; fg-0: #f4f5f7;
+    <span class="kw">in-out property</span> &lt;color&gt; accent: #5ba9d6;
+    <span class="kw">in-out property</span> &lt;color&gt; st-downloading: #5ea6e8;
+    <span class="kw">in-out property</span> &lt;color&gt; st-seeding: #6ebf8e;
+    <span class="kw">in-out property</span> &lt;color&gt; st-error: #e0694f;
+    <span class="cmt">// spacing</span>
+    <span class="kw">in-out property</span> &lt;length&gt; s-4: 8px;
+    <span class="kw">in-out property</span> &lt;length&gt; s-6: 16px;
+    <span class="kw">in-out property</span> &lt;length&gt; row-h: 32px;
+    <span class="cmt">// radius</span>
+    <span class="kw">in-out property</span> &lt;length&gt; r-md: 6px;
+    <span class="kw">in-out property</span> &lt;length&gt; r-lg: 10px;
+    <span class="cmt">// density / skin switching handled via callbacks that rewrite all above</span>
+}</pre>
+
+<h4>Rust-side boundaries</h4>
+<p>The UI layer is pure Slint; data comes from a Rust state object exposed via <code>slint::Model</code> implementations:</p>
+<ul>
+<li><code>TorrentModel</code> → backs the torrent table. Updates diff'd against the previous snapshot, emitted via <code>model_changed</code> on the affected row only.</li>
+<li><code>PeerModel</code>, <code>TrackerModel</code>, <code>FileTreeModel</code> → backed by the currently-selected torrent. Swap wholesale on selection change.</li>
+<li><code>LogModel</code> → ring buffer, capped at ~10k entries. Level filter applied Slint-side via a <code>FilterModel</code>.</li>
+<li><code>Stats</code>, <code>SpeedSample</code> → simple <code>in-out property</code> on the root, polled by a timer at 1 Hz.</li>
+</ul>
+
+<h4>Callouts</h4>
+<div class="callout warn"><b>Virtualization.</b> With 1,000+ torrents, <code>ListView</code> virtualization is mandatory. Keep row delegates lightweight — no per-row sparklines; use a single off-screen sparkline component reused for the selected row only.</div>
+<div class="callout"><b>Theme switching at runtime.</b> Slint globals support re-assignment, but we recommend updating every token from Rust in one atomic batch to avoid flicker during skin changes.</div>
+<div class="callout"><b>Accessibility.</b> Slint's <code>accessible-*</code> properties are supported since 1.4. Tag every interactive element — especially the torrent rows (<code>accessible-role: list-item</code>, <code>accessible-label</code>) — during implementation.</div>
+
+<h2>Handoff</h2>
+<p>The prototype at <a href="IronTide Prototype.html" style="color:var(--accent)">IronTide Prototype.html</a> is the source of truth for layout, spacing, and interactions. Toggle Tweaks in the toolbar to see all skins, densities, and layout variants. Hover over any row, tab, or button to see full hover/focus states.</p>
+
+<p style="color:var(--fg-3); font-size:12px; margin-top: 60px;">IronTide · Design specification · v0.1 · April 2026</p>
+
+</main>
+</body>
+</html>
